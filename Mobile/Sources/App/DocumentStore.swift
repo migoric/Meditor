@@ -330,7 +330,14 @@ final class DocumentStore {
                 return nil
             }
         }
-        guard (try? FileManager.default.moveItem(at: oldURL, to: newURL)) != nil else { return nil }
+        // 搬移失败不能再静默：此前 try? 让「名字没变但文件也没动」与「参数非法」
+        // 对调用方完全同形（都只返回 nil），用户看到的是「点了重命名没反应」。
+        do {
+            try FileManager.default.moveItem(at: oldURL, to: newURL)
+        } catch {
+            lastError = error
+            return nil
+        }
 
         let newRel = relativePath(for: newURL)
         recents.updatePath(old: rel, new: newRel, newName: candidate)

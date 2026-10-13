@@ -92,8 +92,17 @@ final class AgentRunner {
     /// 放弃收尾，避免覆盖新 run 的 finalMessages/isRunning 或触发旧 onComplete。
     private var runGeneration = 0
 
-    /// 总执行超时（秒），0 = 不限。默认 5 分钟。
-    var timeoutSeconds: TimeInterval = 300
+    /// 总超时的下限（秒）：步数预算很小时也至少给 5 分钟。
+    static let defaultTimeoutSeconds: TimeInterval = 300
+
+    /// 每步预留的墙钟（秒）：一次模型往返 + 一次工具执行的经验值。
+    /// 30 步 × 10s = 300s，恰为历史默认值；步数调大时总超时同比放大。
+    static let secondsPerStep: TimeInterval = 10
+
+    /// 总执行超时（秒），0 = 不限。默认由步数预算推导（见 init）。
+    /// 初始值写显式类型名而不是 Self：类的 Self 是协变的，存储属性初始化器里
+    /// 引用它会报 covariant 'Self' 错误。
+    var timeoutSeconds: TimeInterval = AgentRunner.defaultTimeoutSeconds
 
     /// 发给后端的上下文预算（token 估算值）：超出时对线上副本做预算裁剪，
     /// 本地 messages（最终写入持久化历史）保持完整。测试可调小以覆盖裁剪路径。
@@ -113,6 +122,14 @@ final class AgentRunner {
     ) {
         self.state = AgentRunState()
         self.maxSteps = maxSteps
+        // 超时与步数预算联动。此前超时硬编码 300s，而 aiAgentMaxSteps 是用户可配的
+        // （设置页允许 5–100）：调到 100 步时后半程永远走不到，且墙钟先到时报错只
+        // 说是「超时」，误导成任务太重，实际是预算没给够。取两者较大值，
+        // 默认 30 步仍是 300s —— 不改历史行为，只补上「调大步数」时的缺口。
+        self.timeoutSeconds = max(
+            Self.defaultTimeoutSeconds,
+            TimeInterval(max(maxSteps, 1)) * Self.secondsPerStep
+        )
         self.backendFactory = backendFactory
     }
 
@@ -207,7 +224,9 @@ final class AgentRunner {
                 // 不得把新 run 误判为超时
                 if let timedOut = await group.next(), timedOut, self.isRunning,
                    self.runGeneration == generation {
-                    self.error     = "操作超时（\(Int(self.timeoutSeconds))s），请重试或简化任务"
+                    // 报错带上步数预算：只写「超时」时用户无法判断是任务太重还是
+                    // 步数预算没给足（两者上限联动，见 init）
+                    self.error     = "操作超时（\(Int(self.timeoutSeconds))s，步数预算 \(maxSteps) 步），请重试或简化任务"
                     self.state.termination = .failed   // 超时可断点续传
                     self.isRunning = false
                     self.runTask   = nil
