@@ -11,6 +11,9 @@ import XCTest
 //   B11 cancel 后旧 run 收尾不得覆盖新 run（generation 防护）
 //   B12 停滞检测：相同 (工具, 参数) 连续失败 3 次 → 中断 run，不再发第 4 次请求
 //   B13 工具耗时记录：真实执行分支写入 durationSeconds，短路分支为 nil
+//   B16 停滞检测（规则 2）：换参反复失败 4 步 → 中断
+//   B17 停滞检测（规则 3）：调用成功但结果重复、连续零进展 → 中断
+//   B18 规则 3 不误杀：重复被新结果打断 → 不判定停滞
 //
 // mock 模式沿用 AgentRunnerMultiTurnTests（其 mock 为 private，这里自带等价实现）。
 
@@ -375,6 +378,104 @@ final class AgentRunnerStabilityTests: XCTestCase {
         XCTAssertEqual(backend.receivedMessages.count, 6)
     }
 
+    // MARK: - B16 停滞检测（规则 2）：换参反复失败 4 步 → 中断
+
+    func test_stallDetection_allFailedStepsWithDifferentArgs_abortsRun() async {
+        // 规则 1 只认「相同 (工具, 参数) 连续失败」，模型每次微调一点参数就完全绕过。
+        // 规则 2 改判「本步所有工具调用都失败」连续达阈值。
+        let tool = FailingTool(name: "failing_tool")
+        let call = { (id: String, path: String) in
+            AgentCompletionResponse(
+                text: "",
+                toolCalls: [AgentToolCall(id: id, name: "failing_tool",
+                                          argumentsJSON: "{\"path\":\"\(path)\"}")],
+                finishReason: "tool_calls"
+            )
+        }
+        let backend = ScriptedBackend(script: [
+            .respond(call("tc1", "a.md")),
+            .respond(call("tc2", "b.md")),
+            .respond(call("tc3", "c.md")),
+            .respond(call("tc4", "d.md")),
+            // 第 5 轮不应被消费：规则 2 在连续 4 步全失败后中断
+            .respond(AgentCompletionResponse(text: "不应到达", toolCalls: [], finishReason: "stop")),
+        ])
+        let runner = AgentRunner(maxSteps: 20, backendFactory: { _ in backend })
+
+        await runAndWait(runner, tools: [tool])
+
+        XCTAssertEqual(tool.callCount, 4, "应执行 4 次后中断")
+        XCTAssertEqual(backend.receivedMessages.count, 4,
+                       "规则 2 中断后不应再发第 5 次后端请求，实际：\(backend.receivedMessages.count)")
+        XCTAssertFalse(runner.isRunning)
+
+        let error = runner.error ?? ""
+        XCTAssertTrue(error.contains("全部失败"), "文案应说明整步全失败，实际：\(error)")
+        XCTAssertTrue(error.contains("failing_tool"), "文案应指出涉及的工具，实际：\(error)")
+        XCTAssertFalse(error.contains("最大步数"), "不应误报步数超限，实际：\(error)")
+        XCTAssertEqual(runner.state.stall?.repeatCount, 4)
+    }
+
+    // MARK: - B17 停滞检测（规则 3）：成功但零进展连续 5 步 → 中断
+
+    func test_stallDetection_repeatedIdenticalSuccessfulResults_abortsRun() async {
+        // 规则 1 只认失败调用。「调用都成功、结果却始终相同」（反复读同一文件、
+        // 反复把同一段写回去）不报错，却能烧满 maxSteps 并报「超过最大步数」，
+        // 错误文案还不指向真因。规则 3 用「结果签名是否本 run 已出现过」判定零进展。
+        let spy = RunnerSpyTool(name: "read_document", result: "SAME CONTENT")
+        let call = { (id: String) in
+            AgentCompletionResponse(
+                text: "",
+                toolCalls: [AgentToolCall(id: id, name: "read_document",
+                                          argumentsJSON: #"{"path":"doc.md"}"#)],
+                finishReason: "tool_calls"
+            )
+        }
+        let backend = ScriptedBackend(script: [
+            .respond(call("tc1")), .respond(call("tc2")), .respond(call("tc3")),
+            .respond(call("tc4")), .respond(call("tc5")),
+            // 第 6 轮不应被消费（第 1 步是新结果，故连续零进展从第 2 步开始计数）
+            .respond(AgentCompletionResponse(text: "不应到达", toolCalls: [], finishReason: "stop")),
+        ])
+        let runner = AgentRunner(maxSteps: 20, backendFactory: { _ in backend })
+
+        await runAndWait(runner, tools: [spy])
+
+        XCTAssertEqual(backend.receivedMessages.count, 5,
+                       "连续 5 步零进展后应中断，不应发第 6 次请求，实际：\(backend.receivedMessages.count)")
+        let error = runner.error ?? ""
+        XCTAssertTrue(error.contains("没有"), "文案应说明无有效进展，实际：\(error)")
+        XCTAssertFalse(error.contains("最大步数"), "不应误报步数超限，实际：\(error)")
+        XCTAssertEqual(runner.state.stall?.repeatCount, 4,
+                       "第 1 步算新结果，零进展从第 2 步起计，触发时为 4")
+    }
+
+    // MARK: - B18 规则 3 不误杀：重复被「新结果」打断则不计停滞
+
+    func test_stallDetection_repeatedResultsBrokenByNewResult_notStalled() async {
+        // 结果序列 A A A B：第 4 步出现新结果 → 零进展计数归零，不应判定停滞
+        let tool = SequencedResultTool(name: "seq_tool", results: ["A", "A", "A", "B"])
+        let call = { (id: String) in
+            AgentCompletionResponse(
+                text: "",
+                toolCalls: [AgentToolCall(id: id, name: "seq_tool", argumentsJSON: "{}")],
+                finishReason: "tool_calls"
+            )
+        }
+        let backend = ScriptedBackend(script: [
+            .respond(call("tc1")), .respond(call("tc2")),
+            .respond(call("tc3")), .respond(call("tc4")),
+            .respond(AgentCompletionResponse(text: "最终答案", toolCalls: [], finishReason: "stop")),
+        ])
+        let runner = AgentRunner(maxSteps: 20, backendFactory: { _ in backend })
+
+        await runAndWait(runner, tools: [tool])
+
+        XCTAssertEqual(runner.finalText, "最终答案")
+        XCTAssertNil(runner.error, "有进展的重复不应判定停滞，实际：\(runner.error ?? "nil")")
+        XCTAssertNil(runner.state.stall)
+    }
+
     // MARK: - B13 工具耗时记录：真实执行分支写入 durationSeconds
 
     func test_toolCallDone_recordsDuration() async {
@@ -640,5 +741,24 @@ private final class FlappingTool: AgentTool, @unchecked Sendable {
     func execute(arguments: [String: AnySendableValue], context: any AgentContextProtocol) async throws -> String {
         if arguments["path"]?.stringValue == successArg { return "ok" }
         throw AgentError.executionError("总是失败")
+    }
+}
+
+/// 依次返回预设结果的工具（用完后重复最后一个）——用于验证规则 3 的「新结果会
+/// 打断零进展计数」。
+private final class SequencedResultTool: AgentTool, @unchecked Sendable {
+    let spec: AgentToolSpec
+    private let results: [String]
+    private var index = 0
+
+    init(name: String, results: [String]) {
+        self.spec    = AgentToolSpec(name: name, description: "Sequenced tool: \(name)")
+        self.results = results
+    }
+
+    func execute(arguments: [String: AnySendableValue], context: any AgentContextProtocol) async throws -> String {
+        let result = results[min(index, results.count - 1)]
+        index += 1
+        return result
     }
 }
