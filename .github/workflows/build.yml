@@ -176,3 +176,19 @@ jobs:
       - name: Service layer dependency direction
         run: python3 scripts/check_service_layer_deps.py
 
+  ui-guard:
+    name: UI Guard
+    # 纯静态检查（设计 token 有没有人用），用 ubuntu runner + 秒级完成。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 死设计 token 护栏（P0-5）：DS 里的成员必须有人引用，
+      # 例外（半径档位这类「菜单」）需登记在 ALLOW_UNUSED 并写明理由。
+      # 棘轮式：登记项一旦被采用，也要从名单里删掉。
+      - name: Dead design tokens
+        run: python3 scripts/check_dead_tokens.py
+
