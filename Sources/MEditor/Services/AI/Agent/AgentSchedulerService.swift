@@ -8,6 +8,10 @@ import Observation
 // 发起后台 run——写文件仍走标准确认条 / diff 审阅链路，scheduler 不绕过任何安全边界；
 // AI 未配置时触发优雅失败（toast 提示，不崩溃不静默）。
 //
+// 宿主依赖收在 `AgentHostPort` 端口上（P0-10）：本文件不直接命名 ViewModel 类型。
+// 端口同时被 BackgroundAgentTaskService 使用，两个服务共用同一份宿主能力白名单
+// （护栏见 scripts/check_service_layer_deps.py）。
+//
 // 已知取舍（有意从简）：
 // - App 睡眠 / 未运行期间错过的触发不补跑——定位是「App 在线时的定时触发」，不是精确闹钟
 // - 触发去重粒度为「分钟」：同一分钟内不会重复触发同一条目
@@ -21,7 +25,7 @@ final class AgentSchedulerService {
     /// 配置解析容错记录（坏条目说明）
     private(set) var configIssues: [String] = []
 
-    private weak var appState: AppState?
+    private weak var host: (any AgentHostPort)?
 
     /// 时钟（测试注入固定值，不依赖真实时间等待）
     var now: () -> Date = { Date() }
@@ -36,18 +40,18 @@ final class AgentSchedulerService {
 
     /// 触发去重：条目名 → 上次触发的分钟桶（同分钟不重复触发）
     private var lastFiredMinute: [String: Date] = [:]
-    /// 分钟 tick 计时器。服务挂在 AppState 上（App 生命周期），无需 deinit 里 invalidate；
-    /// 即便释放，Timer 闭包持 weak self 也只是空转。
+    /// 分钟 tick 计时器。服务挂在宿主上（App 生命周期），无需 deinit 里
+    /// invalidate；即便释放，Timer 闭包持 weak self 也只是空转。
     private var timer: Timer?
 
-    init(appState: AppState? = nil,
+    init(host: (any AgentHostPort)? = nil,
          globalConfigURL: URL = ScheduledTaskConfigLoader.defaultGlobalConfigURL,
          startTimer: Bool = true) {
-        self.appState = appState
+        self.host = host
         self.globalConfigURL = globalConfigURL
         // 默认触发动作走真实发起链路（弱引用 self，测试可整体替换为记录器）
         self.trigger = { [weak self] entry in self?.fire(entry) }
-        reload(workspaceURL: appState?.rootURL)
+        reload(workspaceURL: host?.rootURL)
         if startTimer {
             timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in self?.tick() }
@@ -91,7 +95,7 @@ final class AgentSchedulerService {
             try ScheduledTaskConfigWriter.setEnabled(enabled, forName: entry.name, configURL: url)
         } catch {
             AppLog.app.error("schedules.json write-back failed: \(error.localizedDescription, privacy: .public)")
-            appState?.showToast(error.localizedDescription, icon: "exclamationmark.triangle")
+            host?.showToast(error.localizedDescription, icon: "exclamationmark.triangle")
         }
         reload(workspaceURL: currentWorkspaceURL)
     }
@@ -114,24 +118,21 @@ final class AgentSchedulerService {
 
     // MARK: - 触发
 
-    /// 默认触发动作：AI 未配置时 toast 优雅失败；否则复用 BackgroundAgentTaskService
+    /// 默认触发动作：AI 未配置时 toast 优雅失败；否则复用宿主的 backgroundAgentTasks
     /// 发起后台 run（写入确认/审阅链路、并发上限、完成通知全部沿用）。
     private func fire(_ entry: ScheduledTaskConfig) {
-        guard let appState else { return }
+        guard let host else { return }
         let settings = AppSettings.shared
         let config = AIConfig.current(settings, scene: .agent)
         guard config.isConfigured else {
-            appState.showToast(L("ai.schedule.notConfigured", entry.name),
-                               icon: "exclamationmark.triangle")
+            host.showToast(L("ai.schedule.notConfigured", entry.name),
+                           icon: "exclamationmark.triangle")
             return
         }
-        // system prompt 复用聊天/手动后台任务同一份 grounding（不附带当前文档全文）
-        let coordinator = AIChatCoordinator(settings: settings,
-                                            conversation: appState.aiConversation,
-                                            appState: appState)
-        appState.backgroundAgentTasks.start(
+        host.backgroundAgentTasks.start(
             prompt: entry.prompt,
-            systemPrompt: coordinator.systemContext(includeFullDoc: false),
+            // system prompt 复用聊天/手动后台任务同一份 grounding（不附带当前文档全文）
+            systemPrompt: host.agentGroundingPrompt(settings: settings, includeFullDoc: false),
             config: config,
             maxSteps: settings.aiAgentMaxSteps
         )

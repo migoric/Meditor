@@ -45,9 +45,14 @@ final class BackgroundAgentTask: Identifiable {
 /// 后台 Agent 任务管理：新建独立 AgentRunner + 独立 AgentContext，
 /// 与聊天会话的流式渲染完全解耦，用户发起后可继续编辑/聊天。
 ///
-/// 安全边界：写入仍走现有确认条 / diff 审阅链路（contextFactory 默认产出
-/// 基于 AppState 的标准 context，reviewFileWrite / confirmFileWrite 一套不变）。
-/// 后台任务没人盯着时确认条挂着不响应是预期行为，超时路径由 AgentRunner 兜底。
+/// 安全边界：写入仍走现有确认条 / diff 审阅链路（contextFactory 默认经
+/// `AgentHostPort.makeAgentContext` 产出标准 context，reviewFileWrite /
+/// confirmFileWrite 一套不变）。后台任务没人盯着时确认条挂着不响应是预期行为，
+/// 超时路径由 AgentRunner 兜底。
+///
+/// 宿主依赖收在 `AgentHostPort` 端口上（P0-10）：本文件不直接命名 ViewModel 类型，
+/// 「Service 能对宿主做什么」由协议成员白名单限定（护栏见
+/// `scripts/check_service_layer_deps.py`）。
 @MainActor
 @Observable
 final class BackgroundAgentTaskService {
@@ -60,22 +65,22 @@ final class BackgroundAgentTaskService {
     /// 任务列表，最新在前
     private(set) var tasks: [BackgroundAgentTask] = []
 
-    private weak var appState: AppState?
+    /// 宿主能力端口（弱引用：服务不得延长宿主生命周期）。nil = 无宿主（测试 / headless）。
+    private weak var host: (any AgentHostPort)?
     private let backendFactory: @Sendable (AIConfig) -> any AgentBackend
-    /// context 工厂（测试注入 MockAgentContext；默认基于 AppState 创建标准 context，
-    /// 写确认/审阅链路与聊天 run 完全一致）。返回 nil = 无法创建（AppState 已释放）。
+    /// context 工厂（测试注入 MockAgentContext；默认经宿主的 `makeAgentContext` 创建标准
+    /// context，写确认/审阅链路与聊天 run 完全一致）。返回 nil = 无法创建（宿主已释放）。
     var contextFactory: @MainActor (AgentRunCheckpoint) -> (any AgentContextProtocol)?
     /// 系统通知发送（测试注入 spy；默认 UNUserNotificationCenter，
     /// 权限被拒 / 未签名 / 非 .app 环境一律静默降级为仅 toast，不崩溃）。
     var systemNotify: @MainActor (String, String) -> Void
 
-    init(appState: AppState? = nil,
+    init(host: (any AgentHostPort)? = nil,
          backendFactory: @escaping @Sendable (AIConfig) -> any AgentBackend = { AgentBackendFactory.make(config: $0) }) {
-        self.appState = appState
+        self.host = host
         self.backendFactory = backendFactory
-        self.contextFactory = { [weak appState] checkpoint in
-            guard let appState else { return nil }
-            return AgentContext.make(appState: appState, checkpoint: checkpoint)
+        self.contextFactory = { [weak host] checkpoint in
+            host?.makeAgentContext(checkpoint: checkpoint)
         }
         self.systemNotify = { title, body in
             BackgroundTaskNotifier.post(title: title, body: body)
@@ -89,7 +94,7 @@ final class BackgroundAgentTaskService {
     func start(prompt: String, systemPrompt: String, config: AIConfig, maxSteps: Int) -> BackgroundAgentTask? {
         let running = tasks.filter(\.isRunning).count
         guard running < Self.maxConcurrent else {
-            appState?.showToast(L("ai.background.limitReached", Self.maxConcurrent), icon: "hourglass")
+            host?.showToast(L("ai.background.limitReached", Self.maxConcurrent), icon: "hourglass")
             return nil
         }
         let checkpoint = AgentRunCheckpoint()
@@ -100,13 +105,12 @@ final class BackgroundAgentTaskService {
         tasks.insert(task, at: 0)
         trimFinished()
 
-        let mcpManager = appState?.mcpClientManager
-        let workspaceURL = appState?.rootURL
+        let workspaceURL = host?.rootURL
         Task { [weak self, weak task] in
             // MCP 工具与聊天 run 同一来源：run 开始时懒连接，连接失败的降级为跳过
             var tools = BuiltinAgentTools.all
-            if let mcpManager {
-                tools.append(contentsOf: await mcpManager.refreshForAgentRun(workspaceURL: workspaceURL))
+            if let host = self?.host {
+                tools.append(contentsOf: await host.mcpToolsForRun(workspaceURL: workspaceURL))
             }
             // 取消竞态：MCP 懒连接期间用户已从任务列表取消——直接放弃启动
             guard let self, let task, task.isRunning else { return }
@@ -155,7 +159,7 @@ final class BackgroundAgentTaskService {
         notifyFinish(task)
     }
 
-    /// 完成通知：AppState toast + 系统通知（失败时带原因摘要；通知失败静默降级为仅 toast）
+    /// 完成通知：宿主 toast + 系统通知（失败时带原因摘要；通知失败静默降级为仅 toast）
     private func notifyFinish(_ task: BackgroundAgentTask) {
         let toastText: String
         let icon: String
@@ -172,7 +176,7 @@ final class BackgroundAgentTaskService {
         case .running:
             return
         }
-        appState?.showToast(toastText, icon: icon)
+        host?.showToast(toastText, icon: icon)
         systemNotify(L("ai.background.notificationTitle"), toastText)
     }
 
