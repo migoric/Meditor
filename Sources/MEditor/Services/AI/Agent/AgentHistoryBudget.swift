@@ -6,15 +6,17 @@ import Foundation
 /// agentHistory 里逐轮重发，长 run 后期每轮都在为无用的旧结果付费。持久化历史保持完整，
 /// 本模块只在 AgentRunner 每次请求后端前对「线上副本」做预算裁剪（存储层不改）。
 ///
-/// 策略（优先保配对、保最近上下文）：
+/// 策略（优先保配对、保最近上下文、保原始目标）：
 /// 0. 首条对齐：无论是否触发预算裁剪，发给后端的首条（非 system）消息必须是 user
 ///    （Anthropic 对 assistant 开头的历史直接 400）；assistant(toolCalls) 与其后
 ///    连续的 tool 结果整组丢弃，保持配对完整。对齐不越过保护边界。
-/// 1. system + 最近 N 条消息完整保留；更早历史里的长 tool 结果替换为占位符
+/// 1. system 固定在头部；紧随 system 的首条 user（用户的原始任务指令）一并钉住，
+///    不参与任何裁剪与占位。理由见 trim 内的注释。
+/// 2. 最近 N 条消息完整保留；更早历史里的长 tool 结果替换为占位符
 ///    （只改 content，消息条数与角色序列不变，tool_call / tool_result 配对天然保持）。
 ///    对称地，assistant 消息里的大 toolCalls 参数（write_document 全量写入可达数万字符）
 ///    超过同一阈值时把参数 JSON 换成占位对象（name/id 配对字段不动）。
-/// 2. 仍超预算才从最老一端整轮裁掉，边界不落在 tool 消息上（同 truncateIfOverLimit 的对齐规则），
+/// 3. 仍超预算才从最老一端整轮裁掉，边界不落在 tool 消息上（同 truncateIfOverLimit 的对齐规则），
 ///    裁完再做一次首条对齐（预算裁剪的终点可以是 assistant）。
 enum AgentHistoryBudget {
 
@@ -63,8 +65,20 @@ enum AgentHistoryBudget {
         var estimates = messages.map { $0.estimatedTokensForBudget }
         var total = estimates.reduce(0, +)
 
-        // system 固定在头部；尾部最近 N 条完整保留
-        let headStart = messages.first?.role == .system ? 1 : 0
+        // system 固定在头部；紧随 system 的首条 user 指令一并钉住。
+        //
+        // 为什么钉：长会话里首条 user 是用户的原始目标。此前 headStart 只覆盖 system，
+        // 该条落在可裁区，历史一长就被整轮裁掉 —— 模型忘记最初要做什么、继续在错的
+        // 方向上编辑文档。AIConversationStore 早有「保留第一条」的做法，预算层没对齐。
+        // 取舍与「保护尾部」一致：即使仍超预算也不再牺牲这条锚点。
+        var headStart = messages.first?.role == .system ? 1 : 0
+        if headStart < messages.count, messages[headStart].role == .user {
+            headStart += 1
+        }
+        /// 钉住的头部自身已以 user 结尾：此时最终消息的首条（非 system）就是它，
+        /// 首条对齐无事可做，跳过（强行对齐会把紧随其后的 assistant 一起丢掉，
+        /// 破坏「头部完整保留」的语义）。
+        let headEndsWithUser = headStart > 0 && messages[headStart - 1].role == .user
         var protectedFrom = max(headStart, messages.count - keepRecentMessages)
         // 保护边界不能劈开 tool_call/tool_result 配对：边界处若是 tool 结果，
         // 其 assistant(toolCalls) 落在非保护区，第二级裁掉它会留下孤儿 result
@@ -74,11 +88,13 @@ enum AgentHistoryBudget {
             protectedFrom -= 1
         }
 
-        // 首条对齐（无条件）：即使预算内，也不让 assistant 开头的历史发给后端
-        // （持久化历史可能来自旧版本裁剪结果）。
+        // 首条对齐（若无钉住的 user 头部）：即使预算内，也不让 assistant 开头的历史
+        // 发给后端（持久化历史可能来自旧版本裁剪结果）。
         var start = headStart
-        alignStartToUser(result, start: &start, protectedFrom: protectedFrom,
-                         total: &total, estimates: estimates)
+        if !headEndsWithUser {
+            alignStartToUser(result, start: &start, protectedFrom: protectedFrom,
+                             total: &total, estimates: estimates)
+        }
         // 对齐丢弃是对旧数据的静默修正，不算「预算裁剪」——不体现在提示文案里
         let alignedStart = start
 
@@ -142,9 +158,12 @@ enum AgentHistoryBudget {
                 start += 1
             }
         }
-        // 预算裁剪的终点可以是 assistant（ Anthropic 会 400）：再做一次首条对齐
-        alignStartToUser(result, start: &start, protectedFrom: protectedFrom,
-                         total: &total, estimates: estimates)
+        // 预算裁剪的终点可以是 assistant（ Anthropic 会 400）：再做一次首条对齐。
+        // 有钉住的 user 头部时最终首条已是该 user，无需（也不能）对齐。
+        if !headEndsWithUser {
+            alignStartToUser(result, start: &start, protectedFrom: protectedFrom,
+                             total: &total, estimates: estimates)
+        }
 
         return makeResult(result, headStart: headStart, start: start,
                           evictedToolResults: evicted, evictedToolCallArgs: evictedArgs,

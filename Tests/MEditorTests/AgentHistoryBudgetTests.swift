@@ -148,22 +148,94 @@ final class AgentHistoryBudgetTests: XCTestCase {
     // MARK: 保护边界不劈开 tool 配对
 
     func test_trim_protectedBoundaryNeverSplitsToolPair() {
-        // keepRecent=1 时朴素边界（count-1）正好落在 tool result 上：若第二级裁掉
-        // 其 assistant(toolCalls) 会留下孤儿 result。边界应前移让整对进入保护尾部。
+        // keepRecent=2 时朴素边界（count-2=6）正好落在第二轮 tool result 上：若第二级
+        // 裁掉其 assistant(toolCalls) 会留下孤儿 result。边界应前移让整对进入保护尾部。
+        // 样本需保留可裁区（首条 user 之后、保护尾之前），否则钉住头部 + 保护尾部会
+        // 覆盖全部消息、根本不发生裁剪，这条不变量就测不到了。
         let big = String(repeating: "测", count: 3_000)
+        let mid = String(repeating: "文", count: 1_500)
         let history: [AgentMessage] = [
-            AgentMessage(role: .user, content: big),
+            AgentMessage(role: .system, content: "sys"),
+            AgentMessage(role: .user, content: "task"),
             AgentMessage(role: .assistant, content: "",
                          toolCalls: [AgentToolCall(id: "tc0", name: "read_document", argumentsJSON: "{}")]),
             AgentMessage(role: .tool, content: big, toolCallID: "tc0", toolName: "read_document"),
+            AgentMessage(role: .user, content: mid),
+            AgentMessage(role: .assistant, content: mid,
+                         toolCalls: [AgentToolCall(id: "tc1", name: "read_document", argumentsJSON: "{}")]),
+            AgentMessage(role: .tool, content: big, toolCallID: "tc1", toolName: "read_document"),
+            AgentMessage(role: .user, content: mid),
         ]
 
-        let result = AgentHistoryBudget.trim(history, budgetTokens: 100, keepRecentMessages: 1)
+        let result = AgentHistoryBudget.trim(history, budgetTokens: 3_000, keepRecentMessages: 2)
 
+        XCTAssertTrue(result.didTrim)
+        XCTAssertEqual(result.messages.first?.role, .system)
+        XCTAssertEqual(result.messages.dropFirst().first?.content, "task", "首条 user 被钉住")
+        XCTAssertGreaterThan(result.droppedMessages, 0, "应发生整轮裁剪")
+        XCTAssertNotEqual(result.messages.dropFirst(2).first?.role, .tool,
+                          "裁剪边界不能落在 tool_calls/tool result 配对之间")
         assertToolPairing(result.messages)
-        XCTAssertEqual(result.messages.first?.role, .assistant,
-                       "只能裁掉最老的 user，assistant/tool 配对必须整体保留")
-        XCTAssertEqual(result.droppedMessages, 1)
+    }
+
+    // MARK: - 首条 user 指令被钉住（不被预算裁剪）
+
+    /// 长会话会把原始目标挤到最老端。此前 headStart 只护住 system，首条 user 落在
+    /// 可裁区，历史一长就被整轮裁掉 —— 模型因此忘记最初要做什么、继续错误编辑。
+    /// 现在它与 system 一起钉在头部，任何情况下都不参与裁剪。
+    func test_trim_pinsFirstUserInstruction() {
+        let big = String(repeating: "字", count: 1_500)
+        var history: [AgentMessage] = [
+            AgentMessage(role: .system, content: "system prompt"),
+            AgentMessage(role: .user, content: "ORIGINAL TASK: 重写 README"),
+        ]
+        for i in 0..<8 {
+            history.append(AgentMessage(role: .assistant, content: big))
+            history.append(AgentMessage(role: .user, content: "第 \(i) 步 \(big)"))
+        }
+
+        // 预算远小于总长 → 必然触发第二级整轮裁剪
+        let result = AgentHistoryBudget.trim(history, budgetTokens: 6_000, keepRecentMessages: 4)
+
+        XCTAssertTrue(result.didTrim)
+        XCTAssertGreaterThan(result.droppedMessages, 0, "应发生整轮裁剪")
+        XCTAssertEqual(result.messages.first?.role, .system)
+        XCTAssertEqual(result.messages.dropFirst().first?.content, "ORIGINAL TASK: 重写 README",
+                       "首条 user 指令必须钉在头部，不被预算裁剪掉")
+    }
+
+    /// 无 system 消息（纯对话历史）时同样钉住首条 user。
+    func test_trim_pinsFirstUserInstruction_withoutSystemMessage() {
+        let big = String(repeating: "字", count: 1_500)
+        var history: [AgentMessage] = [AgentMessage(role: .user, content: "ORIGINAL TASK")]
+        for i in 0..<8 {
+            history.append(AgentMessage(role: .assistant, content: big))
+            history.append(AgentMessage(role: .user, content: "第 \(i) 步 \(big)"))
+        }
+
+        let result = AgentHistoryBudget.trim(history, budgetTokens: 6_000, keepRecentMessages: 4)
+
+        XCTAssertTrue(result.didTrim)
+        XCTAssertEqual(result.messages.first?.content, "ORIGINAL TASK",
+                       "首条 user 指令必须钉在头部，不被预算裁剪掉")
+    }
+
+    /// 钉住头部不破坏配对合法性，也不越过保护尾部。
+    func test_trim_pinnedHead_keepsToolPairingAndTail() {
+        let big = String(repeating: "测", count: 3_000)
+        var history: [AgentMessage] = [
+            AgentMessage(role: .system, content: "sys"),
+            AgentMessage(role: .user, content: "ORIGINAL TASK"),
+        ]
+        for i in 0..<6 { history.append(contentsOf: makeToolRound(i, toolContent: big)) }
+
+        let result = AgentHistoryBudget.trim(history, budgetTokens: 5_000, keepRecentMessages: 3)
+
+        XCTAssertEqual(result.messages.first?.role, .system)
+        XCTAssertEqual(result.messages.dropFirst().first?.content, "ORIGINAL TASK")
+        assertToolPairing(result.messages)
+        let recentIn = history.suffix(3), recentOut = result.messages.suffix(3)
+        XCTAssertEqual(recentOut.map(\.content), recentIn.map(\.content), "保护尾部仍完整")
     }
 
     // MARK: toolCalls 参数计入预算 + 对称占位淘汰
@@ -228,8 +300,9 @@ final class AgentHistoryBudgetTests: XCTestCase {
     // MARK: 首条对齐：裁剪后首条（非 system）必须是 user
 
     func test_trim_firstMessageAfterTrim_isUser() {
-        // 每条 ≈1_000 token；budget 5_500 时第二级裁掉 u1 后即达标，
-        // 起点落在 assistant 上——首条对齐应继续丢到 u2。
+        // 每条 ≈1_000 token；budget 5_500 时第二级裁掉一条即达标。
+        // 注意：首条 user 现被钉住（见「首条 user 指令被钉住」一节），可裁区从其之后
+        // 开始——被裁掉的是紧随其后的 assistant，而不是首条 user 本身。
         let big = String(repeating: "字", count: 1_500)
         let history: [AgentMessage] = [
             AgentMessage(role: .user, content: big),
@@ -244,12 +317,14 @@ final class AgentHistoryBudgetTests: XCTestCase {
 
         XCTAssertEqual(result.messages.first?.role, .user,
                        "裁剪后首条（非 system）必须是 user（Anthropic 对 assistant 开头直接 400）")
-        XCTAssertEqual(result.droppedMessages, 2, "u1 与落在起点的 assistant 应一起被丢弃")
-        XCTAssertEqual(result.messages.count, 4)
+        XCTAssertEqual(result.messages.first?.content, big,
+                       "首条 user 指令被钉住，必须保留")
+        XCTAssertEqual(result.droppedMessages, 1, "裁掉的是紧随首条 user 的 assistant")
+        XCTAssertEqual(result.messages.count, 5)
     }
 
     func test_trim_firstMessageAlignment_dropsToolResultsWithTheirAssistant() {
-        // 起点落在 assistant(toolCalls) 上时，其后连续的 tool 结果必须整组丢弃，
+        // 起点推进时若跨过 assistant(toolCalls)，其后连续的 tool 结果必须整组丢弃，
         // 不能留下孤儿 result。
         let big = String(repeating: "字", count: 1_500)
         let history: [AgentMessage] = [
@@ -261,12 +336,13 @@ final class AgentHistoryBudgetTests: XCTestCase {
             AgentMessage(role: .assistant, content: big),
         ]
 
-        // 总 ≈5_000（tool 结果先被占位 ≈-1_000），budget 3_500：裁掉 u1 后 ≈3_000 达标，
-        // 起点落在 assistant(toolCalls) 上 → 对齐把 assistant+tool 整组丢弃
+        // 总 ≈5_000（tool 结果先被占位 ≈-1_000），budget 3_500：从首条 user 之后裁起，
+        // assistant(toolCalls) 与其 tool 结果整组丢弃（droppedMessages = 2）
         let result = AgentHistoryBudget.trim(history, budgetTokens: 3_500, keepRecentMessages: 2)
 
         XCTAssertEqual(result.messages.first?.role, .user)
-        XCTAssertEqual(result.droppedMessages, 3, "assistant(toolCalls) 与其 tool 结果应整组丢弃")
+        XCTAssertEqual(result.messages.first?.content, big, "首条 user 指令被钉住")
+        XCTAssertEqual(result.droppedMessages, 2, "assistant(toolCalls) 与其 tool 结果应整组丢弃")
         assertToolPairing(result.messages)
     }
 
