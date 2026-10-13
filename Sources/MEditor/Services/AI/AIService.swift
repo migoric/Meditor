@@ -455,6 +455,10 @@ struct AIClient {
                     try Task.checkCancellation()
                     try process.run()
                     box.process = process
+                    // 与 MCPStdioTransport 同一类隐患：CLI 若在写入前就退出，往 stdin
+                    // 写会触发 SIGPIPE 直接打死整个 app。这里紧跟 run() 无 await，窗口
+                    // 比 MCP 传输窄得多，但代价一样是静默死亡，一行 fcntl 换掉。
+                    PipeSafety.disableSIGPIPE(on: inPipe.fileHandleForWriting)
 
                     // Feed the prompt via stdin, then close it so the CLI proceeds.
                     if let data = prompt.data(using: .utf8) {
