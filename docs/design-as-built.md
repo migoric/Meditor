@@ -13,6 +13,8 @@ spec v3 写于 Craft 卡片风 + 三栏右面板时代。此后发生了两次�
 1. **视觉**：0.6.x 起转向 macOS 26 Tahoe 的 Liquid Glass 原生外观（2cfd2a1 迁移 macOS 26 SDK，8731e9f 截图更新）——**该方向已确认是既定设计，不再回退**。
 2. **交互模型**：产品核心从"手动编辑文档"转变为"**通过 AI 修改文档**"——用户通过斜杠命令/选区动作条/对话给指令，AI 产出 diff，用户审阅确认后落盘。由此**编辑态不再是设计目标**：spec 的块级编辑（块 hover 手柄/插入入口/多选）整体取消，手动逐字编辑退居次要路径（NSTextView 保留，但不再围绕它设计编辑交互）。
 
+3. **勘误（2026-10）**：§1 曾把侧栏玻璃记作 `SidebarVibrancyView` / `SidebarMaterialFixer` 的功劳。实测这两个 `NSViewRepresentable` 在全仓 **0 调用**（从未接上去），已随 P0-4 一并删除；侧栏材质实际来自 `NavigationSplitView` 侧栏列的原生实现（`FileSidebar` 用 `.listStyle(.sidebar)`，`AppShell.swift:37-40` 的注释也这么写）。成因是本文档依据「读源码」而非「查调用点」—— **文件存在 ≠ 生效**，本仓凡是描述"某机制负责某外观"的句子，都必须落到调用点上核一遍。
+
 同时交互骨架从自定义三栏改为 Apple 标准 NavigationSplitView 两栏（f0796ce 侧栏原生化）。
 因此本文档是 spec v3 的演进后现状，差异对照见文末 §9。
 
@@ -21,7 +23,7 @@ spec v3 写于 Craft 卡片风 + 三栏右面板时代。此后发生了两次�
 ## 1. 设计方向（as-built）
 
 - **原生优先**：NavigationSplitView 侧栏通顶、红绿灯进侧栏材质、分隔线/拖拽宽度全交系统，不做私有 titlebar 手术（AppShell.swift:37-40）
-- **Liquid Glass**：macOS 26 玻璃材质贯穿工具栏（含显式拆掉 toolbar item 默认玻璃胶囊的 ToolbarItemGlassDisabler）、侧栏（SidebarVibrancyView/SidebarMaterialFixer）、浮条（regularMaterial）
+- **Liquid Glass**：macOS 26 玻璃材质贯穿工具栏（含显式拆掉 toolbar item 默认玻璃胶囊的 ToolbarItemGlassDisabler）、侧栏（**由 NavigationSplitView 侧栏列原生提供**，见 §0 第 3 条勘误）、浮条（regularMaterial）
 - **键盘优先**：52 处 keyboardShortcut + 全弹层 Esc 关闭 + 斜杠菜单全键盘操作
 - **AI 修改文档为核心**：主写作路径 = 指令（斜杠/选区/对话）→ AgentRunner 流式产出 → diff 审阅确认 → 可撤销落盘；手动编辑是兜底而非主路径（无编辑态设计）
 - **AI 上下文驱动**：选区内联编辑条、@提及、斜杠 AI 命令、diff 审阅覆盖层——AI 融入编辑流而非独立对话框
@@ -153,3 +155,9 @@ toast（底部胶囊 2.5s，可带操作按钮）/ EmptyStateView / WelcomeView�
 2. 无减少动态效果适配（prefersReducedMotion）
 3. 侧栏无拖拽（spec 遗留，若要恢复分层导航需补）
 4. 单文件偏大：AtMentionComposerView 774 行、Localization 879 行
+5. **无统一抬升语言**：29 处 `.shadow(...)` 各写一套（透明度 0.04–0.45、半径 1–34）。
+   原先的 `DS.Shadow` 是半成品（`card()` 返回颜色，半径/偏移是另一组散落常量，无法成套使用）
+   且全仓 0 引用，已随 P0-5 删除，现状是没有抬升 token。
+6. **行选中色无 token**：实际用 `appAccent.opacity(0.16)`（FileRow.swift:109、FileSidebar.swift:497）
+   与 `0.12`（FileSidebar.swift:451 等）两档并存；原先的 `DS.Color.rowSelected` 是脱节的 `0.13`，已删。
+   统一这 5 处需先定档（视觉决策）。

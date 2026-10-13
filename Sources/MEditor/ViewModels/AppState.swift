@@ -61,11 +61,11 @@ final class AppState {
     /// 后台 Agent 任务（macOS-only）：脱离聊天 UI 独立运行 agent run，
     /// 完成后 toast + 系统通知。lazy：首次发起后台任务时才创建。
     @ObservationIgnored
-    private(set) lazy var backgroundAgentTasks = BackgroundAgentTaskService(appState: self)
+    private(set) lazy var backgroundAgentTasks = BackgroundAgentTaskService(host: self)
     /// 定时任务调度（macOS-only）：cron 命中时复用 backgroundAgentTasks 发起后台 run。
     /// lazy + init 末尾主动触碰：随 App 启动生效，首次访问前不占资源。
     @ObservationIgnored
-    private(set) lazy var agentScheduler = AgentSchedulerService(appState: self)
+    private(set) lazy var agentScheduler = AgentSchedulerService(host: self)
     #endif
 
     /// 全局待办状态，两个 Todo 视图共享同一份数据。

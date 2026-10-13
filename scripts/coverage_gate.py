@@ -10,13 +10,14 @@ Usage:
         [--min-dir DIR=PERCENT] ...
 
 Thresholds (defaults match the repo baseline with headroom):
-    overall : whole Sources/MEditor  (baseline 17.4%, floor 15%)
-    logic   : non-View code          (baseline 46.8%, floor 40%)
+    overall : whole Sources/MEditor  (floor 15%)
+    logic   : non-View code          (floor 40%)
 
-Per-directory floors are optional and repeatable: ``--min-dir Services=60``
-(relative to --source-root). A floor whose directory has no coverage data at
-all also fails the gate, since that usually means a rename/typo rather than an
-intentionally empty directory.
+Per-path floors are optional and repeatable: ``--min-dir Services=50``. DIR is a
+path prefix relative to --source-root, so both a whole layer (``Services``) and a
+subtree (``Services/AI/Agent``) can be ratcheted. ``DIR/`` must exist in the
+coverage data — a floor with no matching files fails the gate, since that usually
+means a rename/typo rather than an intentionally empty directory.
 """
 import argparse
 import collections
@@ -52,7 +53,7 @@ def main():
         action="append",
         default=[],
         metavar="DIR=PERCENT",
-        help="per-directory floor relative to --source-root; repeatable",
+        help="path-prefix floor relative to --source-root; repeatable",
     )
     args = ap.parse_args()
 
@@ -87,6 +88,11 @@ def main():
         sys.exit(1)
 
     def stats(pred):
+        """Return (lines_found, lines_hit) over the files matching pred.
+
+        顺序是 (found, hit)——调用方解包时别搞反，反了会让百分比变成倒数的量级
+        且门槛判定整体失效（方向相反）。
+        """
         tot = hit = 0
         for key, (lf, lh) in by_key.items():
             if not pred(key):
@@ -94,6 +100,11 @@ def main():
             tot += lf
             hit += lh
         return tot, hit
+
+    def coverage_for(prefix):
+        """Coverage of every file under a path prefix (``Services`` / ``Services/AI/Agent``)."""
+        pref = prefix if prefix.endswith("/") else prefix + "/"
+        return stats(lambda k: k.startswith(pref))
 
     ov_tot, ov_hit = stats(lambda k: True)
     lg_tot, lg_hit = stats(lambda k: not k.startswith("Views/"))
@@ -117,19 +128,33 @@ def main():
         suffix = "  (floor %.0f%%)" % floor if floor is not None else ""
         print("  %-24s %6d/%6d  %5.1f%%%s" % (d, lh, lf, pct, suffix))
 
+    # Path floors are matched by prefix (not just the top-level directory), so a
+    # subtree like Services/AI/Agent can be ratcheted independently.
+    floor_rows = []
+    for d, floor in sorted(dir_floors.items()):
+        tot, hit = coverage_for(d)
+        floor_rows.append((d, floor, hit, tot))
+    if floor_rows:
+        print("")
+        print("path floors:")
+        for d, floor, hit, tot in floor_rows:
+            pct = hit / tot * 100 if tot else 0.0
+            status = "ok" if tot and pct >= floor else "FAIL"
+            print("  %-28s %6d/%6d  %5.1f%%  (floor %.0f%%)  %s"
+                  % (d, hit, tot, pct, floor, status))
+
     failed = []
     if ov_pct < args.overall_min:
         failed.append("overall %.1f%% < %.0f%%" % (ov_pct, args.overall_min))
     if lg_pct < args.logic_min:
         failed.append("logic (non-view) %.1f%% < %.0f%%" % (lg_pct, args.logic_min))
-    for d, floor in sorted(dir_floors.items()):
-        lf, lh = dirs.get(d, (0, 0))
-        if lf == 0:
-            failed.append("dir %s: no coverage data (floor %.0f%%)" % (d, floor))
+    for d, floor, _hit, tot in floor_rows:
+        if tot == 0:
+            failed.append("path %s: no coverage data (floor %.0f%%)" % (d, floor))
             continue
-        pct = lh / lf * 100
+        pct = _hit / tot * 100
         if pct < floor:
-            failed.append("dir %s %.1f%% < %.0f%%" % (d, pct, floor))
+            failed.append("path %s %.1f%% < %.0f%%" % (d, pct, floor))
     if failed:
         print("")
         print("COVERAGE GATE FAILED: " + ", ".join(failed))
