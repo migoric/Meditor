@@ -70,6 +70,21 @@ jobs:
           build
           CODE_SIGNING_ALLOWED=NO
 
+  shared-guard:
+    name: iOS Shared Source Guard
+    # 纯脚本检查：工程文件 ↔ 磁盘 ↔ 编译阶段三者自洽，并挡住 macOS-only 符号
+    # 与 AppSettings 读取进入共享文件。放 Linux runner——秒级完成，比 macOS 便宜
+    # 一个数量级；真正的编译验证仍由上面的 ios job 负责。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check iOS shared sources
+        run: python3 scripts/check_ios_shared_sources.py
+
   lint:
     name: SwiftLint
     runs-on: macos-26
