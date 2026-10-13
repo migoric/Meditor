@@ -332,10 +332,12 @@ final class DocumentStore {
         }
         // 搬移失败不能再静默：此前 try? 让「名字没变但文件也没动」与「参数非法」
         // 对调用方完全同形（都只返回 nil），用户看到的是「点了重命名没反应」。
+        // lastError 在 iOS 侧是 String?（桌面端是 Error?），按本文件既有风格取
+        // localizedDescription 拼可读消息（对照上面「打开失败：…」）。
         do {
             try FileManager.default.moveItem(at: oldURL, to: newURL)
         } catch {
-            lastError = error
+            lastError = "重命名失败：\(error.localizedDescription)"
             return nil
         }
 
