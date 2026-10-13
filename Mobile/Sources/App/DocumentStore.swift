@@ -157,40 +157,73 @@ final class DocumentStore {
     }
 
     /// 读取文件内容（10MB 上限 + 编码 fallback），失败时设置 lastError 并返回 nil。
+    ///
+    /// 上限必须**在执行读取时**生效：早期实现是 `Data(contentsOf:)` 全量读入后再判
+    /// `data.count`，上限形同虚设——一个 2GB 文件会先把 2GB 全部搬进内存才被拒绝，
+    /// 足以直接 OOM（且 iOS 上无从恢复）。这里改为有硬上限的分块读取：任何文件最多
+    /// 只分配 `maxFileBytes + 1` 字节，超限即拒绝。
     private func readFileContent(_ url: URL) -> String? {
+        let limit = Self.maxFileBytes
+        let data: Data
         do {
-            let data = try Data(contentsOf: url)
-            guard data.count <= Self.maxFileBytes else {
+            // 预检磁盘大小：命中上限时连读都不读（iCloud 占位文件的 fileSize 不可信，
+            // 所以这层只是快路径，真正的保证仍由下面的分块读取兜底）。
+            if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+               size > limit {
                 lastError = "文件过大（超过 10 MB），暂不支持打开：\(url.lastPathComponent)"
                 return nil
             }
-            if let utf8 = String(data: data, encoding: .utf8) {
-                return utf8
+            // 分块读到上限 +1 字节：只要多出 1 字节即可判定超限，无需读完整文件。
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            var buffer = Data()
+            while buffer.count <= limit {
+                guard let chunk = try handle.read(upToCount: limit + 1 - buffer.count),
+                      !chunk.isEmpty else { break }
+                buffer.append(chunk)
             }
-            if data.prefix(8 * 1024).contains(0) {
-                lastError = "不支持二进制文件：\(url.lastPathComponent)"
+            guard buffer.count <= limit else {
+                lastError = "文件过大（超过 10 MB），暂不支持打开：\(url.lastPathComponent)"
                 return nil
             }
-            guard let legacy = String(data: data, encoding: .isoLatin1) else {
-                lastError = "无法解码文件：\(url.lastPathComponent)"
-                return nil
-            }
-            return legacy
+            data = buffer
         } catch {
             lastError = "打开失败：\(error.localizedDescription)"
             return nil
         }
+        if let utf8 = String(data: data, encoding: .utf8) {
+            return utf8
+        }
+        if data.prefix(8 * 1024).contains(0) {
+            lastError = "不支持二进制文件：\(url.lastPathComponent)"
+            return nil
+        }
+        guard let legacy = String(data: data, encoding: .isoLatin1) else {
+            lastError = "无法解码文件：\(url.lastPathComponent)"
+            return nil
+        }
+        return legacy
     }
 
-    /// 切换当前文档：取消待保存、释放上一个 security scope、写入新状态并记忆。
+    /// 切换当前文档：**先落盘上一篇的待保存内容**、释放上一个 security scope，
+    /// 再写入新状态并记忆。
+    ///
+    /// 早期实现在这里直接 `autosaveTask?.cancel()`：用户在 800ms 防抖窗口内敲的字
+    /// 会被静默丢弃（`renameDocument` 反而会先 flush，说明这是漏改而非有意）。
     private func setCurrentDocument(url: URL, content: String, bookmark: Data?) {
-        autosaveTask?.cancel()
+        // 打开的就是当前文档：保留内存内容（可能含尚未落盘的编辑），
+        // 不要用磁盘上的旧内容把它覆盖掉。
+        if let current = sandboxURL, current.standardizedFileURL == url.standardizedFileURL {
+            return
+        }
+        let saveError = flushPendingAutosave()
         releaseScope()
         sandboxURL = url
         fileName = url.lastPathComponent
         text = content
         externalBookmark = bookmark
-        lastError = nil
+        // 不吞掉上一文档的保存失败：宁可让用户看到错误，也不静默丢内容
+        lastError = saveError
         remember(url, bookmark: bookmark)
     }
 
@@ -211,14 +244,15 @@ final class DocumentStore {
         let url = workspace.appendingPathComponent(name)
         do {
             try "".write(to: url, atomically: true, encoding: .utf8)
-            autosaveTask?.cancel()
+            // 新建前先把上一文档的待保存内容落盘（同 setCurrentDocument，避免丢写）
+            let saveError = flushPendingAutosave()
             releaseScope()
             sandboxURL = url
             fileName   = name
             text       = ""
             externalBookmark = nil
             showPreview = false
-            lastError  = nil
+            lastError  = saveError
             remember(url)
         } catch {
             lastError = "新建失败：\(error.localizedDescription)"
@@ -226,14 +260,22 @@ final class DocumentStore {
     }
 
     func loadFromSandbox(_ url: URL) -> Bool {
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return false }
-        autosaveTask?.cancel()
+        // 已是当前文档：保留内存内容，不重读磁盘（否则会覆盖未落盘的编辑）
+        if let current = sandboxURL, current.standardizedFileURL == url.standardizedFileURL {
+            return true
+        }
+        // 先 flush 再读新文件——顺序反了会把用户刚敲的字读回旧版本
+        let saveError = flushPendingAutosave()
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
+            lastError = saveError
+            return false
+        }
         releaseScope()
         sandboxURL = url
         fileName   = url.lastPathComponent
         text       = content
         externalBookmark = nil
-        lastError  = nil
+        lastError  = saveError
         remember(url)
         return true
     }
@@ -282,8 +324,11 @@ final class DocumentStore {
         let newURL = dirURL.appendingPathComponent(candidate)
         let isCurrent = sandboxURL?.standardizedFileURL == oldURL.standardizedFileURL
         if isCurrent {
-            autosaveTask?.cancel()
-            try? text.write(to: oldURL, atomically: true, encoding: .utf8)
+            // 重命名前先落盘：写失败就不再搬移，避免把旧内容搬到新路径
+            if let saveError = flushPendingAutosave() {
+                lastError = saveError
+                return nil
+            }
         }
         guard (try? FileManager.default.moveItem(at: oldURL, to: newURL)) != nil else { return nil }
 
@@ -305,7 +350,8 @@ final class DocumentStore {
         try? FileManager.default.removeItem(at: url)
         recents.remove(rel)
         if wasCurrent {
-            autosaveTask?.cancel()
+            // 文档已删除，待保存内容随之作废
+            discardPendingAutosave()
             releaseScope()
             sandboxURL = nil
             fileName   = ""
@@ -348,7 +394,8 @@ final class DocumentStore {
     func replaceContent(_ newContent: String) throws {
         guard let url = sandboxURL else { throw AgentContextError.noActiveDocument }
         try writeText(newContent, to: url)
-        autosaveTask?.cancel()
+        // 内容已直接落盘，防抖任务及其待保存标记一并作废
+        discardPendingAutosave()
         text = newContent
     }
 
@@ -385,6 +432,9 @@ final class DocumentStore {
 
     private static let autosaveDelayNanos: UInt64 = 800_000_000
     private var autosaveTask: Task<Void, Never>?
+    /// 是否有「已改动但尚未落盘」的内容（防抖窗口内的编辑）。
+    /// 切换/新建文档前据此决定要不要先 flush，避免静默丢写。
+    private var pendingAutosave = false
 
     func applyManualEdit(_ newText: String) {
         text = newText
@@ -393,6 +443,7 @@ final class DocumentStore {
 
     private func scheduleAutosave() {
         guard let url = sandboxURL else { return }
+        pendingAutosave = true
         autosaveTask?.cancel()
         autosaveTask = Task {
             try? await Task.sleep(nanoseconds: Self.autosaveDelayNanos)
@@ -400,10 +451,36 @@ final class DocumentStore {
             do {
                 try self.writeText(self.text, to: url)
                 self.lastSavedAt = Date()
+                self.pendingAutosave = false
             } catch {
                 print("[DocumentStore] 自动保存失败：\(error.localizedDescription)")
                 self.lastError = "自动保存失败：\(error.localizedDescription)"
             }
         }
+    }
+
+    /// 立刻把待保存内容写盘（若有）。返回错误文案，成功或无待保存内容时返回 nil。
+    /// 必须在**改动 sandboxURL / externalBookmark 之前**调用——写盘目标与
+    /// security scope 都还指向旧文档（externalBookmark 决定是否走 NSFileCoordinator）。
+    private func flushPendingAutosave() -> String? {
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        guard pendingAutosave, let url = sandboxURL else { return nil }
+        pendingAutosave = false
+        do {
+            try writeText(text, to: url)
+            lastSavedAt = Date()
+            return nil
+        } catch {
+            print("[DocumentStore] 切换文档前保存失败：\(error.localizedDescription)")
+            return "保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 丢弃待保存内容（仅在文档内容不再需要写回时使用，例如文档被删除或已被替换）。
+    private func discardPendingAutosave() {
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        pendingAutosave = false
     }
 }
