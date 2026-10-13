@@ -9,10 +9,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/retrychx/Meditor/actions/workflows/build.yml"><img src="https://github.com/retrychx/Meditor/actions/workflows/build.yml/badge.svg" alt="Build & Test" /></a>
   <img src="https://img.shields.io/badge/macOS-14.0+-blue?logo=apple" alt="macOS 14+" />
-  <img src="https://img.shields.io/badge/Swift-6.0-orange?logo=swift" alt="Swift 6.0" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" />
-  <img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Build Passing" />
+  <img src="https://img.shields.io/badge/Swift-6.2-orange?logo=swift" alt="Swift 6.2" />
+  <a href="https://github.com/retrychx/Meditor/releases/latest"><img src="https://img.shields.io/github/v/release/retrychx/Meditor" alt="Latest release" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
 </p>
 
 <p align="center">
@@ -92,9 +93,10 @@ More on the [website](https://meditorapp.pages.dev).
 
 ## 📋 Requirements
 
-- **macOS** 14.0+ (Sonoma)
-- **Xcode** 15.0+ (for development)
-- **Swift** 6.0+ (app and test targets in Swift 6 language mode, strict concurrency)
+- **macOS** 14.0+ (Sonoma) · **iOS** 17.0+ (companion app)
+- **Xcode** 26+ — `Package.swift` is `swift-tools-version: 6.2`, so older Xcode
+  cannot even load the package
+- **Swift** 6.2+ (app and test targets in Swift 6 language mode, strict concurrency)
 
 ## 🔧 Build & Run
 
@@ -112,7 +114,18 @@ swift run
 ```bash
 ./scripts/test.sh   # uses full Xcode toolchain
 make test           # short alias
+
+# static guards (same scripts CI runs)
+swiftlint lint --strict --config .swiftlint.yml Sources
+python3 scripts/check_service_layer_deps.py
+python3 scripts/check_dead_tokens.py
 ```
+
+> If the first build hangs while fetching Sparkle, your network is likely behind a
+> TLS-intercepting proxy. Escape hatch: unzip
+> `Sparkle-for-Swift-Package-Manager.zip` and drop `Sparkle.xcframework` into
+> `Vendor/` — `Package.swift` auto-detects it and switches to a local
+> binaryTarget. `Vendor/` is gitignored.
 
 ### Create a .app bundle
 
@@ -245,7 +258,16 @@ MEditor/
 
 ## 🤝 Contributing
 
-PRs welcome. Please run `make test` before opening one.
+PRs welcome. `main` is protected — CI must be green to merge.
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — the human process: toolchain, what to run
+  before opening a PR, the release flow.
+- **[AGENTS.md](AGENTS.md)** — the code conventions (layering, the iOS shared kernel,
+  Swift 6 concurrency rules, version sources). Also the entry point for AI coding agents.
+- **[docs/engineering-practices.md](docs/engineering-practices.md)** — why the four
+  quality gates exist and how to run them locally.
+- **[CHANGELOG.md](CHANGELOG.md)** — released changes.
+- **[SECURITY.md](SECURITY.md)** — report vulnerabilities privately, not in a public issue.
 
 ---
 

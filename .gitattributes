@@ -1,0 +1,34 @@
+# 统一换行符为 LF（跨平台协作，与 .editorconfig 一致）
+* text=auto eol=lf
+
+# 二进制别做文本处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.dmg binary
+
+# ---- GitHub 语言统计与 diff 体验 ----
+# 构建产物 / 本地缓存不是源码：标为 vendored，避免污染语言占比
+.build/** linguist-vendored=true
+.build-*/** linguist-vendored=true
+Vendor/** linguist-vendored=true
+Mobile/.derivedData*/** linguist-vendored=true
+.wrangler/** linguist-vendored=true
+
+# 测试夹具不是手写源码
+Tests/MEditorTests/Fixtures/** linguist-generated=true
+
+# 文档不计入「代码」语言占比
+*.md linguist-documentation=true
+docs/** linguist-documentation=true
+
+# 静态站与部署配置不是应用源码
+website/** linguist-documentation=true
+pages/wrangler.toml linguist-documentation=true

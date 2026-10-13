@@ -1,0 +1,75 @@
+name: Bug 报告
+description: 行为与预期不符
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ 安全漏洞请**不要**在这里报 —— 走 [私有通道](https://github.com/retrychx/Meditor/security/advisories/new)。
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - macOS
+        - iOS
+        - 在线发布后端（worker / 分享链接）
+        - 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: macOS 见「关于 MEditor」或 `make version`；iOS 见 App Store / TestFlight 版本号
+      placeholder: '0.11.0'
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 系统版本
+      placeholder: 'macOS 26.0 / iOS 26.0'
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象与预期
+      description: 实际发生了什么？你期望什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 最小复现
+      description: 步骤越少越好（去掉与问题无关的文件 / 设置 / 后端）
+      placeholder: |
+        1. 打开一个工作区
+        2. …
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 报错 / 日志
+      description: 请贴**原文**而非转述。macOS 上可实时看应用日志：`log stream --predicate 'subsystem == "com.meditor.app"'`
+      render: text
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: AI 后端（与 Agent 相关时）
+      options:
+        - 不涉及
+        - OpenAI 兼容端点
+        - Anthropic
+        - Claude CLI
+        - 未配置
