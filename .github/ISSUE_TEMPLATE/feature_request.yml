@@ -1,0 +1,31 @@
+name: 功能建议
+description: 想要支持的新能力或新用法
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的问题
+      description: 先讲**场景与痛点**，再讲想要的方案 —— 方案常有多种，痛点只有一个
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你设想的方案
+      description: 若涉及界面，描述你期望的交互形态；若涉及 Agent，说明它应该改什么、在哪一步确认
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 试过的替代方案
+      description: 例如：能否用现有的斜杠命令 / 选区动作条 / Skill 自己解决？为什么不够？
+
+  - type: markdown
+    attributes:
+      value: |
+        > 提之前可先对照本仓的**边界**（`AGENTS.md` §1 与 `docs/design-as-built.md` §0）：
+        > 产品主路径是「Agent 改文档 → 预览即时渲染 → 你来迭代」，手动编辑是兜底而非主路径；
+        > 视觉方向已定为 macOS 26 Liquid Glass 原生外观，不再回退卡片风。
+        > 另外，**「要不要多一个平台」这类范围问题**（例如 Windows / Web 端）建议先开 issue 讨论再动手。

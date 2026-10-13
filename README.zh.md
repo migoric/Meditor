@@ -9,10 +9,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/retrychx/Meditor/actions/workflows/build.yml"><img src="https://github.com/retrychx/Meditor/actions/workflows/build.yml/badge.svg" alt="Build & Test" /></a>
   <img src="https://img.shields.io/badge/macOS-14.0+-blue?logo=apple" alt="macOS 14+" />
-  <img src="https://img.shields.io/badge/Swift-6.0-orange?logo=swift" alt="Swift 6.0" />
+  <img src="https://img.shields.io/badge/Swift-6.2-orange?logo=swift" alt="Swift 6.2" />
+  <a href="https://github.com/retrychx/Meditor/releases/latest"><img src="https://img.shields.io/github/v/release/retrychx/Meditor" alt="最新版本" /></a>
   <img src="https://img.shields.io/badge/%E5%8D%8F%E8%AE%AE-MIT-green" alt="MIT License" />
-  <img src="https://img.shields.io/badge/%E7%BC%96%E8%AF%91-%E9%80%9A%E8%BF%87-brightgreen" alt="编译通过" />
 </p>
 
 <p align="center">
@@ -77,9 +78,9 @@ MEditor 是 **macOS 上给技术人写文档的 Agent 工作台**。核心闭环
 
 ## 📋 系统要求
 
-- **macOS** 14.0+ (Sonoma)
-- **Xcode** 15.0+（开发用）
-- **Swift** 6.0+ (app and test targets in Swift 6 language mode, strict concurrency)
+- **macOS** 14.0+ (Sonoma) · **iOS** 17.0+（伴生 App）
+- **Xcode** 26+ —— `Package.swift` 是 `swift-tools-version: 6.2`，旧版 Xcode 连包都加载不了
+- **Swift** 6.2+ (app and test targets in Swift 6 language mode, strict concurrency)
 
 ## 🔧 构建与运行
 
@@ -105,7 +106,16 @@ swift run
 
 # 更短的别名
 make test
+
+# 静态守卫（与 CI 跑的是同一批脚本）
+swiftlint lint --strict --config .swiftlint.yml Sources
+python3 scripts/check_service_layer_deps.py
+python3 scripts/check_dead_tokens.py
 ```
+
+> **首次构建卡在下载 Sparkle** 通常是网络被中间人代理拦了。逃生舱：把
+> `Sparkle-for-Swift-Package-Manager.zip` 解出的 `Sparkle.xcframework` 放进 `Vendor/`
+> —— `Package.swift` 会自动检测并改用本地 binaryTarget（`Vendor/` 已 gitignore）。
 
 ### 生成 .app 包
 
@@ -239,7 +249,14 @@ MEditor/
 
 ## 🤝 参与贡献
 
-欢迎提 PR，提交前请先跑 `make test`。
+欢迎提 PR。`main` 是受保护分支 —— CI 全绿才能合并。
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** —— 人的流程：工具链要求、提交前必须跑什么、发版流程。
+- **[AGENTS.md](AGENTS.md)** —— 代码约定（分层依赖、iOS 共享内核、Swift 6 并发规则、版本单源），
+  同时也是 AI 编码助手的入口。
+- **[docs/engineering-practices.md](docs/engineering-practices.md)** —— 四道质量闸门为什么存在、本地怎么跑。
+- **[CHANGELOG.md](CHANGELOG.md)** —— 各版本的对外变更。
+- **[SECURITY.md](SECURITY.md)** —— 安全漏洞走私有通道上报，别开公开 issue。
 
 ---
 
