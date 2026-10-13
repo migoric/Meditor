@@ -70,6 +70,21 @@ jobs:
           build
           CODE_SIGNING_ALLOWED=NO
 
+  shared-guard:
+    name: iOS Shared Source Guard
+    # 纯脚本检查：工程文件 ↔ 磁盘 ↔ 编译阶段三者自洽，并挡住 macOS-only 符号
+    # 与 AppSettings 读取进入共享文件。放 Linux runner——秒级完成，比 macOS 便宜
+    # 一个数量级；真正的编译验证仍由上面的 ios job 负责。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check iOS shared sources
+        run: python3 scripts/check_ios_shared_sources.py
+
   lint:
     name: SwiftLint
     runs-on: macos-26
@@ -111,4 +126,69 @@ jobs:
           xcrun llvm-cov export             .build/**/MEditorPackageTests.xctest/Contents/MacOS/MEditorPackageTests             -instr-profile default.profdata --format=lcov > coverage.lcov
 
       - name: Enforce coverage gate
-        run: python3 scripts/coverage_gate.py coverage.lcov
+        # 路径门槛按前缀匹配（见 scripts/coverage_gate.py）。数字取当前实测值往下留
+        # 8~12 个点：目的是防止关键层 Coverage 被悄悄拉低（棘轮），不是定目标值。
+        # Views/ 故意不设门槛——35584 行、覆盖率 2.2%，当前设了也只等于没设，
+        # 且把代码挪进 Views/ 就能绕过 logic 门槛；这个口径问题单独处理。
+        run: |
+          python3 scripts/coverage_gate.py coverage.lcov \
+            --min-dir Services/AI/Agent=75 \
+            --min-dir Services/MCP=70 \
+            --min-dir Managers=58 \
+            --min-dir ViewModels=48 \
+            --min-dir Models=42 \
+            --min-dir Skills=85
+
+  worker:
+    name: Worker Tests
+    # worker/（Cloudflare Workers）与 Swift 侧完全独立：纯 Node，跑在 Linux 上
+    # 比 macOS runner 便宜一个数量级。index.test.js 覆盖 token 鉴权 / 免费档配额 /
+    # 30 天过期 / Pro 豁免——这些此前无任何 CI 门禁。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test
+        run: node --test worker/
+
+  layer-guard:
+    name: Layer Guard
+    # 纯静态检查（读源码找依赖方向），不依赖编译产物：
+    # 用 ubuntu runner（比 macOS 便宜 10 倍）且秒级完成。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Service 层反向依赖 ViewModel 的护栏（P0-10）。
+      # 棘轮式：已搬到 AgentHostPort 的文件不得再出现 ViewModel 类型；
+      # 新出现的反向依赖必须显式登记（改走端口，或写进 KNOWN_HOST_AWARE 并给理由）。
+      - name: Service layer dependency direction
+        run: python3 scripts/check_service_layer_deps.py
+
+  ui-guard:
+    name: UI Guard
+    # 纯静态检查（设计 token 有没有人用），用 ubuntu runner + 秒级完成。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 死设计 token 护栏（P0-5）：DS 里的成员必须有人引用，
+      # 例外（半径档位这类「菜单」）需登记在 ALLOW_UNUSED 并写明理由。
+      # 棘轮式：登记项一旦被采用，也要从名单里删掉。
+      - name: Dead design tokens
+        run: python3 scripts/check_dead_tokens.py
+

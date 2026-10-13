@@ -54,19 +54,28 @@ enum DS {
         static let panel: Animation = .spring(response: 0.34, dampingFraction: 0.86)
     }
 
-    // MARK: - Elevation (shadow system)
-    enum Shadow {
-        static func card() -> some ShapeStyle { AnyShapeStyle(SwiftUI.Color.black.opacity(0.07)) }
-
-        static let cardRadius: CGFloat = 8
-        static let cardY: CGFloat = 2
-
-        static let popoverRadius: CGFloat = 16
-        static let popoverY: CGFloat = 6
-        static let popoverOpacity: Double = 0.14
-    }
+    // MARK: - Elevation
+    //
+    // 这里曾经有一套 `enum Shadow`（card()/cardRadius/cardY/popoverRadius/popoverY/
+    // popoverOpacity，6 个成员，全仓 0 引用），已删除（P0-5）。
+    // 删它的理由不是「没用到」而是「半成品会误导」：card() 返回的是**颜色**，
+    // 半径/偏移是另一组散落的常量，二者没有绑定关系 —— 任何采纳者都得自己重新
+    // 配对，等于每个调用点各写一套。而实际 UI 里的 29 处 `.shadow(...)` 也确实是
+    // 各写一套（透明度 0.04–0.45、半径 1–34），说明这套抽象没对上真实需求。
+    // 待办（视觉决策，需看界面）：真要做统一抬升语言，应把 color/radius/x/y 绑成一个
+    // 值类型（如 `.floatingBar` / `.popover` / `.toast`），再逐处替换并核对观感。
 
     // MARK: - Semantic Colors
+    //
+    // 这里保留的是**语义别名**（按 UI 区域命名），不是调色板：用途明确的别名一旦
+    // 没人引用，就说明该区域已经改用别的（更合适的）来源，别名本身成了误导。
+    // 已删除的三个正是这种情况（P0-5）：
+    //   - chromeBg / statusBg —— 已被系统 material 取代（`.background(.bar)`、
+    //     `.regularMaterial`）。手抄一组 RGB 反而是降级：丢掉窗口失焦时的自动褪色。
+    //   - rowSelected (appAccent.opacity0.13) —— 数值已与实况脱节，实际选中行用的是
+    //     appAccent.opacity(0.16)（FileRow.swift:109、FileSidebar.swift:497）与
+    //     0.12（FileSidebar.swift:451 等）。留着 0.13 只会诱惑下一个人用错档。
+    //     待办（视觉决策，需看界面）：新增一个真正的 row-selection token 并统一这 5 处。
     enum Color {
         /// Sidebar background — slightly offset from editor
         static var sidebarBg: SwiftUI.Color {
@@ -82,24 +91,6 @@ enum DS {
             SwiftUI.Color(nsColor: .textBackgroundColor)
         }
 
-        /// Tab bar / chrome background
-        static var chromeBg: SwiftUI.Color {
-            SwiftUI.Color(nsColor: NSColor(name: nil) { appearance in
-                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                    ? NSColor(white: 0.115, alpha: 1)
-                    : NSColor(white: 0.938, alpha: 1)
-            })
-        }
-
-        /// Status bar background
-        static var statusBg: SwiftUI.Color {
-            SwiftUI.Color(nsColor: NSColor(name: nil) { appearance in
-                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                    ? NSColor(white: 0.10, alpha: 0.92)
-                    : NSColor(white: 0.92, alpha: 0.92)
-            })
-        }
-
         /// Divider between panels
         static var divider: SwiftUI.Color {
             SwiftUI.Color.primary.opacity(0.08)
@@ -108,11 +99,6 @@ enum DS {
         /// File row hover
         static var rowHover: SwiftUI.Color {
             SwiftUI.Color.primary.opacity(0.055)
-        }
-
-        /// File row selected fill
-        static var rowSelected: SwiftUI.Color {
-            SwiftUI.Color.appAccent.opacity(0.13)
         }
 
         /// Status bar pill background

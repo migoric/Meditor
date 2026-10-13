@@ -10,6 +10,10 @@ import XCTest
 // 不依赖真实 AI 后端与真实时间等待：触发动作注入记录器（不触碰
 // BackgroundAgentTaskService），时钟注入固定值，startTimer: false 关掉真实 Timer。
 // 时区固定 UTC，断言不写死中文文案（CI 英文 locale）。
+//
+// 宿主端口（P0-10）：宿主是注入的 AgentHostPort，测试用 RecordingAgentHost 断言
+// 「宿主 rootURL 被当作工作区来源」「写回失败的 toast 到达宿主」——
+// 修复前服务直接持 AppState 且单测只能传 nil，这些路径无痕可断言。
 
 @MainActor
 final class AgentSchedulerServiceTests: XCTestCase {
@@ -53,7 +57,7 @@ final class AgentSchedulerServiceTests: XCTestCase {
 
     /// 构造注入假时钟 + 记录器的服务（不起真实 Timer）
     private func makeService() -> AgentSchedulerService {
-        let service = AgentSchedulerService(appState: nil,
+        let service = AgentSchedulerService(host: nil,
                                             globalConfigURL: globalConfigURL,
                                             startTimer: false)
         service.calendar = calendar
@@ -153,5 +157,42 @@ final class AgentSchedulerServiceTests: XCTestCase {
         let entry = try XCTUnwrap(service.entries.first)
         // now = 09:00:10，下一次 09:00 是明天
         XCTAssertEqual(service.nextFireDate(for: entry), date(2024, 1, 16, 9, 0))
+    }
+
+    // MARK: - 宿主端口（P0-10）
+
+    /// 宿主 rootURL 必须被当作工作区配置来源（init 时的 reload 参数）。
+    func test_init_usesHostRootURL_asWorkspaceSource() throws {
+        let host = RecordingAgentHost()
+        host.rootURL = workspaceRoot
+        try write(#"{"schedules": [{"name": "from-workspace", "cron": "0 9 * * *", "prompt": "w"}]}"#,
+                  to: ScheduledTaskConfigLoader.workspaceConfigURL(root: workspaceRoot))
+
+        let service = AgentSchedulerService(host: host,
+                                            globalConfigURL: globalConfigURL,
+                                            startTimer: false)
+        XCTAssertEqual(service.entries.map(\.name), ["from-workspace"],
+                       "宿主 rootURL 应作为工作区配置来源")
+        XCTAssertEqual(service.entries.first?.source, .workspace)
+    }
+
+    /// 写回失败（条目在磁盘上已消失）→ 经端口给宿主一条 toast。
+    func test_setEnabled_writeBackFailure_toastReachesHost() throws {
+        let host = RecordingAgentHost()
+        try write(#"{"schedules": [{"name": "morning", "cron": "0 9 * * *", "prompt": "p"}]}"#,
+                  to: globalConfigURL)
+        let service = AgentSchedulerService(host: host,
+                                            globalConfigURL: globalConfigURL,
+                                            startTimer: false)
+        let entry = try XCTUnwrap(service.entries.first)
+
+        // 磁盘上换成别的条目：setEnabled 找不到 "morning" → 抛错 → 走 toast 分支
+        try write(#"{"schedules": [{"name": "other", "cron": "0 9 * * *", "prompt": "p"}]}"#,
+                  to: globalConfigURL)
+        service.setEnabled(true, entry: entry)
+
+        XCTAssertEqual(host.toasts.count, 1, "写回失败应经端口提示宿主")
+        XCTAssertEqual(host.toasts.first?.icon, "exclamationmark.triangle")
+        XCTAssertTrue(host.toasts.first?.text.isEmpty == false)
     }
 }
