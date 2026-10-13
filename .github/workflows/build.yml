@@ -111,4 +111,35 @@ jobs:
           xcrun llvm-cov export             .build/**/MEditorPackageTests.xctest/Contents/MacOS/MEditorPackageTests             -instr-profile default.profdata --format=lcov > coverage.lcov
 
       - name: Enforce coverage gate
-        run: python3 scripts/coverage_gate.py coverage.lcov
+        # 路径门槛按前缀匹配（见 scripts/coverage_gate.py）。数字取当前实测值往下留
+        # 8~12 个点：目的是防止关键层 Coverage 被悄悄拉低（棘轮），不是定目标值。
+        # Views/ 故意不设门槛——35584 行、覆盖率 2.2%，当前设了也只等于没设，
+        # 且把代码挪进 Views/ 就能绕过 logic 门槛；这个口径问题单独处理。
+        run: |
+          python3 scripts/coverage_gate.py coverage.lcov \
+            --min-dir Services/AI/Agent=75 \
+            --min-dir Services/MCP=70 \
+            --min-dir Managers=58 \
+            --min-dir ViewModels=48 \
+            --min-dir Models=42 \
+            --min-dir Skills=85
+
+  worker:
+    name: Worker Tests
+    # worker/（Cloudflare Workers）与 Swift 侧完全独立：纯 Node，跑在 Linux 上
+    # 比 macOS runner 便宜一个数量级。index.test.js 覆盖 token 鉴权 / 免费档配额 /
+    # 30 天过期 / Pro 豁免——这些此前无任何 CI 门禁。
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test
+        run: node --test worker/
