@@ -7,9 +7,11 @@ import XCTest
 //   生命周期：发起 → running → completed/failed，结果摘要生成、完成通知触发
 //   并发上限：第 3 个任务被拒（返回 nil）；任务结束后槽位释放
 //   取消链路：service.cancel → runner.cancel → 挂起的写审阅被解除，任务归类 cancelled
+//   宿主端口（P0-10）：toast 反馈与默认 contextFactory 经 AgentHostPort 可观测
 //
 // 不依赖真实 AI 后端：mock 模式沿用 AgentRunnerStabilityTests（ScriptedBackend / 挂起式审阅）。
-// 断言不写死中文文案（CI 英文 locale）：结果摘要对脚本化 finalText / 注入错误原文断言。
+// 断言不写死中文文案（CI 英文 locale）：结果摘要对脚本化 finalText / 注入错误原文断言；
+// toast 断言只看 icon 与「含任务标题」（两种 locale 的格式串都带 %@）。
 
 @MainActor
 final class BackgroundAgentTaskServiceTests: XCTestCase {
@@ -30,9 +32,10 @@ final class BackgroundAgentTaskServiceTests: XCTestCase {
         notifications = []
     }
 
-    private func makeService(backend: any AgentBackend) -> BackgroundAgentTaskService {
-        // appState: nil —— 不触碰真实 AppState；context / 系统通知走注入
-        let service = BackgroundAgentTaskService(appState: nil, backendFactory: { _ in backend })
+    private func makeService(backend: any AgentBackend,
+                             host: (any AgentHostPort)? = nil) -> BackgroundAgentTaskService {
+        // host: nil —— 不触碰真实宿主；context / 系统通知走注入
+        let service = BackgroundAgentTaskService(host: host, backendFactory: { _ in backend })
         service.contextFactory = { [weak self] _ in self?.ctx }
         service.systemNotify = { [weak self] title, body in
             self?.notifications.append((title, body))
@@ -171,6 +174,81 @@ final class BackgroundAgentTaskServiceTests: XCTestCase {
         XCTAssertEqual(task?.title, "first line here")
         if let task { service.cancel(task) }
     }
+
+    // MARK: - 宿主端口（P0-10）：toast 反馈可观测
+    //
+    // 修复前：服务持 `weak var appState: AppState?`，单测只能传 nil，
+    // 于是这些 toast 分支「跑了但没有任何痕迹」——既没断言也没日志。
+    // 修复后：宿主是注入的端口，假宿主即可把反馈留痕。
+
+    func test_concurrencyLimit_toastReachesHost() async {
+        let host = RecordingAgentHost()
+        let service = makeService(backend: BGHangingBackend(), host: host)
+
+        let t1 = service.start(prompt: "one", systemPrompt: "sys", config: cfg, maxSteps: 5)
+        let t2 = service.start(prompt: "two", systemPrompt: "sys", config: cfg, maxSteps: 5)
+        XCTAssertNotNil(t1)
+        XCTAssertNotNil(t2)
+
+        let t3 = service.start(prompt: "three", systemPrompt: "sys", config: cfg, maxSteps: 5)
+        XCTAssertNil(t3, "并发上限外的任务应被拒绝")
+        XCTAssertEqual(host.toasts.count, 1, "被拒时应经端口给宿主一条提示")
+        XCTAssertEqual(host.toasts.first?.icon, "hourglass")
+
+        // 收尾：取消会让 host 再收到 cancelled toast，故上面的计数断言必须在取消之前
+        if let t1 { service.cancel(t1) }
+        if let t2 { service.cancel(t2) }
+    }
+
+    func test_taskCompletion_toastReachesHost() async {
+        let backend = BGScriptedBackend(script: [
+            .respond(AgentCompletionResponse(text: "All done", toolCalls: [], finishReason: "stop")),
+        ])
+        let host = RecordingAgentHost()
+        let service = makeService(backend: backend, host: host)
+
+        let task = service.start(prompt: "summarize", systemPrompt: "sys", config: cfg, maxSteps: 5)
+        let finished = await waitUntil { task?.termination == .completed }
+        XCTAssertTrue(finished)
+
+        XCTAssertEqual(host.toasts.count, 1, "完成时应经端口通知宿主")
+        XCTAssertEqual(host.toasts.first?.icon, "checkmark.circle")
+        XCTAssertTrue(host.toasts.first?.text.contains("summarize") == true,
+                      "提示应带上任务标题，实际：\(host.toasts.first?.text ?? "nil")")
+    }
+
+    func test_mcpToolsRequestedFromHost_withHostWorkspaceURL() async {
+        let host = RecordingAgentHost()
+        let service = makeService(backend: BGHangingBackend(), host: host)
+
+        let task = service.start(prompt: "p", systemPrompt: "sys", config: cfg, maxSteps: 5)
+        let asked = await waitUntil { host.mcpCalls.isEmpty == false }
+        XCTAssertTrue(asked, "发起 run 时应向宿主索取本轮的 MCP 工具")
+        XCTAssertEqual(host.mcpCalls.first ?? nil, host.rootURL,
+                       "索取 MCP 工具时应带上宿主自己的工作区根")
+
+        if let task { service.cancel(task) }
+    }
+
+    /// 默认 contextFactory 必须经宿主的 makeAgentContext（关键接线断言）：
+    /// 若有人把它改回直接调 `AgentContext.make(appState:)`，宿主计数会停在 0 而失败。
+    func test_defaultContextFactory_routesThroughHost() async {
+        let host = RecordingAgentHost()
+        host.context = ctx
+        // 不覆盖 contextFactory：走默认实现
+        let service = BackgroundAgentTaskService(host: host, backendFactory: { _ in
+            BGScriptedBackend(script: [
+                .respond(AgentCompletionResponse(text: "done", toolCalls: [], finishReason: "stop")),
+            ])
+        })
+        service.systemNotify = { _, _ in }
+
+        let task = service.start(prompt: "p", systemPrompt: "sys", config: cfg, maxSteps: 5)
+        XCTAssertNotNil(task, "默认工厂应经宿主拿到 context")
+        let finished = await waitUntil { task?.termination == .completed }
+        XCTAssertTrue(finished)
+        XCTAssertEqual(host.contextsMade, 1, "默认工厂应调用宿主的 makeAgentContext")
+    }
 }
 
 // MARK: - 私有测试 doubles
@@ -207,3 +285,4 @@ private final class BGHangingBackend: AgentBackend, @unchecked Sendable {
         return AgentCompletionResponse(text: "unreachable", toolCalls: [], finishReason: "stop")
     }
 }
+
