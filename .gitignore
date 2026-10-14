@@ -13,6 +13,11 @@ workspaces/*/session/conversations/
 # Release artifacts
 *.dmg
 
+# 覆盖率门禁的本地中间产物（CI 在仓库根跑 coverage_gate.py 读取它，
+# 但 lcov 与 profdata 都不入库：前者是生成物，后者是 llvm 工具链的中间格式）。
+coverage.lcov
+*.profdata
+
 # Mobile (iOS) build artifacts
 Mobile/.derivedData
 Mobile/.derivedData-*
