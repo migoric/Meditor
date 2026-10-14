@@ -148,6 +148,15 @@ enum PaperTheme {
         static let bubble: CGFloat = large
     }
 
+    // MARK: - 描边宽度
+
+    /// 描边宽度两档语义（此前 0.5 / 1 散落手写）：
+    /// hairline = retina 上 1 物理像素（分隔线 / 内描边），regular = 明确轮廓（卡片 / 控件）。
+    enum Stroke {
+        static let hairline: CGFloat = 0.5
+        static let regular: CGFloat = 1
+    }
+
     // MARK: - 间距
 
     enum Spacing {

@@ -87,7 +87,7 @@ extension AIAssistantPanel {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Capsule(style: .continuous).fill(theme.craftHover))
-                    .overlay(Capsule().strokeBorder(theme.separator.opacity(0.4), lineWidth: 0.5))
+                    .overlay(Capsule().strokeBorder(theme.separator.opacity(0.4), lineWidth: DS.Stroke.hairline))
                     .opacity(removed ? 0.6 : 1)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -106,7 +106,7 @@ extension AIAssistantPanel {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Capsule(style: .continuous).fill(theme.craftHover))
-                    .overlay(Capsule().strokeBorder(theme.separator.opacity(0.4), lineWidth: 0.5))
+                    .overlay(Capsule().strokeBorder(theme.separator.opacity(0.4), lineWidth: DS.Stroke.hairline))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 }
@@ -123,7 +123,7 @@ extension AIAssistantPanel {
                         .foregroundStyle(canSendBackground ? theme.craftSecondary : theme.craftSecondary.opacity(0.35))
                         .frame(width: 28, height: 28)
                         .background(Circle().fill(theme.craftHover))
-                        .overlay(Circle().strokeBorder(theme.separator.opacity(0.5), lineWidth: 0.5))
+                        .overlay(Circle().strokeBorder(theme.separator.opacity(0.5), lineWidth: DS.Stroke.hairline))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSendBackground)
@@ -192,14 +192,14 @@ extension AIAssistantPanel {
                                     : [Color.white.opacity(0.85), Color.white.opacity(0.30)],
                                 startPoint: .top, endPoint: .bottom
                             ),
-                            lineWidth: 0.5
+                            lineWidth: DS.Stroke.hairline
                         )
                         .blendMode(.plusLighter)
                 )
                 // Focus accent ring (thin).
                 .overlay(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(accent.fill(theme).opacity(inputFocused ? 0.5 : 0), lineWidth: 1)
+                        .strokeBorder(accent.fill(theme).opacity(inputFocused ? 0.5 : 0), lineWidth: DS.Stroke.regular)
                 )
                 // Tight, soft shadow — no wide grey halo.
                 .shadow(color: .black.opacity(theme.isDark ? 0.24 : 0.06), radius: 6, x: 0, y: 2)
@@ -225,6 +225,9 @@ extension AIAssistantPanel {
             .overlay(alignment: .top) {
                 Color.white.opacity(theme.isDark ? 0.05 : 0.55)
                     .frame(height: 1)
+                    // 半像素下移是有意的像素对齐：1pt 高光在 retina 上占 2 物理像素，
+                    // 下移 0.5pt 让它落在半像素网格上，避免顶边出现 1 物理像素的暗缝。
+                    // （DS.Stroke 管线宽；这类「位置微调」是另一回事，故就地注释而非抽 token。）
                     .padding(.top, 0.5)
                     .blendMode(.plusLighter)
             }
@@ -274,7 +277,7 @@ extension AIAssistantPanel {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(theme.separator.opacity(0.35), lineWidth: 0.5)
+                .strokeBorder(theme.separator.opacity(0.35), lineWidth: DS.Stroke.hairline)
         )
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -341,7 +344,7 @@ extension AIAssistantPanel {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(theme.separator.opacity(0.5), lineWidth: 0.5)
+                    .strokeBorder(theme.separator.opacity(0.5), lineWidth: DS.Stroke.hairline)
             )
 
             Button { removePendingImage(attachment.id) } label: {

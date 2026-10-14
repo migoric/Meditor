@@ -27,7 +27,7 @@ extension AIAssistantPanel {
                                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .strokeBorder(theme.separator.opacity(0.5), lineWidth: 0.5)
+                                            .strokeBorder(theme.separator.opacity(0.5), lineWidth: DS.Stroke.hairline)
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -96,7 +96,7 @@ extension AIAssistantPanel {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(theme.separator.opacity(theme.isDark ? 0.5 : 0.7), lineWidth: 1)
+                            .strokeBorder(theme.separator.opacity(theme.isDark ? 0.5 : 0.7), lineWidth: DS.Stroke.regular)
                     )
                     .shadow(color: .black.opacity(theme.isDark ? 0.18 : 0.04), radius: 5, x: 0, y: 1)
 

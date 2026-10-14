@@ -30,7 +30,7 @@ extension SettingsView {
                     .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color.orange.opacity(0.3), lineWidth: 0.5)
+                            .strokeBorder(Color.orange.opacity(0.3), lineWidth: DS.Stroke.hairline)
                     )
                     .padding(.horizontal, DS.Space.lg)
                     .padding(.top, DS.Space.md)
@@ -263,7 +263,7 @@ extension SettingsView {
                 .fill(Color.primary.opacity(0.03))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+                        .strokeBorder(Color.primary.opacity(0.07), lineWidth: DS.Stroke.regular)
                 )
         )
     }

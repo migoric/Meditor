@@ -286,7 +286,7 @@ struct DocumentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: PaperTheme.Radius.xlarge, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: PaperTheme.Radius.xlarge, style: .continuous)
-                        .strokeBorder(PaperTheme.hairline, lineWidth: 0.5)
+                        .strokeBorder(PaperTheme.hairline, lineWidth: PaperTheme.Stroke.hairline)
                 }
                 .shadow(color: PaperTheme.cardShadow, radius: 12, y: 4)
 

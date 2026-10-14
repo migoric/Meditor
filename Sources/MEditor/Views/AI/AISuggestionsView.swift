@@ -137,7 +137,7 @@ extension AIAssistantPanel {
         )
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .strokeBorder(AIBrand.blue.opacity(0.22), lineWidth: 1)
+                .strokeBorder(AIBrand.blue.opacity(0.22), lineWidth: DS.Stroke.regular)
         )
         .padding(.horizontal, 8)
     }

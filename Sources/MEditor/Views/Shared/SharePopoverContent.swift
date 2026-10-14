@@ -85,7 +85,7 @@ struct SharePopoverContent: View {
                             .fill(DS.Color.pillBg)
                             .overlay(
                                 RoundedRectangle(cornerRadius: DS.Radius.sm)
-                                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                                    .stroke(Color.primary.opacity(0.06), lineWidth: DS.Stroke.regular)
                             )
                     )
                 }

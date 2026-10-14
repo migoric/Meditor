@@ -30,9 +30,13 @@ struct RootView: View {
                     DocumentHomeView(onOpenDocument: { showDocument = true })
                         .opacity(page == .home ? 1 : 0)
                         .allowsHitTesting(page == .home)
+                        // 不可见页必须移出无障碍树：opacity(0) 本身不移除，
+                        // VoiceOver 会读到两页元素，焦点顺序按 ZStack 层序而非可见页。
+                        .accessibilityHidden(page != .home)
                     SettingsView()
                         .opacity(page == .settings ? 1 : 0)
                         .allowsHitTesting(page == .settings)
+                        .accessibilityHidden(page != .settings)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(PaperTheme.Motion.standard, value: page)
@@ -210,11 +214,15 @@ private struct GlassSelection: View {
                         .blur(radius: 6)
                         .mask(Capsule(style: .continuous))
                     }
+                    // shimmer 每 50ms 重绘一帧：gradient + blur + mask 的图层树若逐帧
+                    // 重建会持续消耗 CPU/GPU。drawingGroup() 把整条链光栅化到离屏位图，
+                    // 后续帧只平移位图（与 DotGridBackground 同一处理）。
+                    .drawingGroup()
                 }
             }
             .overlay {
                 Capsule(style: .continuous)
-                    .strokeBorder(PaperTheme.hairline, lineWidth: 0.5)
+                    .strokeBorder(PaperTheme.hairline, lineWidth: PaperTheme.Stroke.hairline)
             }
             .shadow(color: .black.opacity(isDark ? 0.25 : 0.08), radius: 4, y: 2)
             .matchedGeometryEffect(id: "page-indicator", in: indicator)

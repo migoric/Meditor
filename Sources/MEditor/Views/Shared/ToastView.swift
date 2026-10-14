@@ -108,7 +108,7 @@ struct ClaudeFilePromptToast: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.appAccent.opacity(0.25), lineWidth: 1)
+                .strokeBorder(Color.appAccent.opacity(0.25), lineWidth: DS.Stroke.regular)
         )
         .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 3)
         .frame(maxWidth: 360)

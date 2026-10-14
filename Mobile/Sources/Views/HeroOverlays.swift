@@ -156,10 +156,10 @@ struct AIHeroOverlay: View {
                         AIChatView()
                             .toolbar(.hidden, for: .navigationBar)
                     }
-                    .background(PaperTheme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .background(PaperTheme.card, in: RoundedRectangle(cornerRadius: PaperTheme.Radius.xlarge, style: .continuous))
                     .clipShape(UnevenRoundedRectangle(
-                        topLeadingRadius: 22, bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0, topTrailingRadius: 22,
+                        topLeadingRadius: PaperTheme.Radius.xlarge, bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 0, topTrailingRadius: PaperTheme.Radius.xlarge,
                         style: .continuous
                     ))
                     .shadow(color: .black.opacity(0.18), radius: 24, y: 10)

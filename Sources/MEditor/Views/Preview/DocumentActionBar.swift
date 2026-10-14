@@ -56,7 +56,7 @@ struct DocumentActionBar: View {
         .shadow(color: .black.opacity(theme.isDark ? 0.35 : 0.12), radius: 6, x: 0, y: 2)
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .strokeBorder(Color.primary.opacity(theme.isDark ? 0.12 : 0.07), lineWidth: 0.5)
+                .strokeBorder(Color.primary.opacity(theme.isDark ? 0.12 : 0.07), lineWidth: DS.Stroke.hairline)
         )
         .animation(.spring(response: 0.32, dampingFraction: 0.86), value: isExpanded)
     }

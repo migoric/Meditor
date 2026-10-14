@@ -229,7 +229,7 @@ struct PreviewPanel: View {
                 .background(state.themeStore.current.chromeBackground.opacity(state.themeStore.current.isDark ? 0.94 : 0.98))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(state.themeStore.current.separator.opacity(state.themeStore.current.isDark ? 0.5 : 0.24), lineWidth: 1)
+                        .stroke(state.themeStore.current.separator.opacity(state.themeStore.current.isDark ? 0.5 : 0.24), lineWidth: DS.Stroke.regular)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .shadow(color: Color.black.opacity(state.themeStore.current.isDark ? 0.28 : 0.06), radius: 10, y: 3)
@@ -314,7 +314,7 @@ private struct PreviewFindBar: View {
         .background(theme.chromeBackground.opacity(theme.isDark ? 0.96 : 0.98))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(theme.separator.opacity(theme.isDark ? 0.9 : 0.6), lineWidth: 1)
+                .stroke(theme.separator.opacity(theme.isDark ? 0.9 : 0.6), lineWidth: DS.Stroke.regular)
         )
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .shadow(color: Color.black.opacity(theme.isDark ? 0.3 : 0.08), radius: 10, y: 4)

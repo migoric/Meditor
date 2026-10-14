@@ -168,7 +168,7 @@ struct MarkdownText: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(secondaryColor.opacity(0.22), lineWidth: 1)
+                .strokeBorder(secondaryColor.opacity(0.22), lineWidth: DS.Stroke.regular)
         )
     }
 
@@ -509,7 +509,7 @@ private struct CodeBlockView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(secondaryColor.opacity(0.16), lineWidth: 1)
+                .strokeBorder(secondaryColor.opacity(0.16), lineWidth: DS.Stroke.regular)
         )
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.12), value: hovered)

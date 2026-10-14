@@ -37,7 +37,7 @@ extension SettingsView {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: DS.Stroke.regular)
             )
             .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 1)
         }
@@ -115,7 +115,7 @@ private struct SettingsFieldStyle: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: DS.Stroke.regular)
             )
     }
 }

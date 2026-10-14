@@ -586,6 +586,9 @@ final class MentionAttachmentCell: NSTextAttachmentCell {
     }
 
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
+        // 内缩 0.5pt 是有意的像素对齐：0.75pt 描边若贴 cell 边缘会被裁掉外侧一半，
+        // 内缩半像素后两侧完整可见（描边宽度本身不套 DS.Stroke——它是 NSTextAttachment
+        // cell 内的高亮 chip，与卡片/分隔线的两档语义不同类）。
         let path = NSBezierPath(roundedRect: cellFrame.insetBy(dx: 0.5, dy: 0.5),
                                 xRadius: 4, yRadius: 4)
         cachedBackground.setFill()
@@ -717,7 +720,7 @@ struct AtMentionPickerView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(theme.isDark ? 0.18 : 0.10), lineWidth: 0.5)
+                .strokeBorder(Color.primary.opacity(theme.isDark ? 0.18 : 0.10), lineWidth: DS.Stroke.hairline)
         )
         .shadow(color: .black.opacity(theme.isDark ? 0.45 : 0.16), radius: 16, x: 0, y: 6)
         .shadow(color: .black.opacity(theme.isDark ? 0.20 : 0.06), radius: 4, x: 0, y: 2)

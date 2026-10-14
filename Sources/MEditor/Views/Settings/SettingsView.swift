@@ -214,7 +214,7 @@ private struct HeroTrafficLights: View {
         let dot = Circle()
             .fill(color)
             .frame(width: 12, height: 12)
-            .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: 0.5))
+            .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: DS.Stroke.hairline))
             .overlay(
                 Image(systemName: glyph)
                     .font(.system(size: 7, weight: .bold))
@@ -304,7 +304,7 @@ private struct HeroSectionPill: View {
         )
         .overlay(
             Capsule(style: .continuous)
-                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                .stroke(Color.white.opacity(0.16), lineWidth: DS.Stroke.regular)
         )
     }
 }

@@ -52,7 +52,7 @@ struct SettingsHeroOverlay: View {
                 .clipShape(RoundedRectangle(cornerRadius: DS.Radius.xl, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: DS.Radius.xl, style: .continuous)
-                        .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+                        .stroke(Color.primary.opacity(0.10), lineWidth: DS.Stroke.regular)
                 )
                 .shadow(color: .black.opacity(0.34), radius: 34, x: 0, y: 14)
                 .scaleEffect(shown ? 1 : 0.18, anchor: anchorPoint)

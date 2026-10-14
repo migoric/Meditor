@@ -26,7 +26,7 @@ struct PreviewInlineEditBar: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: DS.Stroke.hairline))
         .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
         .padding(.bottom, 12)
     }

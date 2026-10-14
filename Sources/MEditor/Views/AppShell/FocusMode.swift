@@ -38,7 +38,7 @@ struct FocusToggleButton: View {
                 )
                 .overlay(
                     Circle().strokeBorder(
-                        Color.primary.opacity(isHovered ? 0.14 : 0.06), lineWidth: 1)
+                        Color.primary.opacity(isHovered ? 0.14 : 0.06), lineWidth: DS.Stroke.regular)
                 )
                 .scaleEffect(isHovered ? 1.06 : 1)
         }
