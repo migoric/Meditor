@@ -413,14 +413,24 @@ final class AgentRunner {
                                 group.addTask {
                                     let startedAt = Date()
                                     let result: AgentToolResult
-                                    do {
-                                        let output = try await tool.execute(arguments: call.arguments, context: context)
-                                        result = AgentToolResult(toolCallID: call.id, toolName: call.name, content: output)
-                                    } catch {
+                                    // 参数运行时校验（required/类型/enum）：与串行组、
+                                    // MCPServer 同一把尺子。失败按工具错误回灌让模型自纠，
+                                    // 不升级成整轮失败（同 argumentsParseError 的处理）。
+                                    if let violation = tool.validateArguments(call.arguments) {
                                         result = AgentToolResult(
                                             toolCallID: call.id, toolName: call.name,
-                                            content: "错误：\(error.localizedDescription)", isError: true
+                                            content: violation, isError: true
                                         )
+                                    } else {
+                                        do {
+                                            let output = try await tool.execute(arguments: call.arguments, context: context)
+                                            result = AgentToolResult(toolCallID: call.id, toolName: call.name, content: output)
+                                        } catch {
+                                            result = AgentToolResult(
+                                                toolCallID: call.id, toolName: call.name,
+                                                content: "错误：\(error.localizedDescription)", isError: true
+                                            )
+                                        }
                                     }
                                     return (i, result, Date().timeIntervalSince(startedAt))
                                 }
@@ -484,21 +494,30 @@ final class AgentRunner {
                                     isError: true
                                 )
                             } else if let tool = tools.first(where: { $0.spec.name == call.name }) {
-                                let startedAt = Date()
-                                do {
-                                    let output = try await tool.execute(arguments: call.arguments, context: context)
-                                    result = AgentToolResult(toolCallID: call.id, toolName: call.name, content: output)
-                                } catch {
-                                    // 取消不是工具失败：直接抛给外层 catch（break 走向收尾，
-                                    // 缺口由 reconcileToolResults 补合成中断结果），不包装成
-                                    // 误导性的 tool error 回灌历史、也不计入停滞指纹。
-                                    if Self.isCancellation(error) { throw error }
+                                // 参数运行时校验（required/类型/enum）：失败回灌让模型自纠，
+                                // 不计耗时（未真实执行），也不计入停滞指纹。
+                                if let violation = tool.validateArguments(call.arguments) {
                                     result = AgentToolResult(
                                         toolCallID: call.id, toolName: call.name,
-                                        content: "错误：\(error.localizedDescription)", isError: true
+                                        content: violation, isError: true
                                     )
+                                } else {
+                                    let startedAt = Date()
+                                    do {
+                                        let output = try await tool.execute(arguments: call.arguments, context: context)
+                                        result = AgentToolResult(toolCallID: call.id, toolName: call.name, content: output)
+                                    } catch {
+                                        // 取消不是工具失败：直接抛给外层 catch（break 走向收尾，
+                                        // 缺口由 reconcileToolResults 补合成中断结果），不包装成
+                                        // 误导性的 tool error 回灌历史、也不计入停滞指纹。
+                                        if Self.isCancellation(error) { throw error }
+                                        result = AgentToolResult(
+                                            toolCallID: call.id, toolName: call.name,
+                                            content: "错误：\(error.localizedDescription)", isError: true
+                                        )
+                                    }
+                                    duration = Date().timeIntervalSince(startedAt)
                                 }
-                                duration = Date().timeIntervalSince(startedAt)
                             } else {
                                 result = AgentToolResult(
                                     toolCallID: call.id, toolName: call.name,

@@ -291,6 +291,79 @@ protocol AgentTool: Sendable {
     func execute(arguments: [String: AnySendableValue], context: any AgentContextProtocol) async throws -> String
 }
 
+extension AgentTool {
+    /// 对照 `spec.parameters` 的运行时参数校验：必填缺失、类型不符、enum 越界。
+    ///
+    /// 背景：工具参数由模型生成，历史上类型不匹配时各工具自行 `?.stringValue`/`?.intValue`
+    /// 拿到 nil 后静默走默认分支（如 `read_document` 的 `start_line:1` 若被解析成 bool，
+    /// 行区间读取会静默退化成读全文），模型看到「正常返回」便以为参数生效，错误自我复制。
+    ///
+    /// 契约：返回 nil = 通过；否则返回人读的错误消息，调用方须把它当作工具结果
+    /// （`isError: true`）回灌给模型自纠——与 `argumentsParseError`（JSON 解析失败）
+    /// 的处理完全同构，不让参数问题升级成整轮 run 失败。
+    ///
+    /// 宽容规则（避免误伤合法调用）：
+    /// - schema 里未声明的参数一律放行（模型有时会补充字段，不该因此失败）；
+    /// - `integer` 接受整数值的 double（JSON 里 `2` 可能被解析成 2.0）；
+    /// - `.null` 视为缺失（必填才拦；可选参数显式传 null 是合法表达）。
+    func validateArguments(_ arguments: [String: AnySendableValue]) -> String? {
+        let schema = spec.parameters
+
+        for key in schema.required {
+            // nil 与显式 .null 都视为缺失（AnySendableValue 含关联值，无法直接用 == 比较）
+            let raw = arguments[key]
+            let explicitNull = { () -> Bool in
+                if let v = raw, case .null = v { return true }
+                return false
+            }()
+            guard raw != nil, !explicitNull else {
+                let desc = schema.orderedProperties.first { $0.key == key }?.schema.description ?? ""
+                return "参数 '\(key)' 缺失（该参数为必填）。\(desc.isEmpty ? "" : "说明：\(desc)")请补充后重试。"
+            }
+        }
+
+        for (key, value) in arguments {
+            guard let prop = schema.orderedProperties.first(where: { $0.key == key }) else { continue }
+            if case .null = value { continue }
+            guard Self.argumentTypeMatches(value, declared: prop.schema.type) else {
+                return "参数 '\(key)' 的类型应为 \(prop.schema.type)，实际收到 \(Self.argumentTypeName(of: value))。请按 schema 声明的类型重新生成该参数。"
+            }
+            if let allowed = prop.schema.enumValues, case .string(let s) = value, !allowed.contains(s) {
+                return "参数 '\(key)' 的取值 '\(s)' 不在允许范围内。允许值：\(allowed.joined(separator: "、"))。"
+            }
+        }
+        return nil
+    }
+
+    /// JSON Schema 类型 ↔ AnySendableValue case 的匹配。
+    private static func argumentTypeMatches(_ value: AnySendableValue, declared: String) -> Bool {
+        switch declared {
+        case "string":  if case .string = value { return true }
+        case "integer":
+            if case .int = value { return true }
+            if case .double(let d) = value { return d == d.rounded() }
+        case "number":  if case .int = value { return true }; if case .double = value { return true }
+        case "boolean": if case .bool = value { return true }
+        case "array":   if case .array = value { return true }
+        case "object":  if case .dict = value { return true }
+        default: return true // 未声明/未知类型不拦（schema 演进期向前兼容）
+        }
+        return false
+    }
+
+    private static func argumentTypeName(of value: AnySendableValue) -> String {
+        switch value {
+        case .string: return "string"
+        case .bool:   return "boolean"
+        case .int:    return "integer"
+        case .double: return "number"
+        case .array:  return "array"
+        case .dict:   return "object"
+        case .null:   return "null"
+        }
+    }
+}
+
 // MARK: - Agent Runner Step（独立为 Model，不再混入 Runner）
 
 enum AgentRunnerStep: Identifiable, Sendable {

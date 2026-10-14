@@ -51,7 +51,7 @@ struct TemplateThumbnail: View {
     private func checkRow(_ w: CGFloat) -> some View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .stroke(faint, lineWidth: 1).frame(width: 6, height: 6)
+                .stroke(faint, lineWidth: DS.Stroke.regular).frame(width: 6, height: 6)
             bar(faint, w, h: 4)
         }
     }

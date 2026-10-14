@@ -128,8 +128,11 @@ jobs:
       - name: Enforce coverage gate
         # 路径门槛按前缀匹配（见 scripts/coverage_gate.py）。数字取当前实测值往下留
         # 8~12 个点：目的是防止关键层 Coverage 被悄悄拉低（棘轮），不是定目标值。
-        # Views/ 故意不设门槛——35584 行、覆盖率 2.2%，当前设了也只等于没设，
-        # 且把代码挪进 Views/ 就能绕过 logic 门槛；这个口径问题单独处理。
+        # Views/ 此前完全不设门槛（35584 行、覆盖率约 2.2%）：那等于给出一条免费通道
+        # ——把代码挪进 Views/ 就能绕过 logic 门槛。现补一个**极低但存在**的棘轮 floor
+        # （Views=1）：不指望它推动 View 层提覆盖率，只保证「挪进 Views」不再使覆盖率
+        # 无限下滑，且把这条口径问题显式摆在门禁里（真要把 Views 提到有意义的水平是
+        # 独立议题，需要 View 层测试策略，不在本门槛职责内）。
         run: |
           python3 scripts/coverage_gate.py coverage.lcov \
             --min-dir Services/AI/Agent=75 \
@@ -137,7 +140,8 @@ jobs:
             --min-dir Managers=58 \
             --min-dir ViewModels=48 \
             --min-dir Models=42 \
-            --min-dir Skills=85
+            --min-dir Skills=85 \
+            --min-dir Views=1
 
   worker:
     name: Worker Tests

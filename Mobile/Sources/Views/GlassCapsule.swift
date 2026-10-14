@@ -34,13 +34,13 @@ struct GlassCapsuleBackground: View {
                             ],
                             startPoint: .top, endPoint: .bottom
                         ),
-                        lineWidth: 1
+                        lineWidth: PaperTheme.Stroke.regular
                     )
             }
             // 外缘发丝线压出轮廓
             .overlay {
                 Capsule(style: .continuous)
-                    .strokeBorder(PaperTheme.hairline.opacity(isDark ? 0.6 : 0.35), lineWidth: 0.5)
+                    .strokeBorder(PaperTheme.hairline.opacity(isDark ? 0.6 : 0.35), lineWidth: PaperTheme.Stroke.hairline)
             }
             // 双层软影：远处大扩散 + 近处轻接触
             .shadow(color: .black.opacity(isDark ? 0.35 : 0.06), radius: 22, y: 10)

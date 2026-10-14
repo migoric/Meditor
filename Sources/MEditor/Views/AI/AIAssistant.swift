@@ -137,7 +137,7 @@ struct AIAssistantPanel: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
                     .background(Capsule(style: .continuous).fill(theme.craftHover))
-                    .overlay(Capsule().strokeBorder(theme.separator.opacity(0.5), lineWidth: 1))
+                    .overlay(Capsule().strokeBorder(theme.separator.opacity(0.5), lineWidth: DS.Stroke.regular))
                 }
                 .buttonStyle(.plain)
                 .help(L("ai.newChat"))
@@ -343,7 +343,7 @@ private struct AIHeaderButton: View {
                 .foregroundStyle(theme.craftSecondary)
                 .frame(width: 30, height: 30)
                 .background(Circle().fill(hovered ? theme.craftHover : Color.clear))
-                .overlay(Circle().strokeBorder(theme.separator.opacity(0.6), lineWidth: 1))
+                .overlay(Circle().strokeBorder(theme.separator.opacity(0.6), lineWidth: DS.Stroke.regular))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

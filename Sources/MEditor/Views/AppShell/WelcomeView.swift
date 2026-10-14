@@ -27,9 +27,14 @@ struct WelcomeView: View {
     private static let title     = Array("MEDITOR")
     private static let charset   = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@&%!?")
     private static let subtitle  = "A minimal Markdown editor for macOS"
+    /// 欢迎卡片的底色：**刻意固定深色**（非疏漏）——这是一张深色玻璃拟态卡片
+    /// （白色顶部高光 + 白色描边 + 黑色投影），在亮色主题下也保持深色以获得
+    /// 「聚光」观感；改成跟随 appearance 的动态色会破坏该设计意图。
     private static let cardBg    = Color(red: 0.11, green: 0.12, blue: 0.15)
-    private static let cardGlow  = Color(red: 0.23, green: 0.51, blue: 0.96).opacity(0.15)
-    private static let auroraBlue = Color(red: 0.23, green: 0.51, blue: 0.96)
+    /// 卡片光晕与外发光跟随系统强调色（不用硬编码品牌蓝）：欢迎页的 CTA 已用
+    /// `Color.appAccent`，若这里写死蓝色，用户改强调色后会与按钮割裂。
+    private static var cardGlow: Color { Color.appAccent.opacity(0.15) }
+    private static var auroraBlue: Color { Color.appAccent }
 
     // 5×7 pixel bitmaps
     private static let pixelFont: [Character: [[Bool]]] = [
@@ -159,7 +164,7 @@ struct WelcomeView: View {
                             colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
                             startPoint: .top, endPoint: .bottom
                         ),
-                        lineWidth: 1
+                        lineWidth: DS.Stroke.regular
                     )
             }
             .shadow(color: .black.opacity(0.28), radius: 20, x: 0, y: 8)
@@ -243,11 +248,9 @@ struct WelcomeView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .background {
-                    RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
-                        .fill(Color.primary.opacity(0))
-                }
-                .hoverBrightness(0.0)
+                // 此前这里是「全透明的 RoundedRectangle 背景 + .hoverBrightness(0.0)」
+                // ——两者都不产生任何视觉输出（alpha 与原亮度都不变），已删除；
+                // 真实的 hover 反馈来自下面的 HoverRecentBackground。
                 .background(HoverRecentBackground())
             }
 

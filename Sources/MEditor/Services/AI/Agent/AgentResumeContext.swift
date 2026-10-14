@@ -11,11 +11,16 @@ enum AgentResumeContext {
 
     /// 续跑指令（追加为新的 user 消息）。不走 L()：这是发给模型的 prompt 而非
     /// UI 文案，固定英文即可（与各后端系统提示同语言，测试断言不依赖 locale）。
+    ///
+    /// 措辞纪律：对「已生效」只做**条件式**陈述（以工具结果为准），不断言。
+    /// 工具返回成功 ≠ 盘上一定写成功（如协调写被外部进程拒绝、沙盒策略变更），
+    /// 让模型把结果当唯一事实来源，比替它下断言更不容易在边缘场景说假话。
     static let resumeInstruction = """
     The previous run was interrupted before completion (network/timeout error). \
     The conversation above is the full execution record up to the interruption:
-    - Tool calls that already have results were COMPLETED — do NOT repeat them; \
-    their effects (including file writes) are already in place.
+    - Tool calls that already have results are DONE — do NOT repeat them. The result \
+    is the source of truth for what took effect: if a result reports success, treat \
+    the write as in place; if it reports an error, re-issue that call.
     - Tool calls whose results say the run was interrupted did NOT execute — \
     re-issue them if they are still needed.
     Continue the original task from where it stopped and finish the remaining work.

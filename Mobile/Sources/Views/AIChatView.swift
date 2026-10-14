@@ -275,7 +275,7 @@ struct AIChatView: View {
                                     .padding(.vertical, 7)
                                     .background(PaperTheme.card, in: Capsule())
                                     .overlay {
-                                        Capsule().strokeBorder(PaperTheme.hairline, lineWidth: 0.5)
+                                        Capsule().strokeBorder(PaperTheme.hairline, lineWidth: PaperTheme.Stroke.hairline)
                                     }
                             }
                             .buttonStyle(.pressable)
@@ -361,7 +361,7 @@ private struct BuiltInQuickChips: View {
                         .padding(.vertical, 6)
                         .background(PaperTheme.card, in: Capsule())
                         .overlay {
-                            Capsule().strokeBorder(PaperTheme.hairline, lineWidth: 0.5)
+                            Capsule().strokeBorder(PaperTheme.hairline, lineWidth: PaperTheme.Stroke.hairline)
                         }
                 }
                 .buttonStyle(.pressable)
@@ -400,7 +400,7 @@ private struct ChatInputBar: View {
                         RoundedRectangle(cornerRadius: PaperTheme.Radius.xlarge, style: .continuous)
                             .strokeBorder(
                                 inputFocused ? PaperTheme.accent.opacity(0.55) : PaperTheme.hairline,
-                                lineWidth: 1
+                                lineWidth: PaperTheme.Stroke.regular
                             )
                     }
                     .animation(PaperTheme.Motion.quick, value: inputFocused)

@@ -207,31 +207,15 @@ struct FileSidebar: View {
         let userPath = AppSettings.shared.userDocPath
         let appPath  = AppSettings.shared.appDocPath
         // 目录枚举放后台线程，避免 onAppear / docPathChanged 时阻塞主线程。
+        // 枚举规则收口在 FileService（View 不再直接碰 FileManager）。
         DispatchQueue.global(qos: .userInitiated).async {
-            let userFiles = Self.listDocFiles(at: userPath)
-            let appFiles  = Self.listDocFiles(at: appPath)
+            let userFiles = FileService.listDocumentFiles(at: userPath)
+            let appFiles  = FileService.listDocumentFiles(at: appPath)
             DispatchQueue.main.async {
                 userDocFiles = userFiles
                 appDocFiles  = appFiles
             }
         }
-    }
-
-    /// nonisolated：纯 FileManager 枚举、不碰视图状态，允许在后台队列调用（refreshDocFiles）。
-    nonisolated private static func listDocFiles(at url: URL?) -> [URL] {
-        guard let url else { return [] }
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-        let allowed: Set<String> = ["md", "html"]
-        return contents
-            .filter { u in
-                guard let res = try? u.resourceValues(forKeys: [.isDirectoryKey]) else { return false }
-                return res.isDirectory == false && allowed.contains(u.pathExtension.lowercased())
-            }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     @ViewBuilder
@@ -372,7 +356,7 @@ private struct SidebarSearchBar: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: DS.Stroke.regular)
         )
     }
 }

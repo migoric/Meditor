@@ -206,7 +206,7 @@ struct AIOnboardingView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .strokeBorder(AIBrand.blue.opacity(0.25), lineWidth: 1)
+                .strokeBorder(AIBrand.blue.opacity(0.25), lineWidth: DS.Stroke.regular)
         )
     }
 
@@ -278,7 +278,7 @@ struct AIOnboardingView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-                .strokeBorder(AIBrand.violet.opacity(0.25), lineWidth: 1)
+                .strokeBorder(AIBrand.violet.opacity(0.25), lineWidth: DS.Stroke.regular)
         )
     }
 

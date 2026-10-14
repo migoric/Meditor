@@ -96,6 +96,12 @@ final class MCPServer {
         }
 
         do {
+            // 参数运行时校验（required/类型/enum）：外部客户端（Claude Desktop 等）
+            // 生成的参数同样会类型错乱，失败以 isError 结果回返让客户端自纠，
+            // 与 AgentRunner 内部调用共用同一把尺子。
+            if let violation = tool.validateArguments(arguments) {
+                return toolResultJSON(id: id, isError: true, text: violation)
+            }
             let output = try await tool.execute(arguments: arguments, context: context)
             return toolResultJSON(id: id, isError: false, text: output)
         } catch {

@@ -28,6 +28,17 @@ enum DS {
         static let full: CGFloat = 999
     }
 
+    // MARK: - Stroke Width
+    //
+    // 描边宽度的两档语义。此前全仓 0.5pt 与 1pt 混用（约 16 处 vs 38 处，同文件
+    // 相邻元素也可能不同档），选哪档全凭手感。定为两档：
+    //   - hairline：retina 上渲染为 1 物理像素，用于分隔线 / 内描边这类「结构线」；
+    //   - regular： 明确的轮廓线，用于卡片 / 控件的边框。
+    enum Stroke {
+        static let hairline: CGFloat = 0.5
+        static let regular:  CGFloat = 1
+    }
+
     // MARK: - Typography
     enum Font {
         /// UI labels, menus

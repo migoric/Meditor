@@ -100,7 +100,7 @@ struct AIAssistantButton: View {
                             colors: [Color.white.opacity(0.95), Color.white.opacity(0.22)],
                             startPoint: .top, endPoint: .bottom
                         ),
-                        lineWidth: 1
+                        lineWidth: DS.Stroke.regular
                     )
                     .blendMode(.plusLighter)
             )
@@ -168,7 +168,7 @@ struct AIAssistantHeroOverlay: View {
                                 colors: [Color.white.opacity(0.25), Color.white.opacity(0.06)],
                                 startPoint: .top, endPoint: .bottom
                             ),
-                            lineWidth: 1
+                            lineWidth: DS.Stroke.regular
                         )
                 )
                 .compositingGroup()

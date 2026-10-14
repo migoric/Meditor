@@ -56,7 +56,7 @@ struct MonthDayCell: View {
         )
         .overlay(
             Rectangle()
-                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: DS.Stroke.hairline)
         )
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }

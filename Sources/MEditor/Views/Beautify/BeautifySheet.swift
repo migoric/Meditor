@@ -512,7 +512,7 @@ private struct ThemeCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(isSelected ? Color.clear : Color.primary.opacity(0.12), lineWidth: 1)
+                    .strokeBorder(isSelected ? Color.clear : Color.primary.opacity(0.12), lineWidth: DS.Stroke.regular)
             )
         }
         .buttonStyle(.plain)

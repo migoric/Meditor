@@ -411,8 +411,14 @@ final class DocumentStore {
     /// 写盘统一入口。沙盒外文档（iCloud Drive 等 ubiquitous 位置）用
     /// NSFileCoordinator 协调写入，避免与 iCloud 同步守护进程打架；
     /// 此时 security scope 由 scopedURL 持有，协调块内直接写即可。
+    ///
+    /// 判据是 `externalBookmark != nil` **或** `isUbiquitousItem`：
+    /// 早先只判 bookmark——workspace 本身位于 iCloud Drive 时，其中的文档没有
+    /// security-scoped bookmark（externalBookmark == nil）但仍是 ubiquitous item，
+    /// 旧判据下直写绕过协调，与同步守护进程打架（丢更新 / 冲突副本）。
+    /// isUbiquitousItem 的判定与 openDocument 的下载检查是同一把尺子。
     private func writeText(_ text: String, to url: URL) throws {
-        guard externalBookmark != nil else {
+        guard externalBookmark != nil || Self.isUbiquitousItem(url) else {
             try text.write(to: url, atomically: true, encoding: .utf8)
             return
         }
@@ -429,6 +435,14 @@ final class DocumentStore {
         }
         if let writeError { throw writeError }
         if let coordError { throw coordError }
+    }
+
+    /// ubiquitous item 判定（resourceValues）。与 openDocument 的下载检查
+    /// （`.isUbiquitousItemKey`）同一把尺子；取不到资源值时按非 ubiquitous 处理
+    /// （保守：本地文件不会因为这个误判，iCloud 文件拿不到资源值的场景不存在）。
+    private static func isUbiquitousItem(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey]) else { return false }
+        return values.isUbiquitousItem == true
     }
 
     func reloadIfCurrent(_ url: URL) {
@@ -470,7 +484,7 @@ final class DocumentStore {
 
     /// 立刻把待保存内容写盘（若有）。返回错误文案，成功或无待保存内容时返回 nil。
     /// 必须在**改动 sandboxURL / externalBookmark 之前**调用——写盘目标与
-    /// security scope 都还指向旧文档（externalBookmark 决定是否走 NSFileCoordinator）。
+    /// security scope 都还指向旧文档（协调写入判据见 writeText 的注释）。
     private func flushPendingAutosave() -> String? {
         autosaveTask?.cancel()
         autosaveTask = nil

@@ -261,7 +261,7 @@ struct AgentStepView: View {
         .animation(DS.Motion.standard, value: accent)   // 背景颜色平滑过渡
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(accent.opacity(0.22), lineWidth: 1)
+                .strokeBorder(accent.opacity(0.22), lineWidth: DS.Stroke.regular)
                 .animation(DS.Motion.standard, value: accent)
         )
     }

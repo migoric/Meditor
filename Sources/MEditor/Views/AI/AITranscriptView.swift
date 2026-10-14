@@ -81,7 +81,7 @@ extension AIAssistantPanel {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .overlay(
-                                Capsule().strokeBorder(Color.appAccent.opacity(0.5), lineWidth: 1)
+                                Capsule().strokeBorder(Color.appAccent.opacity(0.5), lineWidth: DS.Stroke.regular)
                             )
                         }
                         .buttonStyle(.plain)
@@ -100,7 +100,7 @@ extension AIAssistantPanel {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .overlay(
-                                Capsule().strokeBorder(theme.separator.opacity(0.6), lineWidth: 1)
+                                Capsule().strokeBorder(theme.separator.opacity(0.6), lineWidth: DS.Stroke.regular)
                             )
                         }
                         .buttonStyle(.plain)
@@ -201,7 +201,7 @@ extension AIAssistantPanel {
         .background(theme.editorBackground.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(theme.separator.opacity(0.25), lineWidth: 0.5)
+                .strokeBorder(theme.separator.opacity(0.25), lineWidth: DS.Stroke.hairline)
         )
     }
 
@@ -224,7 +224,7 @@ extension AIAssistantPanel {
             .background(theme.editorBackground.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(theme.separator.opacity(0.25), lineWidth: 0.5)
+                    .strokeBorder(theme.separator.opacity(0.25), lineWidth: DS.Stroke.hairline)
             )
         }
     }
@@ -258,7 +258,7 @@ extension AIAssistantPanel {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .overlay(
-                        Capsule().strokeBorder(theme.separator.opacity(0.6), lineWidth: 1)
+                        Capsule().strokeBorder(theme.separator.opacity(0.6), lineWidth: DS.Stroke.regular)
                     )
                 }
                 .buttonStyle(.plain)

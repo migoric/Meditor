@@ -48,7 +48,7 @@ struct EmptyStateView: View {
                                 .fill(DS.Color.pillBg)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: DS.Radius.sm)
-                                        .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+                                        .stroke(Color.primary.opacity(0.07), lineWidth: DS.Stroke.regular)
                                 )
                         )
                 }

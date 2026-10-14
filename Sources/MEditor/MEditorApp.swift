@@ -36,14 +36,7 @@ struct MEditorApp: App {
                         window.titlebarSeparatorStyle = .none
                         window.isMovableByWindowBackground = true
                     }
-                    // Pre-warm a WKWebView so first file open renders instantly.
-                    WebViewPool.shared.warmUp()
-                    // Restore previous session (root folder + open tabs + selection).
-                    // No-op on first launch or if every bookmark has gone stale.
-                    appState.restoreSession()
-                    // 注入 AppState 并补开冷启动时到达的 Spotlight 点击（须在 restoreSession 之后）。
-                    appDelegate.appState = appState
-                    appDelegate.consumePendingOpens()
+                    bootSequence()
                 }
                 .onOpenURL { url in
                     handleOpenURL(url)
@@ -250,6 +243,22 @@ struct MEditorApp: App {
                 }
             }
         }
+    }
+
+    // MARK: - 冷启动引导
+
+    /// 冷启动引导序列。**三步顺序有依赖，必须依次执行**——此前三步散在 onAppear 的
+    /// 注释块里，靠注释维系顺序（MEditorAppDelegate 自己也承认存在冷启动竞态）。
+    /// 收进一个函数后，顺序成为代码结构的一部分：
+    ///   1. warmUp — 预热 WKWebView，让首次打开文档即时渲染（只读预热，无依赖）；
+    ///   2. restoreSession — 恢复上次会话（根目录 / 打开的 tab / 选中项）；
+    ///   3. 注入 appState 并 consumePendingOpens — 补开冷启动期间到达的 Spotlight 点击。
+    ///      **必须在 restoreSession 之后**：否则恢复会话的落盘状态会覆盖掉刚打开的外部文档。
+    private func bootSequence() {
+        WebViewPool.shared.warmUp()
+        appState.restoreSession()
+        appDelegate.appState = appState
+        appDelegate.consumePendingOpens()
     }
 
     private func installCLI() {

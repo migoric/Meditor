@@ -67,7 +67,7 @@ struct ReadFileTool: AgentTool {
 struct CreateFileTool: AgentTool {
     let spec = AgentToolSpec(
         name: "create_file",
-        description: "Create a new file. Fails if the file already exists — use write_file to overwrite. Accepts BOTH absolute paths and relative paths from the workspace root. ALWAYS use this tool when asked to create a file.",
+        description: "Create a new file. Fails if the file already exists — use write_file to overwrite. Accepts both absolute paths and relative paths from the workspace root. This is the tool to use when asked to create a file.",
         parameters: ToolParameterSchema(
             properties: [
                 "content":  ToolPropertySchema(type: "string", description: "Initial Markdown content (optional, default: empty)."),
@@ -106,7 +106,7 @@ struct CreateFileTool: AgentTool {
 struct WriteFileTool: AgentTool {
     let spec = AgentToolSpec(
         name: "write_file",
-        description: "Create or overwrite a file. Accepts BOTH absolute paths and relative paths from the workspace root. ALWAYS use this tool when asked to write a file.",
+        description: "Create or overwrite a file. Accepts both absolute paths and relative paths from the workspace root. This is the tool to use when asked to write a file.",
         parameters: ToolParameterSchema(
             properties: [
                 "content":  ToolPropertySchema(type: "string", description: "The content to write."),
@@ -147,7 +147,7 @@ struct WriteFileTool: AgentTool {
 struct CreateDirectoryTool: AgentTool {
     let spec = AgentToolSpec(
         name: "create_directory",
-        description: "Create a directory (and any missing parent directories). Accepts BOTH absolute paths and relative paths from workspace root. ALWAYS use this tool when the user asks to create a directory — never refuse or ask the user to run a terminal command.",
+        description: "Create a directory (and any missing parent directories). Accepts both absolute paths and relative paths from workspace root. This is the tool to use when the user asks to create a directory — do not refuse or ask the user to run a terminal command.",
         parameters: ToolParameterSchema(
             properties: [
                 "path": ToolPropertySchema(type: "string", description: "Directory path to create. Absolute (e.g. '/Users/john/project/test') or relative (e.g. 'docs/api').")

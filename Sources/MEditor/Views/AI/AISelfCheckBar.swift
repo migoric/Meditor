@@ -56,7 +56,7 @@ extension AIAssistantPanel {
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.appAccent.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.appAccent.opacity(0.3), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.appAccent.opacity(0.3), lineWidth: DS.Stroke.regular))
     }
 
     /// 点击报告条目：打开/切换到对应文件（返回是否成功）。
