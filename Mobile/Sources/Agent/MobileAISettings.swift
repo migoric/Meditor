@@ -66,6 +66,11 @@ final class MobileAISettings {
     var matchedPreset: AIProviderPreset? { AIPresets.match(baseURL) }
 
     /// 构造共享代码使用的 AIConfig。
+    ///
+    /// `cliPath`/`cliModel` 恒为空：iOS 端没有 Claude CLI 可调（桌面端专属能力），
+    /// 共享代码对空 cliPath 的语义是「不走 CLI 后端」，不是缺失配置。
+    /// `requestTimeoutSeconds` 恒为 300：移动端未暴露超时设置项，与桌面端默认值
+    /// （AppSettings.requestTimeout）对齐；将来若开放设置，改这一处常量即可。
     func makeConfig() -> AIConfig {
         AIConfig(
             kind: provider,
@@ -74,7 +79,10 @@ final class MobileAISettings {
             cliPath: "",
             cliModel: "",
             apiKey: apiKey.trimmingCharacters(in: .whitespaces),
-            requestTimeoutSeconds: 300
+            requestTimeoutSeconds: Self.defaultRequestTimeoutSeconds
         )
     }
+
+    /// 移动端固定请求超时（秒）：桌面端 AppSettings.requestTimeout 的默认值。
+    static let defaultRequestTimeoutSeconds = 300
 }
