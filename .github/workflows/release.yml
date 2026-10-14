@@ -172,7 +172,7 @@ jobs:
           test "$LOCAL_LEN" = "$REMOTE_LEN" && echo "update feed verified ($REMOTE_LEN bytes)"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: MEditor-*.zip
           draft: false
