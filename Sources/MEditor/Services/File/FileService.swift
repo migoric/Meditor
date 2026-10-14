@@ -29,6 +29,33 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
         ".build", ".swp", ".lock", "node_modules"
     ]
 
+    /// 文档扩展名白名单：左侧文档列表（FileSidebar）筛选用的最小集。
+    static let documentExtensions: Set<String> = ["md", "html"]
+
+    /// 枚举目录下的文档文件（.md / .html），按文件名升序。
+    ///
+    /// 收口点：早先 FileSidebar 自己 `FileManager.contentsOfDirectory` 直接列目录
+    /// （View 层越层触碰文件系统，且与 FileService 的枚举规则各写一份）。现由
+    /// Service 层提供原语，View 只做渲染。
+    /// nonisolated 语义（static 本身即 nonisolated）：纯 FileManager 操作、不触
+    /// 视图状态，允许在后台队列调用（refreshDocFiles 的运行环境）。
+    /// 取不到目录内容时返回空数组（调用方按空列表渲染，不区分错误）。
+    static func listDocumentFiles(at url: URL?) -> [URL] {
+        guard let url else { return [] }
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return contents
+            .filter { candidate in
+                guard let values = try? candidate.resourceValues(forKeys: [.isDirectoryKey]) else { return false }
+                return values.isDirectory == false
+                    && documentExtensions.contains(candidate.pathExtension.lowercased())
+            }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     /// Load immediate children of a directory (one level only).
     func loadImmediateChildren(of directory: URL) -> [FileItem] {
         guard let urls = try? fm.contentsOfDirectory(
