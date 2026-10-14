@@ -71,7 +71,7 @@ struct OpenFileTool: AgentTool {
 struct GetHTMLTemplateTool: AgentTool {
     let spec = AgentToolSpec(
         name: "get_html_template",
-        description: "Get MEditor's built-in HTML document template (a complete HTML document with inlined <style>). ALWAYS call this first when creating or restyling an HTML file, and use the returned template as the base — do NOT invent your own CSS or strip the template's styles. Styles: 'doc' (default — styled document), 'craft' (modern cards), 'tufte' (serif academic), 'dark' (dark code style).",
+        description: "Get MEditor's built-in HTML document template (a complete HTML document with inlined <style>). Call this first when creating or restyling an HTML file, and use the returned template as the base — do not invent your own CSS or strip the template's styles. Styles: 'doc' (default — styled document), 'craft' (modern cards), 'tufte' (serif academic), 'dark' (dark code style).",
         parameters: ToolParameterSchema(
             properties: [
                 "style": ToolPropertySchema(type: "string", description: "Template style: doc | craft | tufte | dark. Default: doc.")

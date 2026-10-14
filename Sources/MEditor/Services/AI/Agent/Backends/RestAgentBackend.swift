@@ -30,7 +30,7 @@ struct RestAgentBackend: AgentBackend {
     /// 可注入的 URLSession（测试用）。nil 时使用进程级共享 session（复用连接池）。
     let sessionOverride: (any URLSessionDataProtocol)?
 
-    /// 429/503 重试的初始退避间隔（纳秒），每次重试翻倍。可注入（测试用），默认 1s。
+    /// 429/5xx 重试的初始退避间隔（纳秒），每次重试翻倍。可注入（测试用），默认 1s。
     let retryBaseDelayNs: UInt64
 
     init(config: AIConfig, wire: WireProtocol, session: (any URLSessionDataProtocol)? = nil,
@@ -76,7 +76,12 @@ struct RestAgentBackend: AgentBackend {
         }
     }
 
-    // MARK: - Retry helper（429 / 503 指数退避，最多重试 2 次）
+    // MARK: - Retry helper（429 / 5xx 指数退避，最多重试 2 次）
+
+    /// 可重试的服务端状态码：429（限流）/ 503（过载）之外补上 500 / 502 / 504——
+    /// 网关与负载均衡后的临时故障同样常以这些码返回，重试一次大概率即恢复；
+    /// 400/401/403/404/422 等确定性错误不重试（原样抛出，见下方 catch）。
+    private static let retryableStatusCodes: Set<Int> = [429, 500, 502, 503, 504]
 
     private func withRetry<T: Sendable>(
         maxAttempts: Int = 3,
@@ -87,9 +92,9 @@ struct RestAgentBackend: AgentBackend {
         for attempt in 1...maxAttempts {
             do {
                 return try await block()
-            } catch AIError.server(let code, let body) where (code == 429 || code == 503) && attempt < maxAttempts {
+            } catch AIError.server(let code, let body) where Self.retryableStatusCodes.contains(code) && attempt < maxAttempts {
                 // 保留真实错误（含响应体）：走到耗尽分支时抛出的必须是真实错误，
-                // 不能换成 "retrying" 占位文案把 429/503 的 body 丢掉
+                // 不能换成 "retrying" 占位文案把可重试状态码的 body 丢掉
                 lastError = AIError.server(code, body)
                 // 退避期间任务被取消：Task.sleep 会抛 CancellationError 并向上传播
                 // （不用 try?，否则会吞掉取消信号，退避结束后仍会再发一次请求）。
@@ -122,7 +127,7 @@ struct RestAgentBackend: AgentBackend {
         onTextChunk: @escaping @Sendable (String) -> Void
     ) async throws -> AgentCompletionResponse {
         let req = try openAIRequest(messages: messages, tools: tools, stream: true)
-        // 建连/首响应阶段纳入 429/503 重试；拿到 2xx 开始消费事件流后不再重试（避免重复输出）
+        // 建连/首响应阶段纳入 429/5xx 重试；拿到 2xx 开始消费事件流后不再重试（避免重复输出）
         let bytes = try await withRetry {
             let (bytes, response) = try await resolvedSession.bytes(for: req)
             guard let http = response as? HTTPURLResponse else { throw AIError.network("invalid response") }
@@ -217,7 +222,7 @@ struct RestAgentBackend: AgentBackend {
         onTextChunk: @escaping @Sendable (String) -> Void
     ) async throws -> AgentCompletionResponse {
         let req = try anthropicRequest(messages: messages, tools: tools, stream: true)
-        // 建连/首响应阶段纳入 429/503 重试；拿到 2xx 开始消费事件流后不再重试（避免重复输出）
+        // 建连/首响应阶段纳入 429/5xx 重试；拿到 2xx 开始消费事件流后不再重试（避免重复输出）
         let bytes = try await withRetry {
             let (bytes, response) = try await resolvedSession.bytes(for: req)
             guard let http = response as? HTTPURLResponse else { throw AIError.network("invalid response") }
