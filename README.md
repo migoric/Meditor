@@ -68,6 +68,8 @@ Pure SwiftUI + AppKit — **no Electron**. Bring-your-own-key — **your documen
 - **LAN share** — Built-in HTTP server with one-time token auth; one-click **Gist** publishing too
 - **Online publish** — One-click publish via Cloudflare. Hosted free tier: 20 docs/month per token, links expire after 30 days; Pro (early access) removes both limits
 - **iOS companion** — Edit, chat, and publish over iCloud from your phone
+  (not yet on the App Store; build from source: open `Mobile/MEditorMobile.xcodeproj`
+  in Xcode 26+, select your own signing team, iOS 17+ simulator or device)
 - **Presentation & focus modes**, HTML / PDF / 2× PNG export, preview themes (GitHub / Nord / Dracula)
 - **Pre-flight export checks** — PDF/HTML export first diagnoses dead links, missing images, and heading problems (can be turned off in Settings)
 - **PDF export themes** — Paper size, margins, header/footer, and an optional cover page; the default export keeps links clickable
@@ -97,6 +99,10 @@ More on the [website](https://meditorapp.pages.dev).
 - **Xcode** 26+ — `Package.swift` is `swift-tools-version: 6.2`, so older Xcode
   cannot even load the package
 - **Swift** 6.2+ (app and test targets in Swift 6 language mode, strict concurrency)
+
+> **First launch:** the release build is ad-hoc signed (not notarized yet), so macOS
+> may warn once about an unidentified developer. Right-click `MEditor.app` → **Open**,
+> then confirm. Afterwards it launches normally, including in-app updates.
 
 ## 🔧 Build & Run
 
@@ -147,6 +153,14 @@ The app version has a single source of truth per platform — **this is where yo
 - **iOS**: edit `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in `Mobile/MEditorMobile.xcodeproj` (target build settings). `Mobile/MEditorMobile/Info.plist` references them as `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`.
 
 Run `make version` to see the current version and these pointers.
+
+### Stability
+
+Pre-1.0, but boring on purpose: semantic versioning, a CHANGELOG entry for every
+release, and breaking changes called out explicitly — there have been none so far.
+Update packages are Ed25519-signed and verified by Sparkle before install.
+**1.0 criteria:** today's feature set ships stable for a full release cycle —
+no date promised, no features held back.
 
 ### Open in Xcode
 
@@ -253,6 +267,8 @@ MEditor/
 **Later**
 - [ ] Multi-window support
 - [ ] Editor font/size preferences
+- [ ] LaTeX math rendering in the preview
+- [ ] Developer-ID signing + notarization (removes the first-launch right-click)
 
 ---
 

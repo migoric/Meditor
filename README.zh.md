@@ -67,7 +67,7 @@ MEditor 是 **macOS 上给技术人写文档的 Agent 工作台**。核心闭环
 
 - **局域网分享** — 内置 HTTP 服务，一次性令牌鉴权；也支持一键发布 **Gist**
 - **在线发布** — 经 Cloudflare 一键发布到公网。托管免费档：每个 token 每月 20 篇、链接保留 30 天；Pro（Early access）不限量、永不过期
-- **iOS 伴侣** — 在手机上通过 iCloud 编辑、聊天、发布
+- **iOS 伴侣** — 在手机上通过 iCloud 编辑、聊天、发布（暂未上架 App Store；源码构建：Xcode 26+ 打开 `Mobile/MEditorMobile.xcodeproj`，选自己的签名团队，iOS 17+ 模拟器或真机）
 - **放映模式与专注模式**，HTML / PDF / 2× PNG 导出，预览主题（GitHub / Nord / Dracula）
 - **导出前检查** — 导出 PDF/HTML 前自动诊断死链、缺图、标题问题（设置可关）
 - **PDF 导出主题** — 纸张、边距、页眉页脚、封面页可选；默认导出的 PDF 保留可点击链接
@@ -81,6 +81,10 @@ MEditor 是 **macOS 上给技术人写文档的 Agent 工作台**。核心闭环
 - **macOS** 14.0+ (Sonoma) · **iOS** 17.0+（伴生 App）
 - **Xcode** 26+ —— `Package.swift` 是 `swift-tools-version: 6.2`，旧版 Xcode 连包都加载不了
 - **Swift** 6.2+ (app and test targets in Swift 6 language mode, strict concurrency)
+
+> **首次启动**：发布构建目前是 ad-hoc 签名（尚未公证），macOS 可能提示一次
+> 「无法验证开发者」。右键 `MEditor.app` → **打开** 并确认即可，之后正常启动，
+> 应用内自动更新不受影响。
 
 ## 🔧 构建与运行
 
@@ -138,6 +142,12 @@ open .build/debug/MEditor.app
 - **iOS**：编辑 `Mobile/MEditorMobile.xcodeproj` 的构建设置 `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`。`Mobile/MEditorMobile/Info.plist` 通过 `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` 引用它们。
 
 运行 `make version` 可查看当前版本号和上述提示。
+
+### 稳定性承诺
+
+Pre-1.0，但刻意保持无聊：语义化版本号、每个发布版都有 CHANGELOG 条目、破坏性变更
+显式标注——至今没有过。更新包带 Ed25519 签名，Sparkle 安装前先验签。
+**1.0 判据**：当前功能集稳定跑完一个完整发布周期——不承诺日期，不预留功能。
 
 ### 在 Xcode 中打开
 
@@ -244,6 +254,8 @@ MEditor/
 **后续**
 - [ ] 多窗口支持
 - [ ] 编辑器字体/字号偏好
+- [ ] 预览支持 LaTeX 数学公式渲染
+- [ ] Developer-ID 签名 + 公证（去掉首次启动的右键步骤）
 - [ ] iOS 端补齐 macOS 已有能力：行内 diff 审阅 UI、本地历史、MCP server/client、
       局域网分享、PDF 导出、Todo/日历、Gist。iOS 端的定位是「编辑 / 聊天 / 发布」的
       精简伴侣（见上「iOS 伴侣」），这些能力在 `Mobile/` 下确实没有对应实现 ——
