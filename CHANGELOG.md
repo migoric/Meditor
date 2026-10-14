@@ -28,6 +28,15 @@
 
 ### Fixed
 
+- **左侧面板展开后文件 tab 栏消失**：tab 条宽度此前按侧栏的**理想宽**（恒为 260）
+  估算，而真实列宽由用户拖拽决定（220...320）。拖宽侧栏后算出的 tab 条超出 detail 列
+  可用宽度，macOS 对超宽的 toolbar item 不裁剪而是整体塞进 `>>` 溢出菜单，于是整条 tab
+  栏不见了。改为实测真实列宽（FileSidebar 的 GeometryReader 回传），理想宽只作兜底。
+- **HTML 预览里本地相对路径图片不显示**：HTML 预览的 baseURL 是合成的
+  `https://localhost/`（为了让内嵌 CDN 脚本能加载——WKWebView 会拦 `file://` 页面的
+  外部网络请求），代价是 `<img src="images/a.png">` 被解析到 `https://localhost/…`
+  而加载失败。现在额外注入 `<base href="meditor-asset://…文档目录/">`，本地图片与 CDN
+  脚本两者兼得（复用 markdown 预览已有的同一套 scheme handler 与敏感目录拦截）。
 - **RestAgentBackend 的可重试状态码从 429/503 扩为 429 + 5xx（500/502/503/504）**：
   网关与负载均衡后的临时故障同样常以 5xx 返回，重试一次大概率即恢复；400/401/403/404/422
   等确定性错误仍不重试。

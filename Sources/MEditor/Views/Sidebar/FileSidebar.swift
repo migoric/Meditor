@@ -84,6 +84,24 @@ struct FileSidebar: View {
             )
         }
         .background(.clear)
+        // 把**实测**列宽回传 workspaceUI：toolbar 里 tab 条的宽度必须按真实列宽
+        // 算，不能用 sidebarWidth 那个理想宽（260）——用户把侧栏拖到 320 时，
+        // 按 260 算出来的 tab 条会超出 detail 列，macOS 直接把整个 toolbar item
+        // 塞进 ">>" 溢出菜单，整条 tab 栏消失（左侧面板展开后 tab 不显示的根因）。
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        workspaceUI.setMeasuredSidebarWidth(
+                            proxy.size.width,
+                            isVisible: workspaceUI.showsSidebarInLayout
+                        )
+                    }
+                    .onChange(of: proxy.size.width) { _, w in
+                        workspaceUI.setMeasuredSidebarWidth(w, isVisible: workspaceUI.showsSidebarInLayout)
+                    }
+            }
+        }
         .onChange(of: state.selectedTabID) { _, _ in
             expandToSelectedFile()
         }
