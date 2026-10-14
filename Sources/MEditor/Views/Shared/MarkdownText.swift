@@ -168,7 +168,12 @@ struct MarkdownText: View {
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(secondaryColor.opacity(0.22), lineWidth: DS.Stroke.regular)
+                // ⚠️ 此处刻意用字面量 1 而非 DS.Stroke.regular：本文件在 iOS target
+                // 的共享清单里（Mobile/MEditorMobile.xcodeproj 直接引用
+                // ../Sources/MEditor/Views/Shared/MarkdownText.swift），但定义 `DS`
+                // 的 DesignTokens.swift **不在**那份清单里 ⇒ iOS 侧编译不到 `DS`。
+                // 共享文件不能引用仅桌面端可见的 token。
+                .strokeBorder(secondaryColor.opacity(0.22), lineWidth: 1)
         )
     }
 
@@ -509,7 +514,7 @@ private struct CodeBlockView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(secondaryColor.opacity(0.16), lineWidth: DS.Stroke.regular)
+                .strokeBorder(secondaryColor.opacity(0.16), lineWidth: 1)
         )
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.12), value: hovered)
