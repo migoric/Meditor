@@ -132,14 +132,7 @@ final class HTMLAssetBaseInjectorTests: XCTestCase {
         let html = "<html><head></head><body><img src=\"images/a.png\"></body></html>"
         let out = HTMLAssetBaseInjector.injectingBase(hinto: html, directory: docs)
 
-        // ⚠️ 用字面量而非 `range(of:options:.regularExpression)`：Swift 6 下后者
-        // 的返回类型在 String / AttributedString 之间产生歧义，Range 的
-        // 初始化随之编译失败。这里只需要定位标签起点，不需要正则。
-        let marker = "<base href=\""
-        guard let baseTagRange: Range<String.Index> = out.range(of: marker) else {
-            return XCTFail("未找到 base 标签：\(out)")
-        }
-        let href = Self.hrefValue(String(out[baseTagRange.upperBound...]))
+        let href = try Self.extractBaseHref(from: out)
 
         guard let baseURL = URL(string: href),
               let resolved = URL(string: "images/a.png", relativeTo: baseURL) else {
@@ -156,16 +149,84 @@ final class HTMLAssetBaseInjectorTests: XCTestCase {
         let html = "<html><head></head><body><img src=\"../assets/b.png\"></body></html>"
         let out = HTMLAssetBaseInjector.injectingBase(hinto: html, directory: docs)
 
-        let marker = "<base href=\""
-        guard let baseTagRange: Range<String.Index> = out.range(of: marker) else {
-            return XCTFail("未找到 base 标签：\(out)")
-        }
-        let href = Self.hrefValue(String(out[baseTagRange.upperBound...]))
+        let href = try Self.extractBaseHref(from: out)
         guard let baseURL = URL(string: href),
               let resolved = URL(string: "../assets/b.png", relativeTo: baseURL) else {
             return XCTFail("href 不是合法 URL：\(href)")
         }
         let decoded = try XCTUnwrap(resolved.path.removingPercentEncoding)
         XCTAssertEqual((decoded as NSString).standardizingPath, "/Users/test/assets/b.png")
+    }
+
+    // MARK: - 绝对路径（无 host，以 `/` 开头）
+
+    /// `/Users/me/a.png` 这类写法**也**能用——这一点曾被误判为「已知限制」。
+    ///
+    /// 依据：RFC 3986 的 absolute-path reference 只继承 base 的 scheme + authority，
+    /// 路径部分原样保留。我们的 base 恰是 `meditor-asset://local/`，于是它被同化成
+    /// `meditor-asset://local/Users/me/a.png`，handler 能解出 `/Users/me/a.png`。
+    ///
+    /// 这条断言是**回归护栏**：若有人把 base 改回 `https://localhost/`
+    /// （比如为了「简化」），绝对路径会静默退化成 `https://localhost/Users/me/a.png`
+    /// 而全部失效——而相对路径的测试仍然会过，看不出问题。
+    func test_absolutePathWithoutHost_resolvesToAssetScheme() throws {
+        let html = "<html><head></head><body><img src=\"/Users/me/a.png\"></body></html>"
+        let out = HTMLAssetBaseInjector.injectingBase(hinto: html, directory: docs)
+
+        let href = try Self.extractBaseHref(from: out)
+        guard let baseURL = URL(string: href),
+              let resolved = URL(string: "/Users/me/a.png", relativeTo: baseURL) else {
+            return XCTFail("href 不是合法 URL：\(href)")
+        }
+
+        XCTAssertEqual(resolved.scheme, "meditor-asset",
+                       "绝对路径必须继承 base 的 meditor-asset scheme，否则图片加载失败")
+        let decoded = try XCTUnwrap(resolved.path.removingPercentEncoding)
+        XCTAssertEqual((decoded as NSString).standardizingPath, "/Users/me/a.png")
+    }
+
+    func test_absolutePathWithSpaces_roundTrips() throws {
+        let html = "<html><head></head><body><img src=\"/Users/me/My Docs/d.png\"></body></html>"
+        let out = HTMLAssetBaseInjector.injectingBase(hinto: html, directory: docs)
+
+        let href = try Self.extractBaseHref(from: out)
+        guard let baseURL = URL(string: href),
+              let resolved = URL(string: "/Users/me/My%20Docs/d.png", relativeTo: baseURL) else {
+            return XCTFail("href 不是合法 URL：\(href)")
+        }
+        let decoded = try XCTUnwrap(resolved.path.removingPercentEncoding)
+        XCTAssertEqual((decoded as NSString).standardizingPath, "/Users/me/My Docs/d.png",
+                       "带空格的绝对路径必须正确解出")
+    }
+
+    /// 顺带锁住对照事实：`file:///` 形态**不**受 base 影响（RFC 3986 里它是
+    /// 带 scheme 的绝对 URL）。这是唯一仍不通的形态，如实钉住以免有人误以为
+    /// 「所有绝对路径都通了」而去改 base。
+    func test_fileURLScheme_isNotAffectedByBase() throws {
+        let html = "<html><head></head><body><img src=\"file:///Users/me/c.png\"></body></html>"
+        let out = HTMLAssetBaseInjector.injectingBase(hinto: html, directory: docs)
+
+        let href = try Self.extractBaseHref(from: out)
+        guard let baseURL = URL(string: href),
+              let resolved = URL(string: "file:///Users/me/c.png", relativeTo: baseURL) else {
+            return XCTFail("href 不是合法 URL：\(href)")
+        }
+        XCTAssertEqual(resolved.scheme, "file",
+                       "file:// 是带 scheme 的绝对 URL，<base> 按规范管不到它（唯一不通的形态）")
+    }
+
+    /// 抽出注入的 base href 值。
+    ///
+    /// ⚠️ 用字面量匹配而非 `range(of:options:.regularExpression)`：Swift 6 下后者
+    /// 的返回类型在 `String` / `AttributedString` 之间产生歧义，紧随其后的
+    /// `Range(...)` 初始化会以「requires the types 'String.Index' and
+    /// 'AttributedString.Index' be equivalent」编译失败。这里只需定位标签起点，
+    /// 字面量足够，还顺带省掉一次正则编译。
+    private static func extractBaseHref(from html: String) throws -> String {
+        let marker = "<base href=\""
+        guard let range: Range<String.Index> = html.range(of: marker) else {
+            throw XCTSkip("未找到 base 标签：\(html)")
+        }
+        return hrefValue(String(html[range.upperBound...]))
     }
 }
