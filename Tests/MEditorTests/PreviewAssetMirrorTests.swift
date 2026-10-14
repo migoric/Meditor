@@ -209,4 +209,135 @@ final class PreviewAssetMirrorTests: XCTestCase {
         let decoded = try JSONDecoder().decode(String.self, from: data)
         XCTAssertEqual(decoded, payload)
     }
+
+    // MARK: - Mermaid 按需供给（provisionMermaid）
+
+    /// 造一个含 mermaid.min.js 的合成源目录。
+    private func makeMermaidSource(contents: String = "MERMAID-PAYLOAD") throws -> URL {
+        let source = tempDir.appendingPathComponent("MermaidSrc", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try contents.write(to: source.appendingPathComponent("mermaid.min.js"),
+                           atomically: true, encoding: .utf8)
+        return source
+    }
+
+    private func makeCacheDir(_ name: String) throws -> URL {
+        let cache = tempDir.appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        return cache
+    }
+
+    /// 首调必须真的把 mermaid.min.js 拷进缓存目录（内容一致），
+    /// 且二次调用是纯 no-op（置位后不再碰文件系统）。
+    func test_provisionMermaid_copiesOnFirstCall_andIsIdempotent() throws {
+        PreviewAssetMirror.resetMermaidProvisionedForTesting()
+        defer { PreviewAssetMirror.resetMermaidProvisionedForTesting() }
+
+        let source = try makeMermaidSource()
+        let cache = try makeCacheDir("MermaidCache")
+        let dst = cache.appendingPathComponent("mermaid.min.js")
+
+        PreviewAssetMirror.provisionMermaid(from: source, at: cache)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dst.path),
+                      "首调必须拷贝 mermaid.min.js 到缓存目录")
+        XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "MERMAID-PAYLOAD")
+
+        // 幂等性：把目标替换成哨兵值后再调，必须原样不动。
+        // （此时标志已置位、目标文件也存在，两条短路任一成立都必须是 no-op；
+        // 标志的独立贡献——无源场景仍置位——由下面 missingSource 测试钉住。）
+        try "SENTINEL".write(to: dst, atomically: true, encoding: .utf8)
+        PreviewAssetMirror.provisionMermaid(from: source, at: cache)
+        XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "SENTINEL",
+                       "标志已置位，二次调用必须是 no-op")
+    }
+
+    /// 缓存里已有 mermaid.min.js（上次预览留下）时不重复拷贝。
+    func test_provisionMermaid_existingDestination_skipsCopy() throws {
+        PreviewAssetMirror.resetMermaidProvisionedForTesting()
+        defer { PreviewAssetMirror.resetMermaidProvisionedForTesting() }
+
+        let source = try makeMermaidSource()
+        let cache = try makeCacheDir("ExistingCache")
+        let dst = cache.appendingPathComponent("mermaid.min.js")
+        try "CUSTOM".write(to: dst, atomically: true, encoding: .utf8)
+
+        PreviewAssetMirror.provisionMermaid(from: source, at: cache)
+
+        XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "CUSTOM",
+                       "目标已存在时必须保留，不覆盖")
+    }
+
+    /// 源里没有 mermaid.min.js（打包缺文件）时不崩、不拷贝，但标志仍置位
+    /// ——每次预览打开都重试 stat 没有意义。后验：置位后源再出现也不补拷。
+    func test_provisionMermaid_missingSource_setsFlagAndStopsRetrying() throws {
+        PreviewAssetMirror.resetMermaidProvisionedForTesting()
+        defer { PreviewAssetMirror.resetMermaidProvisionedForTesting() }
+
+        let source = tempDir.appendingPathComponent("EmptyMermaidSrc", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        let cache = try makeCacheDir("MissingSrcCache")
+        let dst = cache.appendingPathComponent("mermaid.min.js")
+
+        PreviewAssetMirror.provisionMermaid(from: source, at: cache)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dst.path), "无源时不得凭空造文件")
+
+        // 源随后出现（模拟延迟挂载）：标志已置位，仍然不拷——证明真的置位了。
+        try "LATE".write(to: source.appendingPathComponent("mermaid.min.js"),
+                         atomically: true, encoding: .utf8)
+        PreviewAssetMirror.provisionMermaid(from: source, at: cache)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dst.path),
+                       "标志置位后即使源出现也不补拷（每次预览打开不重试）")
+    }
+
+    /// 并发首调：8 个上下文同时首次触发，必须全部安全返回、文件恰好一份、
+    /// 内容正确。锁的真正价值（消除 nonisolated(unsafe) 逃逸、避免重复
+    /// copyItem 被 try? 静默吞掉）在本环境无法确定性验证——无锁时本测试
+    /// 大概率仍绿（后到者 copyItem 失败也被 try? 吞掉），其确定性部分是
+    /// 「不挂住、不崩、拷出来的内容对」。
+    func test_provisionMermaid_concurrentFirstCalls_areSafeAndCopyOnce() throws {
+        PreviewAssetMirror.resetMermaidProvisionedForTesting()
+        defer { PreviewAssetMirror.resetMermaidProvisionedForTesting() }
+
+        let source = try makeMermaidSource()
+        let cache = try makeCacheDir("ConcurrentCache")
+        let dst = cache.appendingPathComponent("mermaid.min.js")
+
+        let group = DispatchGroup()
+        let queue = DispatchQueue(
+            label: "mermaid-provision-\(UUID().uuidString)",
+            attributes: .concurrent
+        )
+        for _ in 0..<8 {
+            queue.async(group: group) {
+                PreviewAssetMirror.provisionMermaid(from: source, at: cache)
+            }
+        }
+        XCTAssertEqual(group.wait(timeout: .now() + 10), .success, "并发首调不应挂住")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dst.path))
+        XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "MERMAID-PAYLOAD",
+                       "并发首调后文件内容必须完整（不是半个写入）")
+    }
+
+    // MARK: - Mermaid 按需供给（ensureMermaidProvisioned 包装层）
+
+    /// ensure 包装层的降级语义：资源定位不到时不得崩。
+    ///
+    /// 实证：`swift test` 下 `PreviewResourceLocator.resourcesRoot()` 解析为
+    /// nil（Bundle.main 是 Xcode 的 xctest 启动器 `/Applications/Xcode.app/
+    /// Contents/Developer/usr/bin`，三个候选路径全部落空），所以本测试实际
+    /// 跑的就是「定位失败」分支——断言它安静返回即可；拷贝路径的覆盖由上面
+    /// 4 个 provisionMermaid 直接测试承担。
+    func test_ensureMermaidProvisioned_unresolvedResources_staysSilent() {
+        PreviewAssetMirror.resetMermaidProvisionedForTesting()
+        defer { PreviewAssetMirror.resetMermaidProvisionedForTesting() }
+
+        let cache = tempDir.appendingPathComponent("EnsureCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+
+        // 不得抛、不得崩；本环境定位不到资源，预期不产生任何文件。
+        PreviewAssetMirror.ensureMermaidProvisioned(at: cache)
+        PreviewAssetMirror.ensureMermaidProvisioned(at: cache)
+    }
 }

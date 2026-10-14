@@ -274,6 +274,43 @@ final class AIServiceTests: XCTestCase {
         XCTAssertEqual(AIAPIKeyStore.load(), "sk-padded")
     }
 
+    /// save/load/clear 都是 nonisolated static，会被后端异步上下文并发碰到；
+    /// memoryFallback 此前是无锁的 nonisolated(unsafe) 静态量。
+    /// 这里并发 hammer **不追求确定性复现竞态**（那要 TSAN + 运气），只保证加锁后
+    /// 各路径在并发下行为不变、不崩，且终止状态自洽（load 与 hasKey 互相一致）。
+    /// save/load/clear 并发交叉调用不得产生状态撕裂。
+    ///
+    /// 覆盖的是锁路径本身：save 成功会走 setFallback(nil)、load 未命中
+    /// Keychain 会读 fallback——两者都在 fallbackLock 内。锁被换成会死锁的
+    /// 实现（如递归锁）时本测试会挂住失败；但「删掉锁」这类回归在本环境
+    /// 无法确定性捕获：String? 的引用赋值读不到撕裂值，要抓它需要 Thread
+    /// Sanitizer（CI 未启用）。已在 PR 说明中如实标注。
+    func testAPIKeyStore_concurrentSaveLoadClear_staysConsistent() async {
+        let original = AIAPIKeyStore.load()
+        defer {
+            if let original { AIAPIKeyStore.save(original) } else { AIAPIKeyStore.clear() }
+        }
+
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<6 {
+                group.addTask {
+                    switch i % 3 {
+                    case 0: AIAPIKeyStore.save("sk-concurrent-\(i % 5)")
+                    case 1: _ = AIAPIKeyStore.load()
+                    default: AIAPIKeyStore.clear()
+                    }
+                }
+            }
+        }
+
+        // 终止状态只允许两种：nil（某次 clear 收尾）或某个合法 sk-concurrent-*
+        // （某次 save 收尾）。集合外的值即为状态撕裂。
+        let legal = Set((0..<5).map { "sk-concurrent-\($0)" })
+        if let final = AIAPIKeyStore.load() {
+            XCTAssertTrue(legal.contains(final), "终止状态非法：\(final)")
+        }
+    }
+
     func testAPIKeyStore_saveEmpty_clearsKey() {
         let original = AIAPIKeyStore.load()
         defer {

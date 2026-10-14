@@ -14,6 +14,7 @@ import XCTest
 //   B16 停滞检测（规则 2）：换参反复失败 4 步 → 中断
 //   B17 停滞检测（规则 3）：调用成功但结果重复、连续零进展 → 中断
 //   B18 规则 3 不误杀：重复被新结果打断 → 不判定停滞
+//   B19 超时与步数预算联动：30 步仍是 300s，100 步跟着放大到 1000s
 //
 // mock 模式沿用 AgentRunnerMultiTurnTests（其 mock 为 private，这里自带等价实现）。
 
@@ -566,6 +567,22 @@ final class AgentRunnerStabilityTests: XCTestCase {
         XCTAssertTrue(ctx.writtenContents.isEmpty, "已取消的 run 不得再写入文档")
         XCTAssertEqual(ctx.currentDocument, "Initial document content")
         XCTAssertEqual(backend.receivedMessages.count, 1, "取消后不应再发后端请求")
+    }
+
+    // MARK: - B19 超时与步数预算联动
+    //
+    // 背景：timeoutSeconds 曾硬编码 300s，而 aiAgentMaxSteps 是用户可配的
+    // （设置页允许 5–100）。调到 100 步时墙钟先到，后半程永远走不到，且报错
+    // 只说是「超时」，误导成任务太重而不是预算没给足。
+    func test_B19_timeoutScalesWithStepBudget() {
+        XCTAssertEqual(AgentRunner(maxSteps: 30).timeoutSeconds, 300,
+                       "30 步应与历史默认 300s 一致——不改默认行为")
+        XCTAssertEqual(AgentRunner(maxSteps: 5).timeoutSeconds, 300,
+                       "步数很少时保留下限 300s")
+        XCTAssertEqual(AgentRunner(maxSteps: 100).timeoutSeconds, 1000,
+                       "设置页允许 100 步，总超时必须跟上（100 × 10s）")
+        XCTAssertEqual(AgentRunner(maxSteps: 0).timeoutSeconds, 300,
+                       "0 步是退化输入，保留下限而不是 0s（0 = 不限的语义不能被误触发）")
     }
 
     // MARK: - Helpers

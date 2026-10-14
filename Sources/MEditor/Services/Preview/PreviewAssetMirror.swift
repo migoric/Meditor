@@ -96,20 +96,53 @@ enum PreviewAssetMirror {
 
     // MARK: - Mermaid (on-demand)
 
+    /// 首次按需拷贝 mermaid.min.js 到预览缓存目录的标志。
+    /// ensureMermaidProvisioned 是 nonisolated static，多个预览可能并发首次触发
+    /// ⇒ 无锁时两个上下文都会看到 false、都去 copyItem，第二个撞上已存在的目标文件
+    /// 静默失败（try? 吞掉），表现为「偶发没有 mermaid」。
+    private static let mermaidLock = NSLock()
     nonisolated(unsafe) private static var mermaidProvisioned = false
 
     /// Copy mermaid.min.js into the preview cache dir on first need.
+    ///
+    /// 资源定位与拷贝分离：定位（依赖 Bundle 布局）在这里，锁内的
+    /// 「检查 + 拷贝 + 置位」在 `provisionMermaid(from:at:)`。拆分让测试
+    /// 能注入合成源目录——`swift test` 下 `PreviewResourceLocator` 依赖的
+    /// `Bundle.main` 是 Xcode 的 xctest 启动器（实测解析为 nil），不拆的
+    /// 话这段拷贝逻辑在测试里一行都跑不到。
     static func ensureMermaidProvisioned(at cacheDir: URL, fileManager fm: FileManager = .default) {
-        guard !mermaidProvisioned else { return }
-        let dst = cacheDir.appendingPathComponent("mermaid.min.js")
-        if fm.fileExists(atPath: dst.path) { mermaidProvisioned = true; return }
+        // 定位失败不置位：下次预览打开还可重试（打包缺文件时不该永久放弃）。
         guard let root = PreviewResourceLocator.resourcesRoot() else { return }
-        let src = root.appendingPathComponent("mermaid.min.js")
-        if fm.fileExists(atPath: src.path) {
-            try? fm.copyItem(at: src, to: dst)
-        }
-        mermaidProvisioned = true
+        provisionMermaid(from: root, at: cacheDir, fileManager: fm)
     }
+
+    /// 锁内的「检查 + 拷贝 + 置位」。`sourceRoot` 是含 mermaid.min.js 的目录。
+    ///
+    /// 整个临界区持锁：只锁检查的话，两个上下文会先后通过检查再重复拷贝，
+    /// 第二个 copyItem 撞上已存在的目标文件、被 try? 静默吞掉——表现为
+    /// 「偶发没有 mermaid」。首调是启动期一次性动作，持锁成本可忽略。
+    static func provisionMermaid(from sourceRoot: URL,
+                                 at cacheDir: URL,
+                                 fileManager fm: FileManager = .default) {
+        mermaidLock.withLock {
+            guard !mermaidProvisioned else { return }
+            let dst = cacheDir.appendingPathComponent("mermaid.min.js")
+            if fm.fileExists(atPath: dst.path) { mermaidProvisioned = true; return }
+            let src = sourceRoot.appendingPathComponent("mermaid.min.js")
+            if fm.fileExists(atPath: src.path) {
+                try? fm.copyItem(at: src, to: dst)
+            }
+            mermaidProvisioned = true
+        }
+    }
+
+    #if DEBUG
+    /// 测试专用复位：mermaidProvisioned 是进程级静态标志，一旦置位对后续测试
+    /// 一直可见（跨测试用例污染）。仅 DEBUG 编译，不进 Release 包。
+    static func resetMermaidProvisionedForTesting() {
+        mermaidLock.withLock { mermaidProvisioned = false }
+    }
+    #endif
 
     // MARK: - Template preparation
 

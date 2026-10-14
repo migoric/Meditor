@@ -105,6 +105,11 @@ actor MCPStdioTransport: MCPClientTransport {
         try process.run()
         self.process = process
         self.stdinHandle = inPipe.fileHandleForWriting
+        // 子进程可能在读循环处理 EOF 之前就退出，那一刻再往 stdin 写就会命中
+        // 「读端已关闭」的管道：内核默认投递 SIGPIPE，而它的默认动作是终止整个
+        // 进程且不打印任何诊断（CI 上表现为测试进程静默死亡）。关掉这个 fd 的
+        // SIGPIPE，让 write 抛 EPIPE，由 request() 既有的 catch 分支结算。
+        PipeSafety.disableSIGPIPE(on: self.stdinHandle)
 
         // nonisolated static 启动器：init 阶段（nonisolated context）即可调用；
         // 返回的 Task 赋给 actor 状态
