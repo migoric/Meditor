@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Compare — MEditor vs Obsidian, Typora, iA Writer, Bear, MarkEdit</title>
+  <meta name="description" content="The honest comparison: MEditor vs Obsidian, Typora, iA Writer, Bear and MarkEdit. Native vs Electron, built-in AI agent, BYOK, MCP server, mobile. Prices checked October 2026." />
+  <meta property="og:title" content="MEditor — the honest comparison" />
+  <meta property="og:description" content="Native 13.5 MB vs Electron. Built-in AI agent with real tool calls. BYOK. MCP server. Prices checked October 2026." />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ═══════════════ 对比页专用（表格）═══ 共享样式在 style.css ═══════════════ */
+    .cmp-scroll {
+      overflow-x: auto;
+      border: 1px solid var(--hairline);
+      border-radius: var(--r-lg);
+      background: linear-gradient(180deg, rgba(28,25,23,0.032), rgba(28,25,23,0.010));
+    }
+    .cmp-table { width: 100%; border-collapse: collapse; min-width: 880px; }
+    .cmp-table th {
+      text-align: left; white-space: nowrap;
+      font-family: var(--mono); font-size: 11.5px; font-weight: 500;
+      letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--text-3);
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--hairline-2);
+    }
+    .cmp-table td {
+      padding: 17px 20px;
+      font-size: 14px; color: var(--text-2); line-height: 1.55;
+      border-bottom: 1px solid var(--hairline);
+      vertical-align: top;
+    }
+    .cmp-table tbody tr:last-child td { border-bottom: 0; }
+    .cmp-table td:first-child { color: var(--text); font-weight: 580; white-space: nowrap; }
+    .cmp-table .cmp-us { background: var(--accent-dim); }
+    .cmp-table .cmp-us td { color: var(--text); }
+    .cmp-yes { color: var(--text); font-weight: 550; }
+    .cmp-no  { color: var(--text-3); }
+    .cmp-note {
+      margin-top: 18px;
+      font-size: 13px; color: var(--text-3); line-height: 1.6;
+    }
+    .wont-list { list-style: none; display: grid; gap: 14px; max-width: 760px; }
+    .wont-list li {
+      position: relative; padding-left: 26px;
+      font-size: 15px; color: var(--text-2); line-height: 1.62;
+    }
+    .wont-list li::before {
+      content: ''; position: absolute; left: 2px; top: 11px;
+      width: 12px; height: 1.5px; background: var(--text-3);
+    }
+    .wont-list b { color: var(--text); font-weight: 580; }
+  </style>
+</head>
+<body>
+
+<div class="ambient"></div>
+<div class="grain"></div>
+
+<!-- ═══════════════ NAV ═══════════════ -->
+<nav id="nav">
+  <a href="index.html" class="nav-logo">
+    <span class="logo-mark">✦</span>
+    MEditor
+  </a>
+  <ul class="nav-links">
+    <li><a href="index.html#features">Features</a></li>
+    <li><a href="index.html#ai">AI Agent</a></li>
+    <li><a href="index.html#editor">Editor</a></li>
+    <li><a href="compare.html">Compare</a></li>
+    <li><a href="index.html#pricing">Pricing</a></li>
+  </ul>
+  <a href="#download" class="nav-cta">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M8 10l-3-3M8 10l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Download
+  </a>
+</nav>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<div class="hero" style="padding-bottom:40px">
+  <div class="wrap">
+    <div class="hero-inner">
+      <div class="hero-badge hero-anim hero-anim-1">
+        <span class="dot"></span>
+        Facts checked 2026-10-14 · MEditor's numbers measured, not estimated
+      </div>
+      <h1 class="hero-anim hero-anim-2">
+        The honest<br />
+        <span class="u">comparison.</span>
+      </h1>
+      <p class="hero-sub hero-anim hero-anim-3">
+        Most Markdown editors are either a beautiful writing surface or a plugin host.
+        Exactly one of them ships an agent that can actually edit your files —
+        and asks permission first.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TABLE ═══════════════ -->
+<section class="section" style="padding-top:40px">
+  <div class="wrap">
+    <div class="cmp-scroll reveal">
+      <table class="cmp-table">
+        <thead>
+          <tr>
+            <th>App</th>
+            <th>Built with</th>
+            <th>Price</th>
+            <th>Built-in AI Agent</th>
+            <th>Files stay plain .md</th>
+            <th>Mobile app</th>
+            <th>MCP server</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="cmp-us">
+            <td>MEditor</td>
+            <td>Native SwiftUI · 13.5 MB</td>
+            <td>Free, MIT · Pro $4/mo optional (publishing only)</td>
+            <td><span class="cmp-yes">Yes</span> — 15 tools, BYOK, sandboxed, diff review</td>
+            <td><span class="cmp-yes">Yes</span> — plain .md on disk</td>
+            <td><span class="cmp-yes">Yes</span> — iOS companion</td>
+            <td><span class="cmp-yes">Yes</span> — 11 tools over stdio</td>
+          </tr>
+          <tr>
+            <td>Obsidian</td>
+            <td>Electron</td>
+            <td>Free · Sync $4–8/mo · Publish $8/mo</td>
+            <td>Community plugins only</td>
+            <td><span class="cmp-yes">Yes</span> — local vault</td>
+            <td><span class="cmp-yes">Yes</span></td>
+            <td><span class="cmp-no">No</span></td>
+          </tr>
+          <tr>
+            <td>Typora</td>
+            <td>Electron</td>
+            <td>$14.99 one-time</td>
+            <td><span class="cmp-no">No</span></td>
+            <td><span class="cmp-yes">Yes</span></td>
+            <td><span class="cmp-no">No</span></td>
+            <td><span class="cmp-no">No</span></td>
+          </tr>
+          <tr>
+            <td>iA Writer</td>
+            <td>Native (AppKit)</td>
+            <td>$49.99 one-time</td>
+            <td>AI-detection only (Authorship)</td>
+            <td><span class="cmp-yes">Yes</span></td>
+            <td><span class="cmp-yes">Yes</span></td>
+            <td><span class="cmp-no">No</span></td>
+          </tr>
+          <tr>
+            <td>Bear</td>
+            <td>Native (Apple)</td>
+            <td>Free · Pro $2.99/mo or $29.99/yr</td>
+            <td><span class="cmp-no">No</span></td>
+            <td><span class="cmp-no">No</span> — proprietary database</td>
+            <td><span class="cmp-yes">Yes</span></td>
+            <td><span class="cmp-no">No</span></td>
+          </tr>
+          <tr>
+            <td>MarkEdit</td>
+            <td>Native · MIT · ★5.8k</td>
+            <td>Free</td>
+            <td><span class="cmp-no">No</span></td>
+            <td><span class="cmp-yes">Yes</span></td>
+            <td><span class="cmp-no">No</span></td>
+            <td><span class="cmp-no">No</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cmp-note reveal">
+      Competitor facts and prices gathered from public sources on 2026-10-14 and change without notice —
+      their own websites are the source of truth. MEditor's download size is measured from the release
+      package (13,507,350 bytes); “15 tools / 11 MCP tools” counts are from the codebase.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════ WHY NATIVE ═══════════════ -->
+<section class="section" id="why-native" style="padding-top:0">
+  <div class="wrap">
+    <div class="feature-split">
+      <div class="split-text reveal from-left">
+        <span class="tag">Why 13.5 MB matters</span>
+        <h3>One native binary. Not a browser in a window.</h3>
+        <p>
+          The Electron apps in this table bundle an entire Chromium runtime and Node.js — which is
+          why they launch slower, use more memory, and feel like a web page wearing a window frame.
+        </p>
+        <ul class="feature-list">
+          <li>Real <code>NSTextView</code> editing — native find &amp; replace, text services, and undo, not a JavaScript reimplementation</li>
+          <li>Instant launch; no runtime to unpack, no renderer process per tab</li>
+          <li>Quick Look previews from Finder and Spotlight indexing — the OS knows your documents</li>
+          <li>Works fully offline; your documents and API keys never leave the machine</li>
+        </ul>
+      </div>
+      <div class="split-visual reveal from-right">
+        <div class="shot shot--bare">
+          <img src="images/hero.png?v=4" alt="MEditor workspace with sidebar, outline and live preview" loading="lazy">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ WHAT IT DOESN'T DO ═══════════════ -->
+<section class="section" id="limits" style="padding-top:0">
+  <div class="wrap">
+    <div class="section-head reveal" style="max-width:760px">
+      <div class="eyebrow">Boundaries</div>
+      <h2 class="section-title">What MEditor<br /><em>doesn't</em> do (yet).</h2>
+      <p class="section-sub" style="margin-bottom:38px">
+        A comparison page that only lists wins isn't a comparison. Here is what we don't have:
+      </p>
+      <ul class="wont-list">
+        <li><b>No vault graph or backlinks.</b> If you live in a knowledge graph, Obsidian remains the better tool — MEditor is a document workstation, not a second brain.</li>
+        <li><b>No Windows or Linux build.</b> macOS and iOS only, native on both.</li>
+        <li><b>Math formulas (LaTeX) aren't rendered yet.</b> On the roadmap; until then, formula-heavy documents preview as source.</li>
+        <li><b>The release build isn't notarized.</b> First launch takes a right-click → Open. Developer-ID signing and notarization are planned.</li>
+        <li><b>Pro publishing is early access.</b> The editor itself is free and unrestricted; Pro only lifts the hosted-publishing limits.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ CTA ═══════════════ -->
+<div class="wrap" style="padding-bottom:40px">
+  <div class="cta-banner reveal" id="download">
+    <h2>Try it on your own documents.</h2>
+    <p>Free and open source. 13.5 MB, macOS 14+. Point the Agent at a repo and watch it work.</p>
+    <div class="hero-actions" style="margin-bottom:0">
+      <a href="/update/pkg" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M8 10l-3-3M8 10l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download for macOS 14+<span class="dl-version"> · v0.12.1</span>
+      </a>
+      <a href="index.html" class="btn btn-ghost">Back to home</a>
+    </div>
+    <p class="hero-note" style="margin-top:18px">First launch: <b>right-click the app → Open</b> — macOS shows a one-time warning because the build isn't notarized yet.</p>
+  </div>
+</div>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<footer class="wrap">
+  <span>© 2026 MEditor · MIT License</span>
+  <div class="footer-links">
+    <a href="index.html#features">Features</a>
+    <a href="index.html#ai">AI Agent</a>
+    <a href="index.html#editor">Editor</a>
+    <a href="index.html#pricing">Pricing</a>
+    <a href="compare.html">Compare</a>
+    <a href="https://github.com/retrychx/Meditor" target="_blank" rel="noopener">GitHub</a>
+    <a href="#download">Download</a>
+  </div>
+</footer>
+
+<script>
+  /* 与 index.html 同一套门控：无 JS 时内容照常可见（渐进增强） */
+  document.documentElement.classList.add('js-ready');
+
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        revealObserver.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+  document.querySelectorAll('.reveal, .stagger-children').forEach(el => revealObserver.observe(el));
+
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 12);
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* 版本号跟随 appcast，静态值是兜底 */
+  fetch('/update/appcast.xml', { cache: 'no-store' })
+    .then(r => (r.ok ? r.text() : Promise.reject()))
+    .then(xml => {
+      const v = xml.match(/sparkle:shortVersionString>\s*([^<]+?)\s*</)?.[1];
+      if (v) document.querySelectorAll('.dl-version').forEach(el => { el.textContent = ' · v' + v; });
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>
