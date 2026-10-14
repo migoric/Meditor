@@ -10,11 +10,17 @@ struct ContentView: View {
 
     /// toolbar 里 tab 条的宽度。NavigationSplitView 的 toolbar 按列分段：
     /// tab 条只能占 detail 列那段。可用宽度 = 窗口宽 - 侧栏（可见时） - 边距。
-    /// 注意：估宽 item 会被整体塞进 ">>" 溢出菜单，fudge 宁大勿小——
-    /// 多留的尾部空白与 toolbar 同色、看不出来；溢出则整个 tab 条消失。
+    ///
+    /// ⚠️ 估宽 item 会被整体塞进 ">>" 溢出菜单（整条 tab 栏直接消失）。
+    /// 两个要点：
+    /// 1. 侧栏宽必须用**实测**值（`measuredSidebarWidth`，由 FileSidebar 的
+    ///    GeometryReader 回传），不能用 `clampedSidebarWidth` 那个理想宽 260 ——
+    ///    用户把侧栏拖到 320 时按 260 算，tab 条就超出 detail 列了。
+    /// 2. 宁可**多留**空白也不溢出：多留的尾部空白与 toolbar 同色、看不出来；
+    ///    溢出则整个 tab 条消失。所以余量给足（48pt 覆盖系统按钮与分隔线）。
     private var tabsStripWidth: CGFloat {
         let chrome: CGFloat = workspaceUI.showsSidebarInLayout
-            ? workspaceUI.clampedSidebarWidth + 40   // 侧栏列 + detail 段边距
+            ? workspaceUI.effectiveSidebarWidthForLayout() + 48
             : 180                                     // 红绿灯 + 系统开关 + 边距
         return max(240, windowContentWidth - chrome)
     }
