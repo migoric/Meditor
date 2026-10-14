@@ -10,10 +10,12 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
-## [Unreleased]
+## [0.12.1] - 2026-10-14
 
-**审计余项清理**：0.12.0 修完全部 P0 与 P1 最高优先级的 4 项后，本段把 review 分级里
-**其余可安全落地**的中低优先级项一次修完（一个 PR），并如实标注**不修**的部分及原因。
+**审计余项清理 + 两个用户可见 bug 修复**：0.12.0 修完全部 P0 与 P1 最高优先级的 4 项后，
+本版把 review 分级里**其余可安全落地**的中低优先级项一次修完，并修掉两个用户报的
+界面问题（左侧面板展开后 tab 栏消失、HTML 预览本地图片不显示）。每条附**反向验证**
+（改坏实现 → 确认检查变红 → 恢复），并如实标注**不修**的部分及原因。
 
 ### Added
 
@@ -25,6 +27,10 @@
   的 `start_line` 被解析成布尔值时，行区间读取静默退化成读全文），模型看到「正常返回」
   便以为参数生效，错误自我复制。新增 `AgentToolValidationTests` 覆盖（含变异验证）。
 - `DS.Stroke` / `PaperTheme.Stroke` 两档描边宽度 token（`hairline` 0.5 / `regular` 1）。
+- **`scripts/sign_update.swift` 的端到端测试**：签名是发布链路最后一环，签名错 ⇒ Sparkle
+  自动更新对所有用户失效，而 `release.yml` 只在真发布时才跑它、出错已经晚了。测试用真脚本
+  子进程（不重实现签名逻辑），覆盖正常签名可验签、64 字节 libsodium 私钥形态、
+  `--expect-public-key` 守卫、参数与 base64 非法时的非零退出。
 
 ### Fixed
 
@@ -32,11 +38,14 @@
   估算，而真实列宽由用户拖拽决定（220...320）。拖宽侧栏后算出的 tab 条超出 detail 列
   可用宽度，macOS 对超宽的 toolbar item 不裁剪而是整体塞进 `>>` 溢出菜单，于是整条 tab
   栏不见了。改为实测真实列宽（FileSidebar 的 GeometryReader 回传），理想宽只作兜底。
-- **HTML 预览里本地相对路径图片不显示**：HTML 预览的 baseURL 是合成的
+- **HTML 预览里本地路径图片不显示**（相对与绝对都修好了）：HTML 预览的 baseURL 是合成的
   `https://localhost/`（为了让内嵌 CDN 脚本能加载——WKWebView 会拦 `file://` 页面的
-  外部网络请求），代价是 `<img src="images/a.png">` 被解析到 `https://localhost/…`
-  而加载失败。现在额外注入 `<base href="meditor-asset://…文档目录/">`，本地图片与 CDN
-  脚本两者兼得（复用 markdown 预览已有的同一套 scheme handler 与敏感目录拦截）。
+  外部网络请求），代价是相对路径被解析到 `https://localhost/…` 而加载失败。现在额外注入
+  `<base href="meditor-asset://…文档目录/">`，本地图片与 CDN 脚本两者兼得（复用markdown
+  预览已有的同一套 scheme handler 与敏感目录拦截）。
+  按 RFC 3986，以 `/` 开头的绝对路径（absolute-path reference）只继承 base 的
+  scheme + authority，所以 `/Users/me/a.png` 这类写法**一并被修好**。唯一仍不通的是
+  `file:///…` 形态（带 scheme 的绝对 URL，`<base>` 按规范管不到）。
 - **RestAgentBackend 的可重试状态码从 429/503 扩为 429 + 5xx（500/502/503/504）**：
   网关与负载均衡后的临时故障同样常以 5xx 返回，重试一次大概率即恢复；400/401/403/404/422
   等确定性错误仍不重试。
@@ -78,8 +87,9 @@
   不是隐藏缺陷；已列入 README「后续」。
 - **需产品/视觉决策的项不擅自改**：跨后端 fallback、trace 落盘、价格表更新机制、
   「统一抬升语言」、行选中色定档、`PreviewTheme` 与 `DS.Color` 的收口口径。
-- 存量：23 种字号 / 裸 `cornerRadius` 仍大量未收口；打包签名脚本（`bundle.sh` /
-  `sign_update.swift`）无测试。
+- 存量：23 种字号 / 裸 `cornerRadius` 仍大量未收口；打包脚本 `bundle.sh` 无测试
+  （`sign_update.swift` 本版已补端到端测试：生成临时密钥对 → 真脚本子进程签名 → 公钥验签
+  + `expect-public-key` 守卫）。
 
 ## [0.12.0] - 2026-10-14
 

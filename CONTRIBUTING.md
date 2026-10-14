@@ -125,8 +125,9 @@ git push origin v0.12.0
   反过来会给 `main` 上留一个「版本说 0.11 但发布页说 0.12」的状态。
 - `release.yml` 用 `macos-26` 构建：外观按**构建时 SDK** 决定，用旧 SDK 出的包在 Tahoe 上是
   旧式灰侧栏（没有 Liquid Glass），与用户系统无关。
-- `scripts/bundle.sh` / `sign_update.swift` 目前**没有测试**，而 `release.yml` 依赖它们的正确性
-  （已知覆盖缺口，改这两个脚本要格外小心）。
+- `scripts/bundle.sh` **没有测试**，而 `release.yml` 依赖它的正确性（已知覆盖缺口，改它要格外
+  小心）。同目录的 `sign_update.swift` 自 0.12.1 起有端到端测试
+  （`Tests/MEditorTests/SignUpdateScriptTests.swift`：真脚本子进程 + 公钥验签）。
 - `workflow_dispatch` 只能指向 `v*` tag；指向普通分支会被脚本拒绝。
 
 ## 报 issue
