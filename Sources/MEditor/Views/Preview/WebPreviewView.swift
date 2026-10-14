@@ -27,6 +27,10 @@ struct WebPreviewView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        // 本地相对资源（<img src="images/a.png">）走 meditor-asset:// ——见
+        // applyLoad 的说明。scheme handler 必须在这里注册：WKWebView 只在
+        // 「创建 WKWebView 实例时」认这个配置，事后给 configuration 补注册无效。
+        config.setURLSchemeHandler(MeditorAssetSchemeHandler(), forURLScheme: MeditorAssetSchemeHandler.scheme)
         let userContent = WKUserContentController()
         userContent.add(context.coordinator, name: "copyHandler")
         userContent.add(context.coordinator, name: Self.selectionHandlerName)
@@ -105,19 +109,26 @@ extension WebPreviewView {
             }
 
             // 渲染优先用内存内容（AI 写回/编辑未落盘也能立即预览）。
-            // 合成 https base URL：CDN 脚本（echarts 等）可加载——WKWebView 会拦
-            // file:// 页面的外部网络请求，https:// 页面不拦。相对本地资源这种
-            // 方式解析不了，但内嵌 CDN 依赖的 HTML 报告文件需要网络才能正确渲染。
+            // baseURL 仍用 https 合成源：CDN 脚本（echarts 等）要能加载——
+            // WKWebView 会拦 file:// 页面的外部网络请求，https:// 页面不拦。
+            //
+            // 相对**本地**资源靠注入的 `<base href="meditor-asset://…">` 解析
+            // （HTMLAssetBaseInjector）：https base 下 `./pic.png` 会被解析成
+            // `https://localhost/pic.png` 而加载失败。`<base>` 不影响绝对 URL，
+            // 所以 CDN 与本地图片两者兼得。
+            let baseURL = URL(string: "https://localhost/")
+            let baseDirectory = fileURL.deletingLastPathComponent()
             if let content {
-                webView.loadHTMLString(content, baseURL: URL(string: "https://localhost/"))
+                let html = HTMLAssetBaseInjector.injectingBase(hinto: content, directory: baseDirectory)
+                webView.loadHTMLString(html, baseURL: baseURL)
                 return
             }
             if let htmlString = try? String(contentsOf: fileURL, encoding: .utf8) {
-                let baseURL = URL(string: "https://localhost/")
-                webView.loadHTMLString(htmlString, baseURL: baseURL)
+                let html = HTMLAssetBaseInjector.injectingBase(hinto: htmlString, directory: baseDirectory)
+                webView.loadHTMLString(html, baseURL: baseURL)
             } else {
                 // Fallback: file URL load (works for local-only resources)
-                let readAccess = rootURL ?? fileURL.deletingLastPathComponent()
+                let readAccess = rootURL ?? baseDirectory
                 webView.loadFileURL(fileURL, allowingReadAccessTo: readAccess)
             }
         }
