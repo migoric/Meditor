@@ -24,7 +24,7 @@ body:
     attributes:
       label: 版本
       description: macOS 见「关于 MEditor」或 `make version`；iOS 见 App Store / TestFlight 版本号
-      placeholder: '0.11.0'
+      placeholder: '0.12.0'
     validations:
       required: true
 

@@ -168,6 +168,9 @@ enum AIAPIKeyStore {
     private static let keychain = Keychain(service: "com.meditor.app.ai", account: "api-key")
 
     /// Keychain 写入失败时的进程内降级值（不落盘，进程退出即失效）。
+    /// save/load/clear 都是 nonisolated static，会被后端异步上下文碰到 ⇒ 必须加锁。
+    /// 这与本文件下方 _cachedShellEnv + _shellEnvLock 是同一类问题的同一解法。
+    private static let fallbackLock = NSLock()
     nonisolated(unsafe) private static var memoryFallback: String?
 
     static func save(_ value: String) {
@@ -176,16 +179,16 @@ enum AIAPIKeyStore {
         // 写路径只写 Keychain；顺手清掉可能残留的旧明文
         UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
         if keychain.save(v) {
-            memoryFallback = nil
+            setFallback(nil)
         } else {
-            memoryFallback = v
+            setFallback(v)
             AppLog.ai.error("AIAPIKeyStore: Keychain 写入失败，本次会话仅保留内存值")
         }
     }
 
     static func load() -> String? {
         if let v = keychain.load(), !v.isEmpty { return v }
-        if let v = memoryFallback, !v.isEmpty { return v }
+        if let v = fallbackLock.withLock({ memoryFallback }), !v.isEmpty { return v }
         // 兼容已装用户：读取旧 UserDefaults 明文并迁移到 Keychain
         guard let legacy = UserDefaults.standard.string(forKey: legacyDefaultsKey),
               !legacy.isEmpty else { return nil }
@@ -195,8 +198,14 @@ enum AIAPIKeyStore {
 
     static func clear() {
         keychain.clear()
-        memoryFallback = nil
+        setFallback(nil)
         UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
+    }
+
+    /// 降级值的唯一读写口：锁内做「读旧值 + 写新值」，避免两个 nonisolated 上下文
+    /// 交错时一个刚 save 成功、另一个又把旧值写回去。
+    private static func setFallback(_ value: String?) {
+        fallbackLock.withLock { memoryFallback = value }
     }
 
     static var hasKey: Bool { load() != nil }
@@ -455,6 +464,10 @@ struct AIClient {
                     try Task.checkCancellation()
                     try process.run()
                     box.process = process
+                    // 与 MCPStdioTransport 同一类隐患：CLI 若在写入前就退出，往 stdin
+                    // 写会触发 SIGPIPE 直接打死整个 app。这里紧跟 run() 无 await，窗口
+                    // 比 MCP 传输窄得多，但代价一样是静默死亡，一行 fcntl 换掉。
+                    PipeSafety.disableSIGPIPE(on: inPipe.fileHandleForWriting)
 
                     // Feed the prompt via stdin, then close it so the CLI proceeds.
                     if let data = prompt.data(using: .utf8) {

@@ -123,6 +123,49 @@ final class MCPClientTransportTests: XCTestCase {
         await transport.close()
     }
 
+    // MARK: - SIGPIPE 防护
+    //
+    // 背景：往「读端已关闭」的管道写数据，内核默认投递 SIGPIPE，其默认动作是
+    // **终止整个进程**且不打印任何诊断。上面的 test_stdio_processExit_* 因此
+    // 间歇性把测试进程静默打死（CI 现场：934 个测试后无任何断言输出、退出码 1）。
+    // 最小探针复现 20/20，退出码 141 = 128 + 13。修复见 PipeSafety：
+    // init 里对 stdin fd 关掉 SIGPIPE，让 write 抛 EPIPE 走既有 catch。
+
+    /// 机制层回归，**不依赖时序**：管道两端都在本进程手里，关掉读端后写必命中
+    /// EPIPE。未设 F_SETNOSIGPIPE 时这一行会raise SIGPIPE 把测试进程打死。
+    func test_pipeSafety_disableSIGPIPE_writeThrowsInsteadOfRaisingSignal() throws {
+        let pipe = Pipe()
+        try? pipe.fileHandleForReading.close()   // 读端消失 → 写端再无读者
+        let writeEnd = pipe.fileHandleForWriting
+        PipeSafety.disableSIGPIPE(on: writeEnd)
+        XCTAssertThrowsError(try writeEnd.write(contentsOf: Data("ping\n".utf8)))
+    }
+
+    /// 真代码路径的确定性回归：子进程**关掉自己的 stdin 读端但不退出**
+    /// （`exec 0<&-`）——读循环因此永远等不到 EOF（isClosed 保持 false），
+    /// 而父进程随后的 write 必定命中「无读者」的管道。未屏蔽 SIGPIPE 时这一行
+    /// 直接把测试进程打死（退出码 141）；修复在位时 write 抛 EPIPE、request 快速失败。
+    /// 不依赖时序：相比反复构造 /usr/bin/true 打竞态窗口（实测 30 次也打不中），
+    /// 这条在拿掉修复后必然杀死测试进程——已变异验证。
+    func test_stdio_writeToClosedStdin_neverRaisesSIGPIPE() async throws {
+        let transport = try MCPStdioTransport(
+            command: "/bin/sh",
+            args: ["-c", "exec 0<&-; sleep 30"],
+            env: [:],
+            useLoginShell: false)
+        // 等子进程把 fd 0 关掉：shell 启动是毫秒级，250ms 是充分余量。
+        // 即便写赶在关闭之前（数据落进管道缓冲后丢失），也会按 timeout 失败——
+        // 两条路径都算「进程活着」，测试依然通过，只是慢一点。
+        try await Task.sleep(for: .milliseconds(250))
+        do {
+            _ = try await transport.request(method: "ping", params: .empty, timeout: 2)
+            XCTFail("write to a process that closed its stdin should fail")
+        } catch {
+            // 预期：EPIPE（写侧，修复在位）或 timeout（写赶在关闭前）。两者都算存活。
+        }
+        await transport.close()
+    }
+
     // MARK: - SSE 解析（streamable HTTP 响应，纯逻辑）
 
     func test_parseSSE_matchingID() throws {
