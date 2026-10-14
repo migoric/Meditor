@@ -10,6 +10,68 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
+## [Unreleased]
+
+**审计余项清理**：0.12.0 修完全部 P0 与 P1 最高优先级的 4 项后，本段把 review 分级里
+**其余可安全落地**的中低优先级项一次修完（一个 PR），并如实标注**不修**的部分及原因。
+
+### Added
+
+- **工具参数的运行时校验**（`AgentTool.validateArguments`）：对照 `spec.parameters` 检查
+  必填缺失 / 类型不符 / enum 越界，失败以 `isError` 工具结果回灌让模型自纠（与
+  `argumentsParseError` 同一处理），三个调用点（AgentRunner 只读并行组 / 写串行组、
+  MCPServer）共用一把尺子。
+  *此前*：类型不匹配时各工具 `?.stringValue` 拿到 nil 后静默走默认分支（如 `read_document`
+  的 `start_line` 被解析成布尔值时，行区间读取静默退化成读全文），模型看到「正常返回」
+  便以为参数生效，错误自我复制。新增 `AgentToolValidationTests` 覆盖（含变异验证）。
+- `DS.Stroke` / `PaperTheme.Stroke` 两档描边宽度 token（`hairline` 0.5 / `regular` 1）。
+
+### Fixed
+
+- **RestAgentBackend 的可重试状态码从 429/503 扩为 429 + 5xx（500/502/503/504）**：
+  网关与负载均衡后的临时故障同样常以 5xx 返回，重试一次大概率即恢复；400/401/403/404/422
+  等确定性错误仍不重试。
+- **iOS `writeText` 的协调写入判据补上 `isUbiquitousItem`**：此前只判 `externalBookmark`，
+  workspace 本身位于 iCloud Drive 时其中的文档没有 bookmark，直写会绕过 `NSFileCoordinator`
+  与同步守护进程打架（丢更新 / 冲突副本）。
+- **iOS `RootView` 页切换补 `accessibilityHidden`**：`opacity(0)` 不移出无障碍树，此前
+  VoiceOver 会读到两页元素、焦点顺序按 ZStack 层序而非可见页。
+- **`AgentResumeContext` 续跑指令改条件式措辞**：不再断言「写入已生效」，改为以工具结果
+  为唯一事实来源（工具返回成功 ≠ 盘上一定写成功），避免在边缘场景对模型说假话。
+- **WelcomeView 的品牌蓝硬编码改为 `Color.appAccent`**：卡片光晕与外发光此前写死蓝色，
+  与已用强调色的 CTA 割裂；用户改系统强调色后即可整卡跟随。
+- 移动端 `HeroOverlays` 的圆角 22 改回档位值（`PaperTheme.Radius.xlarge` = 20）。
+
+### Changed
+
+- **描边宽度全仓收口到两档 token**（桌面端 49 处、iOS 7 处）：`lineWidth: 0.5` → `DS.Stroke.hairline`、
+  `lineWidth: 1` → `DS.Stroke.regular`。两处「半像素 hack」（发丝线对齐、描边防裁切）不改数值，
+  改为就地注释说明意图 —— 它们是有意的像素对齐，不是同类问题。
+- **`FileSidebar` 的目录枚举收口到 `FileService.listDocumentFiles`**：View 层不再直接
+  `FileManager.contentsOfDirectory`（此前枚举规则在 View 与 Service 各写一份）。
+- **`MEditorApp` 的冷启动三步收进 `bootSequence()`**：`warmUp → restoreSession → consumePendingOpens`
+  的顺序此前靠注释维系，现成为代码结构（顺序写错会覆盖刚打开的外部文档）。
+- 工具描述去掉全大写强指令（`ALWAYS` / `NEVER` → 常规措辞）：对弱模型减少指令过载。
+- 覆盖率门禁给 `Views/` 补一个极低但存在的**棘轮 floor**（`--min-dir Views=1`）：此前该层
+  无门槛，「把代码挪进 Views/ 绕过 logic 门槛」是一条免费通道；这是堵口，不是提目标。
+
+### Removed
+
+- 两个零引用协议 `PreviewResourceLocatorProtocol` / `FileTypeConfigurationProtocol`
+  （`EditorViewProtocol` 保留 —— 它是 SwiftUI 关联类型限制下的**文档契约**，非空转）。
+- `WelcomeView` 的死装饰：全透明的 `RoundedRectangle` 背景 + `.hoverBrightness(0.0)`
+  （两者都不产生任何视觉输出）。
+
+### 已知未做（如实标注）
+
+- **iOS 能力差距不修**：行内 diff 审阅 UI、本地历史、MCP、局域网分享、PDF 导出、Todo/日历、
+  Gist 在 iOS 端**没有实现** —— 这是「iOS 是编辑 / 聊天 / 发布的精简伴侣」的范围差异，
+  不是隐藏缺陷；已列入 README「后续」。
+- **需产品/视觉决策的项不擅自改**：跨后端 fallback、trace 落盘、价格表更新机制、
+  「统一抬升语言」、行选中色定档、`PreviewTheme` 与 `DS.Color` 的收口口径。
+- 存量：23 种字号 / 裸 `cornerRadius` 仍大量未收口；打包签名脚本（`bundle.sh` /
+  `sign_update.swift`）无测试。
+
 ## [0.12.0] - 2026-10-14
 
 本版是**一次深度审计后的整改**：先对桌面端 + iOS 做了通读式的 review（覆盖 UI 质感、
