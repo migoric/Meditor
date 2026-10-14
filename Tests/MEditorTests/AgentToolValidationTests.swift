@@ -98,17 +98,21 @@ struct AgentToolValidationTests {
         #expect(tool.wasExecuted == false)
     }
 
+    /// 每个 case 是 (送进工具的值, spec 里声明的类型)。
+    /// ⚠️ 必须显式写 `AnySendableValue.`：数组字面量里的 `.double(2.0)` 在
+    /// swift-testing 的 `@Test(arguments:)` 泛型推断下没有上下文基准
+    /// （`cannot infer contextual base in reference to member 'double'`）。
     @Test(arguments: [
-        (.string("ok"), "string"),
-        (.int(7), "integer"),
-        (.double(2.0), "integer"),   // JSON 的 2 可能解析成 2.0：整数值 double 放行
-        (.double(2.5), "integer"),   // 小数：拦
-        (.int(3), "number"),
-        (.double(1.5), "number"),
-        (.bool(true), "boolean"),
-        (.array([.int(1)]), "array"),
-        (.dict(["k": .int(1)]), "object"),
-        (.string("x"), "unknown_future_type"), // 未声明类型不拦（schema 演进兼容）
+        (AnySendableValue.string("ok"), "string"),
+        (AnySendableValue.int(7), "integer"),
+        (AnySendableValue.double(2.0), "integer"),   // JSON 的 2 可能解析成 2.0：整数值 double 放行
+        (AnySendableValue.double(2.5), "integer"),   // 小数：拦
+        (AnySendableValue.int(3), "number"),
+        (AnySendableValue.double(1.5), "number"),
+        (AnySendableValue.bool(true), "boolean"),
+        (AnySendableValue.array([.int(1)]), "array"),
+        (AnySendableValue.dict(["k": .int(1)]), "object"),
+        (AnySendableValue.string("x"), "unknown_future_type"), // 未声明类型不拦（schema 演进兼容）
     ])
     func typeMatchingMatrix(value: AnySendableValue, declared: String) {
         let tool = ValidatingSpyTool(spec: makeSpec(properties: ["p": ToolPropertySchema(type: declared, description: "p")]))
@@ -161,8 +165,12 @@ struct AgentToolValidationTests {
 
     // MARK: - 合法参数照常执行
 
+    /// `MockAgentContext` 是 `@MainActor` 隔离的，本测试要在主 actor 上跑。
+    /// 仓内其他用它的测试是 XCTestCase（本身在主 actor），这里是 swift-testing，
+    /// 需要显式标注。
     @Test
-    func validArguments_passAndExecute() async {
+    @MainActor
+    func validArguments_passAndExecute() async throws {
         let tool = ValidatingSpyTool(spec: makeSpec(
             properties: ["filename": stringProp(), "start_line": intProp()],
             required: ["filename"]
