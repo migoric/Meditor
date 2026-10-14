@@ -30,14 +30,16 @@
       --text-2:      #5F5A52;
       --text-3:      #918B80;
 
-      /* 单一强调色：墨赭（偏棕的红）。整站只此一色，用得极少、只在关键处点睛。 */
-      --accent:      #A8412A;
-      --accent-lo:   #8C3522;
-      --accent-hi:   #C0553C;
-      --accent-dim:  rgba(168,65,42,0.09);
-      --accent-glow: rgba(168,65,42,0.16);
+      /* 强调色 = 墨黑。整站零彩色：层级靠字号、字重、留白，不靠色相。
+         保留这三个 token 名是为了让「点缀处」有统一的墨色可取，而不是各处硬编码。 */
+      --accent:      #1C1A17;
+      --accent-lo:   #14120F;
+      --accent-hi:   #3A352E;
+      --accent-dim:  rgba(28,25,23,0.07);
+      --accent-glow: rgba(28,25,23,0.12);
 
       --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Inter, system-ui, sans-serif;
+      --font-serif: ui-serif, "New York", Georgia, "Times New Roman", serif;
       --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "JetBrains Mono", monospace;
 
       --r-sm: 10px;
@@ -67,7 +69,7 @@
       position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background:
         radial-gradient(1200px 700px at 50% -10%, rgba(255,255,255,0.55)),
-        radial-gradient(900px 600px at 92% 12%,  rgba(168,65,42,0.035), transparent 62%);
+        radial-gradient(900px 600px at 92% 12%,  rgba(28,25,23,0.035), transparent 62%);
     }
 
     /* 纸纤维颗粒：细密、低对比，贴着纸看才有，远看是干净的底。
@@ -134,6 +136,39 @@
     .nav-cta:hover { background: rgba(28,25,23,0.1); transform: translateY(-1px); }
     .nav-cta svg { opacity: .65; }
 
+    /* ═══════════════ Hero entrance ═══════════════
+       克制优雅：元素按「阅读顺序」依次浮起，最后窗口缓缓升起。
+       全部走 transform + opacity（合成层，不触发布局），约 1.4s 收尾。
+       prefers-reduced-motion 下整体关闭（见文件末尾）。          */
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(26px); }
+      to   { opacity: 1; transform: none; }
+    }
+    /* 窗口升起：带轻微透视翻转，像从桌面上被托起来放正 */
+    @keyframes windowRise {
+      from { opacity: 0; transform: translateY(52px) perspective(1600px) rotateX(7deg) scale(0.965); }
+      60%  { opacity: 1; }
+      to   { opacity: 1; transform: none; }
+    }
+    /* 入场前的隐藏态。用 .js-ready 门控：无 JS 时不隐藏内容（渐进增强）。
+       ⚠️ 入场动画只能作用在**内层** .shot 上：animation-fill-mode: forwards 会把
+       from 的 transform 锁成最终值，若与滚动视差同元素，后者会被静默覆盖。 */
+    .js-ready .hero-anim { opacity: 0; animation: riseIn 0.95s var(--ease) forwards; }
+    .js-ready .hero-anim-1 { animation-delay: 0.05s; }
+    .js-ready .hero-anim-2 { animation-delay: 0.16s; }
+    .js-ready .hero-anim-3 { animation-delay: 0.27s; }
+    .js-ready .hero-anim-4 { animation-delay: 0.38s; }
+    .js-ready .hero-shot > .shot { opacity: 0; animation: windowRise 1.4s var(--ease) 0.52s forwards; }
+
+    /* 滚动视差：文字层比截图层慢一点，制造纵深。
+       transform 由 JS 每帧写 --py；只声明用哪个变量，值不设初值（无动画时不动）。 */
+    .hero-inner { transform: translate3d(0, var(--py, 0px), 0); }
+    .hero-shot  { transform: translate3d(0, var(--py-shot, 0px), 0); }
+    /* 只在动画真正在跑时提升合成层，动画结束后撤掉（will-change 常驻是内存浪费） */
+    @media (prefers-reduced-motion: no-preference) {
+      .js-ready .hero-inner, .js-ready .hero-shot { will-change: transform; }
+    }
+
     /* ═══════════════ Shared atoms ═══════════════ */
     .btn {
       display: inline-flex; align-items: center; gap: 9px;
@@ -186,7 +221,7 @@
       line-height: 1.06;
       margin-bottom: 22px;
     }
-    .section-title em { font-style: normal; color: var(--accent); }
+    .section-title em { font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.02em; }
     .section-sub {
       font-size: 17px; color: var(--text-2);
       max-width: 620px; line-height: 1.68;
@@ -226,8 +261,17 @@
       line-height: 0.98;
       margin-bottom: 30px;
     }
-    /* 不用渐变字（那是 AI 站标配）。整句墨黑，"a Brain" 用朱红点睛。 */
-    h1 .grad { color: var(--accent); }
+    /* 零彩色 ⇒ 第二句靠「字体气质」区分，不靠颜色：
+       衬线体（New York/Georgia，macOS 自带）比无衬线更书卷、更像写作工具。 */
+    h1 .grad {
+      font-family: var(--font-serif);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: -0.028em;
+      /* 斜体在字体栈里没有真斜体时会回退成倾斜的罗马体，
+         补一个字距微调让两行视觉重量更接近 */
+      padding-right: 0.04em;
+    }
 
     .hero-sub {
       font-size: clamp(16px, 1.5vw, 19px);
@@ -292,13 +336,11 @@
     .shot--bare::before, .shot--bare::after { display: none; }
     .shot--bare img { border-radius: 0; }
     /* accent bloom under the hero shot */
-    .shot-glow { position: relative; }
-    .shot-glow::before {
-      content: '';
-      position: absolute; inset: 18% 8% -6%;
-      background: radial-gradient(closest-side, var(--accent-glow), transparent 72%);
-      filter: blur(58px); z-index: -1;
-    }
+    /* 截图外层：只负责承载滚动视差的 transform（入场动画在内层 .shot 上）。
+       ⚠️ 这里原本还有个 ::before 光晕伪元素（深色版的蓝色外发光），它
+       `inset: 18% 8% -6%` 的 top 会向上伸进 hero-note 区域，在暖白纸上表现为
+       一块灰影压在「13.5 MB · macOS 14+」下面。纸面不需要外发光，已移除。 */
+    .shot-glow { position: relative; margin-top: 76px; }
 
     /* ═══════════════ STATS ═══════════════ */
     .stats-section { padding: 92px 0 84px; }
@@ -351,7 +393,7 @@
       content: '';
       position: absolute; inset: 0;
       background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%),
-                  rgba(168,65,42,0.10), transparent 62%);
+                  rgba(28,25,23,0.10), transparent 62%);
       opacity: 0; transition: opacity .34s var(--ease); pointer-events: none;
     }
     /* top highlight hairline */
@@ -378,9 +420,9 @@
     .card-icon {
       width: 40px; height: 40px; border-radius: 11px;
       display: flex; align-items: center; justify-content: center;
-      color: var(--accent-hi);
-      background: linear-gradient(150deg, rgba(168,65,42,0.20), rgba(140,53,34,0.10));
-      border: 1px solid rgba(168,65,42,0.26);
+      color: var(--text);
+      background: linear-gradient(150deg, rgba(28,25,23,0.13), rgba(20,18,15,0.06));
+      border: 1px solid rgba(28,25,23,0.16);
       margin-bottom: 20px;
     }
     .card-title {
@@ -418,8 +460,8 @@
       letter-spacing: 0.08em; text-transform: uppercase;
       color: var(--accent);
       padding: 5px 12px; border-radius: 100px;
-      background: rgba(168,65,42,0.07);
-      border: 1px solid rgba(168,65,42,0.20);
+      background: rgba(28,25,23,0.07);
+      border: 1px solid rgba(28,25,23,0.20);
       margin-bottom: 22px;
     }
     .split-text h3 {
@@ -439,8 +481,8 @@
       content: '';
       position: absolute; left: 0; top: 7px;
       width: 15px; height: 15px; border-radius: 50%;
-      background: linear-gradient(150deg, rgba(168,65,42,0.30), rgba(140,53,34,0.16));
-      border: 1px solid rgba(168,65,42,0.36);
+      background: linear-gradient(150deg, rgba(28,25,23,0.30), rgba(20,18,15,0.16));
+      border: 1px solid rgba(28,25,23,0.36);
     }
     .feature-list li::after {
       content: '';
@@ -472,9 +514,9 @@
     }
     .price-card:hover { transform: translateY(-3px); border-color: var(--hairline-2); }
     .price-card.pro {
-      border-color: rgba(168,65,42,0.34);
-      background: linear-gradient(180deg, rgba(168,65,42,0.10), rgba(140,53,34,0.028));
-      box-shadow: 0 24px 60px -28px rgba(168,65,42,0.42);
+      border-color: rgba(28,25,23,0.34);
+      background: linear-gradient(180deg, rgba(28,25,23,0.10), rgba(20,18,15,0.028));
+      box-shadow: 0 24px 60px -28px rgba(28,25,23,0.42);
     }
     .price-plan {
       display: flex; align-items: center; gap: 10px;
@@ -486,8 +528,8 @@
       font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em;
       padding: 3px 9px; border-radius: 100px;
       color: #C7D2FE;
-      background: rgba(168,65,42,0.20);
-      border: 1px solid rgba(168,65,42,0.34);
+      background: rgba(28,25,23,0.20);
+      border: 1px solid rgba(28,25,23,0.34);
       text-transform: none;
     }
     .price-amount {
@@ -528,13 +570,13 @@
       border-radius: 26px;
       text-align: center;
       overflow: hidden;
-      background: linear-gradient(160deg, rgba(168,65,42,0.15), rgba(140,53,34,0.05) 52%, rgba(192,85,60,0.05));
-      border: 1px solid rgba(168,65,42,0.24);
+      background: linear-gradient(160deg, rgba(28,25,23,0.15), rgba(20,18,15,0.05) 52%, rgba(58,53,46,0.05));
+      border: 1px solid rgba(28,25,23,0.24);
     }
     .cta-banner::before {
       content: '';
       position: absolute; inset: 0;
-      background: radial-gradient(620px circle at 50% -10%, rgba(168,65,42,0.30), transparent 68%);
+      background: radial-gradient(620px circle at 50% -10%, rgba(28,25,23,0.30), transparent 68%);
       pointer-events: none;
     }
     .cta-banner > * { position: relative; }
@@ -616,6 +658,10 @@
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
+      .js-ready .hero-anim, .js-ready .hero-shot > .shot {
+        opacity: 1 !important; animation: none !important;
+      }
+      .hero-inner, .hero-shot { transform: none !important; }
       .reveal, .stagger-children > * { opacity: 1 !important; transform: none !important; }
       .bento-card, .price-card, .btn { transition: none; }
     }
@@ -647,33 +693,35 @@
 <!-- ═══════════════ HERO ═══════════════ -->
 <div class="hero">
   <div class="wrap">
-    <div class="hero-badge">
-      <span class="dot"></span>
-      Native macOS · No Electron · No Cloud
+    <div class="hero-inner">
+      <div class="hero-badge hero-anim hero-anim-1">
+        <span class="dot"></span>
+        Native macOS · No Electron · No Cloud
+      </div>
+
+      <h1 class="hero-anim hero-anim-2">
+        The Markdown Editor<br />
+        <span class="grad">with a Brain.</span>
+      </h1>
+
+      <p class="hero-sub hero-anim hero-anim-3">
+        MEditor is a pure SwiftUI + AppKit Markdown editor for macOS, with a built-in AI Agent
+        that reads, writes, and refactors your documents — using real tool calls.
+      </p>
+
+      <div class="hero-actions hero-anim hero-anim-4">
+        <a href="#download" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M8 10l-3-3M8 10l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Download for macOS
+        </a>
+        <a href="#features" class="btn btn-ghost">Explore features</a>
+      </div>
+      <p class="hero-note hero-anim hero-anim-4"><b class="dl-size">13.5 MB</b> · macOS 14+ · MIT License · Bring your own key</p>
     </div>
-
-    <h1>
-      The Markdown Editor<br />
-      <span class="grad">with a Brain.</span>
-    </h1>
-
-    <p class="hero-sub">
-      MEditor is a pure SwiftUI + AppKit Markdown editor for macOS, with a built-in AI Agent
-      that reads, writes, and refactors your documents — using real tool calls.
-    </p>
-
-    <div class="hero-actions">
-      <a href="#download" class="btn btn-primary">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M8 10l-3-3M8 10l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        Download for macOS
-      </a>
-      <a href="#features" class="btn btn-ghost">Explore features</a>
-    </div>
-    <p class="hero-note"><b class="dl-size">13.5 MB</b> · macOS 14+ · MIT License · Bring your own key</p>
 
     <!-- Hero screenshot in a real macOS window frame -->
-    <div class="shot-glow">
-      <div class="shot shot--bare reveal" style="max-width:1040px;margin:0 auto">
+    <div class="shot-glow hero-shot">
+      <div class="shot shot--bare" style="max-width:1040px;margin:0 auto">
         <img src="images/hero.png?v=4" alt="MEditor — native macOS Markdown editor with workspace sidebar, document outline and rendered preview" width="2880" height="1740">
       </div>
     </div>
@@ -968,6 +1016,39 @@
 </footer>
 
 <script>
+  /* Hero 入场动画的门控：加 js-ready 才启动 CSS 动画。
+     没这一步的话，动画结束前的 opacity:0 会由 CSS 直接生效 —— JS 挂掉或
+     加载慢时，hero 就是一片空白（渐进增强的反面）。 */
+  document.documentElement.classList.add('js-ready');
+
+  /* Hero 滚动视差：文字层与截图层以不同速率上移，制造纵深。
+     - 只在 hero 还在视口内时算，滚出去就停（省掉后续所有计算）
+     - rAF 节流：scroll 事件只记位移，变换在下一帧做，避免逐事件触发布局
+     - prefers-reduced-motion 下直接不挂（CSS 侧也已关闭） */
+  const heroEl = document.querySelector('.hero');
+  const heroInner = document.querySelector('.hero-inner');
+  const heroShot = document.querySelector('.hero-shot');
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (heroEl && heroInner && heroShot && !reduceMotion) {
+    let ticking = false;
+    const applyParallax = () => {
+      ticking = false;
+      const rect = heroEl.getBoundingClientRect();
+      if (rect.bottom <= 0) return;            // hero 已滚出上方，不再更新
+      // 进度：hero 从完全可见到完全离开，取值 0→1
+      const p = Math.min(1, Math.max(0, -rect.top / Math.max(rect.height, 1)));
+      heroInner.style.setProperty('--py', (p * 46).toFixed(2) + 'px');
+      heroShot.style.setProperty('--py-shot', (p * -14).toFixed(2) + 'px');
+    };
+    window.addEventListener('scroll', () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(applyParallax);
+    }, { passive: true });
+    applyParallax();
+  }
+
   /* Scroll reveal */
   const revealObserver = new IntersectionObserver((entries) => {
     entries.forEach(e => {
