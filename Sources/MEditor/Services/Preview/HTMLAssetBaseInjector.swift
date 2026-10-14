@@ -23,11 +23,29 @@ import Foundation
 /// 这正是 markdown 预览已在用的机制（`bridge.js` 的 `setBaseURL`），复用同一套
 /// scheme handler 与同一套敏感目录拦截，行为一致。
 ///
-/// ⚠️ `<base>` 只影响**相对**引用。HTML 里写死的绝对路径 `/Users/me/a.png`
-/// （无 host 的路径形式）在 https base 下仍会解析到 `https://localhost/Users/...`。
-/// 这类写法本身不是有效的 URL 引用，改写它需要解析整个 HTML 文本、误伤风险高，
-/// 因此不做——markdown 侧同样有该限制（`render.js` 的 `rewriteAbsoluteAssetPaths`
-/// 只处理 `file://` 与有 host 的绝对路径）。
+/// ## 覆盖范围（实测结论，勿凭直觉改）
+///
+/// 注入 `meditor-asset://local/<dir>/` 这个 base 后，三类引用的解析结果：
+///
+/// | HTML 里的写法 | 解析为 | 可用 |
+/// |---|---|---|
+/// | `images/a.png`（相对） | `meditor-asset://local/<dir>/images/a.png` | ✅ |
+/// | `../assets/b.png`（相对跳出） | `meditor-asset://local/<上 级>/assets/b.png` | ✅ |
+/// | `/Users/me/a.png`（无 host 绝对路径） | `meditor-asset://local/Users/me/a.png` | ✅ |
+/// | `https://cdn.x/e.js`（带 scheme） | 原样 | ✅（CDN 照常） |
+/// | `data:image/png;base64,…` | 原样 | ✅ |
+/// | `file:///Users/me/c.png` | 原样 `file://` | ❌ 见下 |
+///
+/// 关键点是**绝对路径也一起被修好了**：以 `/` 开头是 RFC 3986 的
+/// absolute-path reference，只继承 base 的 scheme + authority，路径部分原样保留
+/// —— 我们的 base 恰好就是 `meditor-asset://local/`，于是它自动被同化成合法请求。
+/// 改之前的 `https://localhost/` base 才是把它毁掉的原因（→ `https://localhost/Users/…`）。
+///
+/// ⚠️ 唯一仍不通的是 `file:///…` 形态：它是带 scheme 的绝对 URL，`<base>` 按规范
+/// 管不到它，会原样交给 WebKit，而 `loadHTMLString` 的页面不允许 file:// 子资源。
+/// markdown 侧由 `render.js` 的 `rewriteAbsoluteAssetPaths` 显式改写这种形态；
+/// HTML 侧不做（要解析整个 HTML 文本、误伤风险高，且 `file://` 本身不是合法
+/// 网页引用写法）。
 enum HTMLAssetBaseInjector {
 
     /// 把 `<base href="…">` 注入 HTML 的 `<head>` 首位（已存在则替换）。
