@@ -17,26 +17,25 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      /* surfaces — stacked near-blacks, each step ~2% lighter */
-      --bg:          #08090C;
-      --bg-2:        #0B0D11;
-      --surface:     #0E1014;
-      --surface-2:   #12151A;
-      --hairline:    rgba(255,255,255,0.075);
-      --hairline-2:  rgba(255,255,255,0.13);
+      /* 暖白纸感：底是纸，面是纸，卡是稍亮的纸。层级靠亮度差（2~4%）而非色相。 */
+      --bg:          #F6F4F0;   /* 纸 */
+      --bg-2:        #EFEDE7;
+      --surface:     #FCFBF9;
+      --surface-2:   #F2F0EA;
+      --hairline:    rgba(28,25,23,0.10);
+      --hairline-2:  rgba(28,25,23,0.18);
 
-      /* text */
-      --text:        #F2F3F5;
-      --text-2:      #9BA0AA;
-      --text-3:      #666B74;
+      /* 墨黑：不用纯黑，带一点暖调的深棕黑 */
+      --text:        #1C1A17;
+      --text-2:      #5F5A52;
+      --text-3:      #918B80;
 
-      /* accent — macOS default accent family; harmonises with the
-         app's own screenshots (blue/violet chips in the AI panel) */
-      --accent:      #5B7CFA;
-      --accent-lo:   #7C5BFA;
-      --accent-hi:   #4CC9F0;
-      --accent-dim:  rgba(91,124,250,0.14);
-      --accent-glow: rgba(91,124,250,0.30);
+      /* 单一强调色：墨赭（偏棕的红）。整站只此一色，用得极少、只在关键处点睛。 */
+      --accent:      #A8412A;
+      --accent-lo:   #8C3522;
+      --accent-hi:   #C0553C;
+      --accent-dim:  rgba(168,65,42,0.09);
+      --accent-glow: rgba(168,65,42,0.16);
 
       --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Inter, system-ui, sans-serif;
       --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "JetBrains Mono", monospace;
@@ -63,32 +62,20 @@
       line-height: 1.6;
     }
 
-    /* Ambient light field — two soft auroras, fixed so they feel
-       like the page is lit rather than decorated. */
+    /* 纸：底色 + 极淡的暖色不匀（模拟纸张纤维），无发光、无彩色光晕。 */
     .ambient {
       position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background:
-        radial-gradient(900px 620px at 18% -8%,  rgba(91,124,250,0.20), transparent 62%),
-        radial-gradient(760px 560px at 88% 4%,   rgba(124,91,250,0.16), transparent 60%),
-        radial-gradient(1100px 800px at 50% 108%, rgba(76,201,240,0.09), transparent 64%);
+        radial-gradient(1200px 700px at 50% -10%, rgba(255,255,255,0.55)),
+        radial-gradient(900px 600px at 92% 12%,  rgba(168,65,42,0.035), transparent 62%);
     }
 
-    /* Fine engineering grid — barely there, sells the "precision" feel */
-    .grid-lines {
-      position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      background-image:
-        linear-gradient(rgba(255,255,255,0.030) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.030) 1px, transparent 1px);
-      background-size: 72px 72px;
-      mask-image: radial-gradient(ellipse 90% 62% at 50% 0%, #000 20%, transparent 78%);
-      -webkit-mask-image: radial-gradient(ellipse 90% 62% at 50% 0%, #000 20%, transparent 78%);
-    }
-
-    /* Film grain — kills gradient banding on large dark areas */
+    /* 纸纤维颗粒：细密、低对比，贴着纸看才有，远看是干净的底。
+       用 multiply 而非 overlay —— overlay 在浅底上会提亮（发灰），multiply 才是真纸感。 */
     .grain {
       position: fixed; inset: 0; z-index: 9998; pointer-events: none;
-      opacity: 0.16; mix-blend-mode: overlay;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.42; mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.10'/%3E%3C/svg%3E");
     }
 
     .wrap {
@@ -104,14 +91,14 @@
       height: var(--nav-h);
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 32px;
-      background: rgba(8,9,12,0.55);
+      background: rgba(246,244,240,0.72);
       backdrop-filter: blur(22px) saturate(160%);
       -webkit-backdrop-filter: blur(22px) saturate(160%);
       border-bottom: 1px solid transparent;
       transition: background .3s var(--ease), border-color .3s var(--ease);
     }
     nav.scrolled {
-      background: rgba(8,9,12,0.86);
+      background: rgba(246,244,240,0.92);
       border-bottom-color: var(--hairline);
     }
 
@@ -124,8 +111,8 @@
       width: 29px; height: 29px; border-radius: 9px;
       display: flex; align-items: center; justify-content: center;
       font-size: 14px; color: #fff;
-      background: linear-gradient(145deg, var(--accent-hi), var(--accent) 55%, var(--accent-lo));
-      box-shadow: 0 3px 14px rgba(91,124,250,0.42), inset 0 1px 0 rgba(255,255,255,0.28);
+      background: var(--text);
+      box-shadow: none;
     }
 
     .nav-links { display: flex; align-items: center; gap: 30px; list-style: none; }
@@ -140,11 +127,11 @@
       padding: 8px 17px; border-radius: 10px;
       font-size: 13.5px; font-weight: 550; text-decoration: none;
       color: var(--text);
-      background: rgba(255,255,255,0.055);
+      background: rgba(28,25,23,0.055);
       border: 1px solid var(--hairline-2);
       transition: background .22s var(--ease), transform .22s var(--ease), border-color .22s var(--ease);
     }
-    .nav-cta:hover { background: rgba(255,255,255,0.1); transform: translateY(-1px); }
+    .nav-cta:hover { background: rgba(28,25,23,0.1); transform: translateY(-1px); }
     .nav-cta svg { opacity: .65; }
 
     /* ═══════════════ Shared atoms ═══════════════ */
@@ -158,22 +145,21 @@
       border: 1px solid transparent;
     }
     .btn-primary {
-      color: #fff;
-      background: linear-gradient(180deg, #6B8BFF, #4A6BF0);
-      box-shadow:
-        0 1px 0 rgba(255,255,255,0.22) inset,
-        0 8px 26px rgba(74,107,240,0.36);
+      color: #FBFAF7;
+      background: var(--text);
+      box-shadow: 0 1px 2px rgba(28,25,23,0.16);
     }
     .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 1px 0 rgba(255,255,255,0.22) inset, 0 14px 38px rgba(74,107,240,0.46);
+      transform: translateY(-1px);
+      background: #2E2A25;
+      box-shadow: 0 6px 18px rgba(28,25,23,0.20);
     }
     .btn-ghost {
       color: var(--text);
-      background: rgba(255,255,255,0.045);
+      background: transparent;
       border-color: var(--hairline-2);
     }
-    .btn-ghost:hover { background: rgba(255,255,255,0.085); transform: translateY(-2px); }
+    .btn-ghost:hover { background: rgba(28,25,23,0.045); transform: translateY(-1px); }
 
     .mono { font-family: var(--mono); font-size: 0.92em; letter-spacing: -0.01em; }
 
@@ -200,12 +186,7 @@
       line-height: 1.06;
       margin-bottom: 22px;
     }
-    .section-title em {
-      font-style: normal;
-      background: linear-gradient(96deg, var(--accent-hi), var(--accent) 48%, var(--accent-lo));
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent; color: transparent;
-    }
+    .section-title em { font-style: normal; color: var(--accent); }
     .section-sub {
       font-size: 17px; color: var(--text-2);
       max-width: 620px; line-height: 1.68;
@@ -224,21 +205,11 @@
       padding: calc(var(--nav-h) + 116px) 0 0;
       text-align: center;
     }
-    /* hero 标题的光源：让渐变字有出处，而不是平涂的色 */
-    .hero::before {
-      content: '';
-      position: absolute; inset: -18% -10% auto; height: 620px;
-      background: radial-gradient(760px circle at 50% 34%, rgba(91,124,250,0.22), transparent 68%);
-      filter: blur(40px);
-      pointer-events: none; z-index: 0;
-    }
-    .hero .wrap { z-index: 1; }
-
     .hero-badge {
       display: inline-flex; align-items: center; gap: 9px;
       padding: 6px 15px 6px 11px; border-radius: 100px;
       font-size: 13px; color: var(--text-2);
-      background: rgba(255,255,255,0.045);
+      background: rgba(28,25,23,0.045);
       border: 1px solid var(--hairline);
       margin-bottom: 34px;
     }
@@ -255,14 +226,8 @@
       line-height: 0.98;
       margin-bottom: 30px;
     }
-    h1 .grad {
-      background: linear-gradient(96deg, #A8E4FF 0%, #6FA8FF 34%, var(--accent) 58%, var(--accent-lo) 82%, #D49BFF 100%);
-      background-size: 100% 100%;
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent; color: transparent;
-      /* 渐变文字在暗底上易见色带：加一层极淡同色底噪点打散色阶 */
-      filter: saturate(112%);
-    }
+    /* 不用渐变字（那是 AI 站标配）。整句墨黑，"a Brain" 用朱红点睛。 */
+    h1 .grad { color: var(--accent); }
 
     .hero-sub {
       font-size: clamp(16px, 1.5vw, 19px);
@@ -289,14 +254,12 @@
     .shot {
       position: relative;
       border-radius: 14px;
-      background: var(--surface-2);
+      background: var(--surface);
       border: 1px solid var(--hairline-2);
       box-shadow:
-        0 1px 0 rgba(255,255,255,0.09) inset,
-        0 0 0 1px rgba(91,124,250,0.10),
-        0 34px 80px -22px rgba(0,0,0,0.86),
-        0 10px 26px -12px rgba(0,0,0,0.7),
-        0 30px 90px -40px rgba(91,124,250,0.34);
+        0 0 0 1px rgba(28,25,23,0.07),
+        0 2px 4px rgba(28,25,23,0.04),
+        0 18px 40px -16px rgba(28,25,23,0.16);
       overflow: hidden;
     }
     /* title bar */
@@ -304,9 +267,10 @@
       content: '';
       display: block;
       height: 38px;
-      background: linear-gradient(180deg, #1A1D23, #15181D);
-      border-bottom: 1px solid rgba(0,0,0,0.55);
-      box-shadow: 0 1px 0 rgba(255,255,255,0.045) inset;
+      /* 浅色纸面上的窗口标题栏：macOS 浅色主题的标题栏不是纯白，是一层灰 */
+      background: linear-gradient(180deg, #F0EEE8, #E7E4DD);
+      border-bottom: 1px solid rgba(28,25,23,0.13);
+      box-shadow: 0 1px 0 rgba(255,255,255,0.55) inset;
     }
     /* traffic lights */
     .shot::after {
@@ -324,7 +288,7 @@
     }
     /* 截图本身已含 macOS 窗口栏（红绿灯 + 标题栏）时用这个变体：
        保留框体与投影，但不再叠一层标题栏/红绿灯，否则会出现两层红绿灯。 */
-    .shot--bare { background: var(--surface-2); }
+    .shot--bare { background: var(--surface); }
     .shot--bare::before, .shot--bare::after { display: none; }
     .shot--bare img { border-radius: 0; }
     /* accent bloom under the hero shot */
@@ -343,7 +307,7 @@
       grid-template-columns: repeat(4, minmax(0,1fr));
       border: 1px solid var(--hairline);
       border-radius: var(--r);
-      background: linear-gradient(180deg, rgba(255,255,255,0.028), rgba(255,255,255,0.008));
+      background: linear-gradient(180deg, rgba(28,25,23,0.028), rgba(28,25,23,0.008));
       overflow: hidden;
     }
     .stat-item {
@@ -353,13 +317,11 @@
       transition: background .3s var(--ease);
     }
     .stat-item:last-child { border-right: 0; }
-    .stat-item:hover { background: rgba(255,255,255,0.022); }
+    .stat-item:hover { background: rgba(28,25,23,0.022); }
     .stat-num {
       font-size: clamp(30px, 3.4vw, 40px); font-weight: 620;
       letter-spacing: -0.04em; line-height: 1;
-      background: linear-gradient(180deg, #FFFFFF, #B9C0CC);
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-fill-color: transparent; color: transparent;
+      color: var(--text);
     }
     .stat-label {
       margin-top: 11px;
@@ -378,7 +340,7 @@
       position: relative;
       padding: 30px 28px;
       border-radius: var(--r-lg);
-      background: linear-gradient(180deg, rgba(255,255,255,0.032), rgba(255,255,255,0.010));
+      background: linear-gradient(180deg, rgba(28,25,23,0.032), rgba(28,25,23,0.010));
       border: 1px solid var(--hairline);
       overflow: hidden;
       transition: transform .34s var(--ease), border-color .34s var(--ease),
@@ -389,14 +351,14 @@
       content: '';
       position: absolute; inset: 0;
       background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%),
-                  rgba(91,124,250,0.10), transparent 62%);
+                  rgba(168,65,42,0.10), transparent 62%);
       opacity: 0; transition: opacity .34s var(--ease); pointer-events: none;
     }
     /* top highlight hairline */
     .bento-card::after {
       content: '';
       position: absolute; top: 0; left: 14%; right: 14%; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+      background: linear-gradient(90deg, transparent, rgba(28,25,23,0.28), transparent);
       opacity: 0; transition: opacity .34s var(--ease);
     }
     .bento-card:hover {
@@ -417,8 +379,8 @@
       width: 40px; height: 40px; border-radius: 11px;
       display: flex; align-items: center; justify-content: center;
       color: var(--accent-hi);
-      background: linear-gradient(150deg, rgba(91,124,250,0.20), rgba(124,91,250,0.10));
-      border: 1px solid rgba(91,124,250,0.26);
+      background: linear-gradient(150deg, rgba(168,65,42,0.20), rgba(140,53,34,0.10));
+      border: 1px solid rgba(168,65,42,0.26);
       margin-bottom: 20px;
     }
     .card-title {
@@ -429,7 +391,7 @@
     .card-desc code {
       font-family: var(--mono); font-size: 12.5px;
       padding: 2px 6px; border-radius: 5px;
-      background: rgba(255,255,255,0.07); color: var(--text);
+      background: rgba(28,25,23,0.07); color: var(--text);
     }
     .card-media {
       margin-top: 24px;
@@ -454,10 +416,10 @@
       display: inline-flex; align-items: center; gap: 8px;
       font-family: var(--mono); font-size: 11.5px; font-weight: 500;
       letter-spacing: 0.08em; text-transform: uppercase;
-      color: var(--accent-hi);
+      color: var(--accent);
       padding: 5px 12px; border-radius: 100px;
-      background: rgba(76,201,240,0.09);
-      border: 1px solid rgba(76,201,240,0.22);
+      background: rgba(168,65,42,0.07);
+      border: 1px solid rgba(168,65,42,0.20);
       margin-bottom: 22px;
     }
     .split-text h3 {
@@ -477,8 +439,8 @@
       content: '';
       position: absolute; left: 0; top: 7px;
       width: 15px; height: 15px; border-radius: 50%;
-      background: linear-gradient(150deg, rgba(91,124,250,0.30), rgba(124,91,250,0.16));
-      border: 1px solid rgba(91,124,250,0.36);
+      background: linear-gradient(150deg, rgba(168,65,42,0.30), rgba(140,53,34,0.16));
+      border: 1px solid rgba(168,65,42,0.36);
     }
     .feature-list li::after {
       content: '';
@@ -491,7 +453,7 @@
     .feature-list code, .split-text code {
       font-family: var(--mono); font-size: 12.5px;
       padding: 1px 5px; border-radius: 5px;
-      background: rgba(255,255,255,0.07); color: var(--text);
+      background: rgba(28,25,23,0.07); color: var(--text);
     }
 
     /* ═══════════════ Pricing ═══════════════ */
@@ -503,16 +465,16 @@
       position: relative;
       padding: 34px 32px;
       border-radius: var(--r-lg);
-      background: linear-gradient(180deg, rgba(255,255,255,0.032), rgba(255,255,255,0.008));
+      background: linear-gradient(180deg, rgba(28,25,23,0.032), rgba(28,25,23,0.008));
       border: 1px solid var(--hairline);
       display: flex; flex-direction: column;
       transition: transform .34s var(--ease), border-color .34s var(--ease);
     }
     .price-card:hover { transform: translateY(-3px); border-color: var(--hairline-2); }
     .price-card.pro {
-      border-color: rgba(91,124,250,0.34);
-      background: linear-gradient(180deg, rgba(91,124,250,0.10), rgba(124,91,250,0.028));
-      box-shadow: 0 24px 60px -28px rgba(91,124,250,0.42);
+      border-color: rgba(168,65,42,0.34);
+      background: linear-gradient(180deg, rgba(168,65,42,0.10), rgba(140,53,34,0.028));
+      box-shadow: 0 24px 60px -28px rgba(168,65,42,0.42);
     }
     .price-plan {
       display: flex; align-items: center; gap: 10px;
@@ -524,8 +486,8 @@
       font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em;
       padding: 3px 9px; border-radius: 100px;
       color: #C7D2FE;
-      background: rgba(91,124,250,0.20);
-      border: 1px solid rgba(91,124,250,0.34);
+      background: rgba(168,65,42,0.20);
+      border: 1px solid rgba(168,65,42,0.34);
       text-transform: none;
     }
     .price-amount {
@@ -566,13 +528,13 @@
       border-radius: 26px;
       text-align: center;
       overflow: hidden;
-      background: linear-gradient(160deg, rgba(91,124,250,0.15), rgba(124,91,250,0.05) 52%, rgba(76,201,240,0.05));
-      border: 1px solid rgba(91,124,250,0.24);
+      background: linear-gradient(160deg, rgba(168,65,42,0.15), rgba(140,53,34,0.05) 52%, rgba(192,85,60,0.05));
+      border: 1px solid rgba(168,65,42,0.24);
     }
     .cta-banner::before {
       content: '';
       position: absolute; inset: 0;
-      background: radial-gradient(620px circle at 50% -10%, rgba(91,124,250,0.30), transparent 68%);
+      background: radial-gradient(620px circle at 50% -10%, rgba(168,65,42,0.30), transparent 68%);
       pointer-events: none;
     }
     .cta-banner > * { position: relative; }
@@ -662,7 +624,6 @@
 <body>
 
 <div class="ambient"></div>
-<div class="grid-lines"></div>
 <div class="grain"></div>
 
 <!-- ═══════════════ NAV ═══════════════ -->
