@@ -83,6 +83,10 @@ final class MobileAISettings {
         )
     }
 
-    /// 移动端固定请求超时（秒）：桌面端 AppSettings.requestTimeout 的默认值。
-    static let defaultRequestTimeoutSeconds = 300
+    /// 移动端固定请求超时（秒）：对齐桌面端默认值。
+    ///
+    /// ⚠️ 必须显式标注 `Double`：共享的 `AIConfig.requestTimeoutSeconds` 是
+    /// `TimeInterval`（`Sources/MEditor/Services/AI/AIService.swift:116`，两端唯一
+    /// 定义），写整数字面量会走整型字面量推断而编译失败。
+    static let defaultRequestTimeoutSeconds: TimeInterval = 300
 }
