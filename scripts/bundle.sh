@@ -114,6 +114,13 @@ BUILD_NUMBER="${MEDITOR_BUILD_NUMBER:-$APP_VERSION}"
 # 公钥文件随仓库走（scripts/sparkle-ed-public-key.txt），私钥只在 CI secret。
 /usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://meditor-app.863129776.workers.dev/update/appcast.xml" "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :SUFeedURL https://meditor-app.863129776.workers.dev/update/appcast.xml" "$APP_BUNDLE/Contents/Info.plist"
+# 显式禁用 Installer Launcher XPC Service。它只对沙箱 app 必要，且必须由
+# SMJobBless 安装，会引入一次系统授权；非沙箱 app 启用它反而会让 Sparkle
+# 直接报错（源码原文：“If your app is not sandboxed, please remove or disable
+# SUEnableInstallerLauncherService”）。Sparkle 的默认值已是 NO，这里显式写死
+# 是为了把“我们不要 XPC 提权安装路径”变成看得见的意图。
+/usr/libexec/PlistBuddy -c "Add :SUEnableInstallerLauncherService bool false" "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Set :SUEnableInstallerLauncherService false" "$APP_BUNDLE/Contents/Info.plist"
 ED_PUBKEY_FILE="$PROJECT_DIR/scripts/sparkle-ed-public-key.txt"
 if [ -s "$ED_PUBKEY_FILE" ]; then
   ED_PUBKEY="$(tr -d '[:space:]' < "$ED_PUBKEY_FILE")"
@@ -176,8 +183,16 @@ cp "$PROJECT_DIR/Sources/$QL_NAME/Info.plist" "$QL_APPEX/Contents/Info.plist"
 # 单一来源不双份维护）。扩展走 JavaScriptCore 离线渲染，只需要 marked/highlight/css；
 # template.html、scripts/、mermaid（~3.3MB）是 WebView 管线用的，不拷。
 mkdir -p "$QL_APPEX/Contents/Resources/Preview"
-for item in css marked.min.js highlight.min.js; do
-  cp -R "$APP_BUNDLE/Contents/Resources/Preview/$item" "$QL_APPEX/Contents/Resources/Preview/"
+# 只拷 QL 真正用到的资源：QLMarkdownRenderer 内联的只有 themes.css / base.css
+# 两份样式表（QLPreviewReply 的 HTML 不带 base URL，引不了外部 css）。
+# 历史上这里是 `cp -R css`，会把整个 css/ 目录搬过去；KaTeX 落地后 css/ 里
+# 多了 katex.min.css + fonts/（约 320KB），QL 用不上，白白撑大 appex。
+for item in marked.min.js highlight.min.js; do
+  cp "$APP_BUNDLE/Contents/Resources/Preview/$item" "$QL_APPEX/Contents/Resources/Preview/"
+done
+mkdir -p "$QL_APPEX/Contents/Resources/Preview/css"
+for item in themes.css base.css; do
+  cp "$APP_BUNDLE/Contents/Resources/Preview/css/$item" "$QL_APPEX/Contents/Resources/Preview/css/"
 done
 if [ -n "$QL_RESOURCE_FILE" ]; then
   cp "$QL_RESOURCE_FILE" "$QL_APPEX/Contents/Resources/ql-render.js"
@@ -234,17 +249,34 @@ fi
 plutil -lint "$APP_BUNDLE/Contents/Info.plist" > /dev/null
 
 # Ad-hoc sign the bundle (required for macOS to launch from .app)
-# 签名顺序「由内向外」：
-#   1. appex 单独签并带沙箱 entitlement——若继续对整个 .app 用 --deep，
+# 签名顺序「由内向外」（codesign 只 seal 本层，不会代替你签嵌套代码）：
+#   1. appex 单独签并带沙箱 entitlement——若对整个 .app 用 --deep，
 #      主 app 的签名选项会套到嵌套代码上，entitlement 被丢掉，扩展必挂；
-#   2. Sparkle.framework 维持原 --deep 行为（其嵌套 XPC 也一并 ad-hoc 签）；
+#   2. Sparkle.framework 内部逐层签：XPCServices → Updater.app → Autoupdate → 框架本体。
+#      **不要用 --deep 签 Sparkle**：Sparkle 自己的错误提示就写着
+#      “do not sign your app by passing --deep”，--deep 会把外层选项套到
+#      Installer/Downloader 两个 XPC helper 上，破坏它们被判定的签名身份；
 #   3. 主 bundle 最后签，且不再 --deep，避免覆盖前两步。
 if command -v codesign &>/dev/null; then
-  # appex 签名失败 = 扩展必挂，不容许静默通过（其余两步维持原静默风格）
+  # appex 签名失败 = 扩展必挂，不容许静默通过（其余步骤维持原静默风格）
   codesign --force --sign - \
     --entitlements "$PROJECT_DIR/Sources/$QL_NAME/Entitlements.plist" \
     "$QL_APPEX" 2>/dev/null || { echo "error: Quick Look 扩展签名失败" >&2; exit 1; }
-  codesign --force --deep --sign - "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" 2>/dev/null
+
+  SPARKLE_B="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
+  if [ -d "$SPARKLE_B" ]; then
+    for xpc in "$SPARKLE_B/XPCServices/"*.xpc; do
+      [ -e "$xpc" ] && codesign --force --sign - "$xpc" 2>/dev/null
+    done
+    if [ -d "$SPARKLE_B/Updater.app" ]; then
+      # Updater.app 内部的可执行文件必须先签，再签它外层 bundle
+      [ -f "$SPARKLE_B/Updater.app/Contents/MacOS/Updater" ] && \
+        codesign --force --sign - "$SPARKLE_B/Updater.app/Contents/MacOS/Updater" 2>/dev/null
+      codesign --force --sign - "$SPARKLE_B/Updater.app" 2>/dev/null
+    fi
+    [ -f "$SPARKLE_B/Autoupdate" ] && codesign --force --sign - "$SPARKLE_B/Autoupdate" 2>/dev/null
+  fi
+  codesign --force --sign - "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" 2>/dev/null
   codesign --force --sign - "$APP_BUNDLE" 2>/dev/null
 fi
 

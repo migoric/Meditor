@@ -5,6 +5,9 @@ import SwiftUI
 struct MEditorApp: App {
     @NSApplicationDelegateAdaptor(MEditorAppDelegate.self) private var appDelegate
     @State private var appState: AppState
+    /// 冷启动引导是否已跑过。见 `onAppear` 里的说明——关窗不退出后，唤回窗口会
+    /// 二次触发 `onAppear`，重复执行 `bootSequence` 会用落盘快照覆盖用户当前状态。
+    @State private var hasBooted = false
 
     init() {
         // MCP 子命令（MEditor mcp [--workspace <path>]）：在启动最早期接管进程，
@@ -36,6 +39,13 @@ struct MEditorApp: App {
                         window.titlebarSeparatorStyle = .none
                         window.isMovableByWindowBackground = true
                     }
+                    // 上面的窗口配置是幂等的，每次 appear 重跑无妨；但 bootSequence 不是：
+                    // `applicationShouldTerminateAfterLastWindowClosed = false` 之后，关窗再点
+                    // Dock 唤回会**二次触发 onAppear**（实测 probe5：appearances=2）。若重跑，
+                    // `restoreSession` 会拿上次落盘的快照覆盖用户刚从 onDisappear 保存后仍在
+                    // 编辑的状态。故用 hasBooted 门闩，只放行冷启动那一次。
+                    guard !hasBooted else { return }
+                    hasBooted = true
                     bootSequence()
                 }
                 .onOpenURL { url in

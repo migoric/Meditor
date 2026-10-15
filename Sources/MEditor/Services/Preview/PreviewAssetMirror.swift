@@ -16,7 +16,11 @@ enum PreviewAssetMirror {
     /// the first time a document contains a ```mermaid block. This saves
     /// ~50-100ms of file I/O on every preview initialization for the 95%+
     /// of documents that don't use mermaid diagrams.
-    static let mirroredItems = ["css", "scripts", "marked.min.js", "purify.min.js", "highlight.min.js"]
+    ///
+    /// katex.min.js（267KB）按启发式同步镜像：公式出现的频率远高于图表，
+    /// 而且一旦懒加载，长文档滚动时公式会陆续弹出。KaTeX 样式与字体（
+    /// css/katex.min.css 与 css/fonts/*.woff2）随 `css` 目录一起镜像。
+    static let mirroredItems = ["css", "scripts", "marked.min.js", "purify.min.js", "highlight.min.js", "katex.min.js"]
 
     /// Hard cap on preview cache size. Beyond this we wipe the directory
     /// and let it rebuild on next render. mermaid.min.js (~3.3 MB) and
@@ -61,7 +65,13 @@ enum PreviewAssetMirror {
             let isDirectory = (try? src.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
             // If destination exists and the source is newer, refresh.
             if fm.fileExists(atPath: dst.path) {
-                if shouldRefresh(src: src, dst: dst, fileManager: fm) {
+                // 目录不能只看 mtime：新增资源（如 css/katex.min.css、css/fonts/*.woff2）
+                // 落在源目录里，但上次镜像的副本 mtime 可能更新，新文件会被整个漏掉
+                // ——表现为「升级后公式字体缺失」。目录改用条目覆盖判据。
+                let needsRefresh = isDirectory
+                    ? directoryNeedsRefresh(src: src, dst: dst, fileManager: fm)
+                    : shouldRefresh(src: src, dst: dst, fileManager: fm)
+                if needsRefresh {
                     try? fm.removeItem(at: dst)
                     mirrorAsset(src: src, dst: dst, isDirectory: isDirectory, fileManager: fm)
                 }
@@ -69,6 +79,28 @@ enum PreviewAssetMirror {
                 mirrorAsset(src: src, dst: dst, isDirectory: isDirectory, fileManager: fm)
             }
         }
+    }
+
+    /// 目标目录是否缺少源目录里的条目。
+    ///
+    /// 只看顶层不够：`css/fonts/` 是二级目录，新增的字体在 `css/` 顶层列表里
+    /// 只体现为「`fonts` 已存在」⇒ 必须递归比较相对路径集合。
+    static func directoryNeedsRefresh(src: URL, dst: URL, fileManager fm: FileManager) -> Bool {
+        let sourcePaths = relativePaths(under: src, fileManager: fm)
+        guard !sourcePaths.isEmpty else { return false }
+        return !sourcePaths.isSubset(of: relativePaths(under: dst, fileManager: fm))
+    }
+
+    /// 目录下所有条目（含子目录）相对于 `root` 的路径集合。
+    static func relativePaths(under root: URL, fileManager fm: FileManager) -> Set<String> {
+        guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { return [] }
+        let baseDepth = root.pathComponents.count
+        var paths: Set<String> = []
+        for case let url as URL in enumerator {
+            let relative = url.pathComponents.dropFirst(baseDepth).joined(separator: "/")
+            if !relative.isEmpty { paths.insert(relative) }
+        }
+        return paths
     }
 
     /// Inspect the preview cache directory and wipe it if it has grown

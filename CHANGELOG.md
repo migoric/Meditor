@@ -10,6 +10,59 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
+## [0.12.2] - 2026-10-15
+
+**用户报的三件事 + 一个会让升级白干的打包 bug。** 按用户报告的顺序：预览支持 LaTeX
+数学公式、关闭窗口不再退出应用、消除 Sparkle 自动更新的授权弹窗诱因。每条都附实测
+记录；其中「更新弹密码」一项**只消除了诱因、尚未定论**，如实标注在文末。
+
+### Added
+
+- **Markdown 预览支持 LaTeX 数学公式**（KaTeX 0.19.0，资源离线内置，不联网）：
+  行内 `$...$`、块级 `$$...$$`，覆盖矩阵、分数、积分、求和、希腊字母、上下标等。
+  实现沿用 mermaid 的**占位符模式**——marked 解析前摘出公式、过完 DOMPurify 之后
+  才交给 KaTeX 渲染，因此块级缓存与增量 DOM patch 照常生效；`nodesEqual` 增加了
+  数学归一化比较，否则「DOM 里是渲染结果、新 HTML 里是空占位符」会让每次编辑都
+  重建整块并重渲染全部公式（行内公式会把所在段落一起拖下水）。
+  代码块与行内代码里的 `$` 不参与识别（先原地遮蔽成等长占位串再扫描），货币写法
+  （`$5 到 $10`）按 KaTeX auto-render 的启发式排除。
+  随包体积约 592KB（js 268K + css 28K + 20 个 woff2 共 296K）。
+
+### Changed
+
+- **关闭最后一个窗口不再退出应用**：SwiftUI 的单例 `Window` 场景默认关窗即终止进程
+  （最小复现实测：`NSApp.windows.first?.close()` 之后进程立即以 `exit(0)` 结束）。
+  现在 `applicationShouldTerminateAfterLastWindowClosed` 返回 false，应用驻留 Dock，
+  点 Dock 图标经 `applicationShouldHandleReopen` 把主窗口原样唤回——窗口对象全程存活
+  （实测 `NSApp.windows` 计数不变、只是 `isVisible` 变 false），标签页 / 滚动位置 /
+  光标都不丢。冷启动引导加了「只跑一次」守卫：唤回窗口会再次触发 `onAppear`（实测），
+  重跑 `restoreSession` 会把用户当前状态覆盖回上次落盘的快照。
+
+### Fixed
+
+- **预览资源镜像漏掉目录内新增文件**：`mirrorAssets` 对目录只比 mtime，目标目录
+  mtime 更新时源目录里新增的资源会被整个跳过——表现为「升级后公式字体缺失」。
+  目录改用**条目覆盖判据**（递归比较相对路径集合，含二级目录），补 4 个测试。
+- **Sparkle.framework 的 `--deep` 签名**：Sparkle 自身的错误提示明确要求
+  「do not sign your app by passing --deep」——`--deep` 会把外层签名选项套到
+  Installer / Downloader 两个 XPC helper 上，破坏它们被判定的签名身份。
+  `bundle.sh` 改为由内向外逐层签（XPCServices → Updater.app → Autoupdate → 框架本体）。
+- `Info.plist` 显式写入 `SUEnableInstallerLauncherService = false`：该 XPC 服务只对
+  沙箱应用必要，且需经 SMJobBless 安装（会引入一次系统授权）；非沙箱应用启用它
+  Sparkle 会直接报错。
+- Quick Look 扩展不再整目录拷贝 `css/`，只取它真正内联的 `themes.css` / `base.css`
+  —— KaTeX 的样式与字体对 QL 无用（QL 走 JavaScriptCore 无 DOM，数学降级为原文），
+  白占约 320KB。
+
+### 已知未做（如实标注）
+
+- **「自动更新时弹输入密码授权」只消除了诱因，未定论**：本机现场反证（`/Applications`
+  组可写、app 属主为当前用户、bundle 可写）按 Sparkle 文档「能移动就不该要授权」
+  本不该弹；排查中追到的一条「InstallerLauncher.xpc 缺失」线索已自我推翻——Sparkle
+  2.9.5 的正常布局就是 `Downloader.xpc` + `Installer.xpc`。剩余最可疑项是**发布包为
+  ad-hoc 签名、无 Developer ID**（`codesign` 显示所有组件 `TeamIdentifier=not set`），
+  需发一版新包后实际更新一次才能验证。Developer-ID 签名 + 公证仍是路线图条目。
+
 ## [0.12.1] - 2026-10-14
 
 **审计余项清理 + 两个用户可见 bug 修复**：0.12.0 修完全部 P0 与 P1 最高优先级的 4 项后，
