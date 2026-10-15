@@ -83,6 +83,7 @@ final class PreviewAssetMirrorTests: XCTestCase {
         try! "marked".write(to: root.appendingPathComponent("marked.min.js"), atomically: true, encoding: .utf8)
         try! "purify".write(to: root.appendingPathComponent("purify.min.js"), atomically: true, encoding: .utf8)
         try! "hljs".write(to: root.appendingPathComponent("highlight.min.js"), atomically: true, encoding: .utf8)
+        try! "katex".write(to: root.appendingPathComponent("katex.min.js"), atomically: true, encoding: .utf8)
         try! "SHOULD-NOT-MIRROR".write(to: root.appendingPathComponent("mermaid.min.js"), atomically: true, encoding: .utf8)
         return root
     }
@@ -152,6 +153,72 @@ final class PreviewAssetMirrorTests: XCTestCase {
         PreviewAssetMirror.mirrorAssets(at: cache, copyingFrom: source)
 
         XCTAssertEqual(try String(contentsOf: dstMarked, encoding: .utf8), "CUSTOM")
+    }
+
+    // MARK: - 目录条目覆盖判据（directoryNeedsRefresh）
+
+    /// 目录只看 mtime 会漏新增文件：源目录里多了一个条目而目标目录 mtime 更新时
+    /// （CI 解包 / 增量构建的典型情形），仍必须判定为需要刷新。
+    func test_directoryNeedsRefresh_sourceHasNewEntry_returnsTrue() throws {
+        let srcCSS = tempDir.appendingPathComponent("DirSrc/css", isDirectory: true)
+        let dstCSS = tempDir.appendingPathComponent("DirDst/css", isDirectory: true)
+        try FileManager.default.createDirectory(at: srcCSS, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dstCSS, withIntermediateDirectories: true)
+        try "new".write(to: srcCSS.appendingPathComponent("katex.min.css"), atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(PreviewAssetMirror.directoryNeedsRefresh(src: srcCSS, dst: dstCSS, fileManager: .default))
+    }
+
+    /// 二级目录里的新文件也必须被发现——只看顶层会漏（css/fonts/ 新增字体）。
+    func test_directoryNeedsRefresh_nestedNewFile_returnsTrue() throws {
+        let srcCSS = tempDir.appendingPathComponent("NestedSrc/css", isDirectory: true)
+        let dstCSS = tempDir.appendingPathComponent("NestedDst/css", isDirectory: true)
+        try FileManager.default.createDirectory(at: srcCSS.appendingPathComponent("fonts"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dstCSS.appendingPathComponent("fonts"), withIntermediateDirectories: true)
+        // 两边都有 fonts/，差别只在 fonts/ 里头多了一份字体
+        try "same".write(to: srcCSS.appendingPathComponent("fonts/KaTeX_Main-Regular.woff2"), atomically: true, encoding: .utf8)
+        try "same".write(to: dstCSS.appendingPathComponent("fonts/KaTeX_Main-Regular.woff2"), atomically: true, encoding: .utf8)
+        XCTAssertFalse(PreviewAssetMirror.directoryNeedsRefresh(src: srcCSS, dst: dstCSS, fileManager: .default))
+
+        try "extra".write(to: srcCSS.appendingPathComponent("fonts/KaTeX_Size4-Regular.woff2"), atomically: true, encoding: .utf8)
+        XCTAssertTrue(PreviewAssetMirror.directoryNeedsRefresh(src: srcCSS, dst: dstCSS, fileManager: .default),
+                      "新增的二级目录文件必须被识别")
+    }
+
+    /// 目标目录条目完全覆盖源目录时不需要刷新（避免每轮预览都重拷整个目录）。
+    func test_directoryNeedsRefresh_fullyMirrored_returnsFalse() throws {
+        let srcCSS = tempDir.appendingPathComponent("FullSrc/css", isDirectory: true)
+        let dstCSS = tempDir.appendingPathComponent("FullDst/css", isDirectory: true)
+        for base in [srcCSS, dstCSS] {
+            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+            try "a".write(to: base.appendingPathComponent("base.css"), atomically: true, encoding: .utf8)
+        }
+        XCTAssertFalse(PreviewAssetMirror.directoryNeedsRefresh(src: srcCSS, dst: dstCSS, fileManager: .default))
+    }
+
+    /// 端到端：目标 css/ 已存在但缺 katex 资源，镜像后必须补齐
+    ///（回归：修前只看 mtime，目标更新时新文件会永远漏下去）。
+    func test_mirrorAssets_completesPartiallyMirroredDirectory() throws {
+        let source = tempDir.appendingPathComponent("PartialSrc", isDirectory: true)
+        let sourceCSS = source.appendingPathComponent("css", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceCSS, withIntermediateDirectories: true)
+        try "old".write(to: sourceCSS.appendingPathComponent("base.css"), atomically: true, encoding: .utf8)
+        try "new".write(to: sourceCSS.appendingPathComponent("katex.min.css"), atomically: true, encoding: .utf8)
+
+        let cache = tempDir.appendingPathComponent("PartialCache", isDirectory: true)
+        let cacheCSS = cache.appendingPathComponent("css", isDirectory: true)
+        try FileManager.default.createDirectory(at: cacheCSS, withIntermediateDirectories: true)
+        try "old".write(to: cacheCSS.appendingPathComponent("base.css"), atomically: true, encoding: .utf8)
+        // 目标 css/ 的 mtime 比源新：这正是修前会跳过刷新的条件
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 5000)], ofItemAtPath: cacheCSS.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 4000)], ofItemAtPath: sourceCSS.path)
+
+        PreviewAssetMirror.mirrorAssets(at: cache, copyingFrom: source)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheCSS.appendingPathComponent("katex.min.css").path),
+                      "新增的 css 资源必须被补齐")
     }
 
     // MARK: - pruneCacheIfNeeded

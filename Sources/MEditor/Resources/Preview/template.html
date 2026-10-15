@@ -11,14 +11,22 @@
   - connect-src 'none'：禁 fetch/XHR/beacon，堵住外泄通道。
   - img-src / media-src 保留 meditor-asset:/file:（本地图片与音视频）与 http(s)/data:（远程与内联）。
   - style-src 'unsafe-inline'：mermaid SVG 内嵌 <style>、导出注入的 <style> 都依赖它。
+  - font-src 必须含 file:：KaTeX 的数学字体（css/fonts/*.woff2）是与页面同目录的
+    本地文件，file:// 页面在 WebKit 里 'self' 语义不稳（同上），不放行 file:
+    时公式会退化成方块/乱码。
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: meditor-asset: data: https: http:; media-src 'self' file: meditor-asset: data: https: http:; font-src 'self' data:; connect-src 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: meditor-asset: data: https: http:; media-src 'self' file: meditor-asset: data: https: http:; font-src 'self' file: data:; connect-src 'none'; object-src 'none'">
 <title>MEditor Preview</title>
 
 <!-- All themes inlined as one stylesheet — switching themes is just a
      class change on <html>, no stylesheet swap or reload. -->
 <link rel="stylesheet" href="css/themes.css">
 <link rel="stylesheet" href="css/base.css">
+
+<!-- KaTeX 样式。字体路径是相对本样式表解析的（CSS 规范里 url() 以样式表自身
+     为基准，不受页面 <base href> 影响），所以 fonts/ 必须与 katex.min.css 同级
+     —— 即 css/katex.min.css + css/fonts/*.woff2。 -->
+<link rel="stylesheet" href="css/katex.min.css">
 
 <!-- Preload hljs so it's in HTTP cache when first code block triggers it -->
 <link rel="preload" href="highlight.min.js" as="script">
@@ -31,6 +39,11 @@
 
 <!-- highlight.js: load synchronously so hljs is available on first render -->
 <script src="highlight.min.js"></script>
+
+<!-- KaTeX：同步加载。267KB，远小于 mermaid（3.3MB），且公式要在首帧就位位，
+     懒加载会让长文档在滚动时公式陆续弹出。render.js 里 katex 缺失时静默降级
+     （数学片段原样保留为 $...$ 文本）。 -->
+<script src="katex.min.js"></script>
 
 <!-- mermaid.min.js (3.3MB) 不在这里同步加载：render.js 遇到 mermaid 图时
      动态注入 <script>，Swift 侧负责届时把文件复制进缓存目录。 -->

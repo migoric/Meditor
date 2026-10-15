@@ -114,6 +114,23 @@ img { max-width: 100%; border-radius: 6px; }
 .mermaid-container { margin: 16px 0; display: flex; justify-content: center; }
 .mermaid-container svg { max-width: 100%; height: auto; }
 
+/* ===== 数学公式（KaTeX）===== */
+/* 占位元素在 katex.render 之前是空的。给个最小尺寸，避免首帧塌陷导致
+   长文档在公式渲染完成后滚动位置跳变。 */
+.meditor-math-inline:empty { display: inline-block; min-width: 1.2em; }
+.meditor-math-block {
+  margin: 16px 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.meditor-math-block:empty { min-height: 3em; }
+/* KaTeX 默认 1em 排版；跟随预览字号并留一点呼吸感。 */
+.katex { font-size: 1.05em; }
+.katex-display { margin: 0; }
+/* throwOnError:false 时 KaTeX 把无法解析的公式包成 .katex-error 原样输出。 */
+.katex-error { color: #d73a49; }
+
 .error-block {
   color: #d73a49;
   background: var(--code-bg);

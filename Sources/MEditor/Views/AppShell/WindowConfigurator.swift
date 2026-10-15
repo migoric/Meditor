@@ -41,6 +41,9 @@ struct WindowConfigurator: NSViewRepresentable {
 
         func attach(to window: NSWindow) {
             self.window = window
+            // 登记主窗口，供「关窗不退出」后的 Dock 图标唤回使用
+            // （NSApp.windows 里还有设置窗口 / 更新面板 / 演示窗口，不能一概唤回）。
+            MainWindowRegistry.window = window
             configure(window)
             installToolbarRightClickSwallow()
             // SwiftUI 安装/更新 toolbar（包括后续增删 toolbar item）时会把

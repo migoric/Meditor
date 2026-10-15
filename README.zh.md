@@ -56,7 +56,7 @@ MEditor 是 **macOS 上给技术人写文档的 Agent 工作台**。核心闭环
 
 ### 🔄 闭环：改 → 渲染 → 迭代
 
-- **实时预览** — 基于 marked.js 的 Markdown 渲染、highlight.js 代码高亮、Mermaid.js 图表
+- **实时预览** — 基于 marked.js 的 Markdown 渲染、highlight.js 代码高亮、Mermaid.js 图表、KaTeX 数学公式
 - **跟得上的编辑器** — 原生 `NSTextView` 编辑，40+ 语言高亮，双向滚动同步，查找替换，快速打开（⌘P），标签页，FSEvents 驱动的文件浏览器
 - **图片自动落盘** — 截图 ⌘V 或拖入图片，自动存入 `assets/` 并插入相对路径
 - **本地历史快照** — 每次保存落快照（时间分层保留）；「文件历史」（⌃⌘H）面板 diff 对比、一键恢复，恢复本身也可撤销
@@ -250,11 +250,11 @@ MEditor/
 - [x] Agent 运行一键回滚（run 级检查点）
 - [x] Agent 写入默认 diff 审阅、连续微调、断点续传
 - [x] 写入后自动诊断自检、Prompt 缓存、单次运行成本透明
+- [x] 预览支持 LaTeX 数学公式渲染（KaTeX，资源离线内置）
 
 **后续**
 - [ ] 多窗口支持
 - [ ] 编辑器字体/字号偏好
-- [ ] 预览支持 LaTeX 数学公式渲染
 - [ ] Developer-ID 签名 + 公证（去掉首次启动的右键步骤）
 - [ ] iOS 端补齐 macOS 已有能力：行内 diff 审阅 UI、本地历史、MCP server/client、
       局域网分享、PDF 导出、Todo/日历、Gist。iOS 端的定位是「编辑 / 聊天 / 发布」的
