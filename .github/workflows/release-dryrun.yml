@@ -1,0 +1,106 @@
+name: Release Dry Run
+
+# 只为验证发布链路而存在，不参与 PR 检查（不配 on: pull_request）。
+#
+# 为什么需要它：scripts/bundle.sh 的证书签名路径**无法在开发机本地验证**——
+# 某些环境下 `codesign --sign <证书名>` 会一直挂住（`codesign --sign -` 的 ad-hoc
+# 路径却正常），所以「证书签名到底能不能产出稳定的 designated requirement」只能在
+# CI runner 上验证。直接推 tag 试的代价是留下一次失败的发布记录，故用这个干跑：
+# 走完整 导入身份 → 构建 → 打包 → 核对 requirement，但**不上传、不发 Release**。
+#
+# 用法：Actions → Release Dry Run → Run workflow → 选分支。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    name: Bundle & Verify Signing
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    env:
+      UPDATE_BASE: https://meditor-app.863129776.workers.dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Import code signing identity
+        id: signing
+        env:
+          SIGN_CERT_P12_B64: ${{ secrets.MACOS_SIGNING_CERT_P12_BASE64 }}
+          SIGN_CERT_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+        run: |
+          if [[ -z "${SIGN_CERT_P12_B64}" || -z "${SIGN_CERT_PASSWORD}" ]]; then
+            echo "::error::未配置 MACOS_SIGNING_CERT_* secret，干跑没有意义（会退化成 ad-hoc，验不到证书路径）。请先按 CONTRIBUTING.md「发布签名身份」配好再跑。"
+            exit 1
+          fi
+          set -euo pipefail
+          KC="meditor-signing.keychain"
+          KC_PW="$(openssl rand -hex 24)"
+          security create-keychain -p "$KC_PW" "$KC"
+          security set-keychain-settings -t 3600 -l "$KC"
+          security unlock-keychain -p "$KC_PW" "$KC"
+          printf '%s' "$SIGN_CERT_P12_B64" | base64 --decode > /tmp/signing.p12
+          security import /tmp/signing.p12 -k "$KC" -P "$SIGN_CERT_PASSWORD" -T /usr/bin/codesign -A
+          rm -f /tmp/signing.p12
+          security list-keychains -d user -s "$KC" login.keychain
+          ID_NAME="$(security find-identity -v -p codesigning "$KC" | sed -n 's/.*"\(.*\)"/\1/p' | head -1)"
+          if [[ -z "$ID_NAME" ]]; then
+            echo "::error::证书已导入但在钥匙串里找不到代码签名身份"
+            exit 1
+          fi
+          echo "identity=$ID_NAME" >> "$GITHUB_OUTPUT"
+          echo "using signing identity: $ID_NAME"
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Bundle .app
+        env:
+          SIGNING_IDENTITY: ${{ steps.signing.outputs.identity }}
+        run: |
+          export MEDITOR_VERSION="0.0.0-dryrun"
+          export MEDITOR_BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+          bash scripts/bundle.sh release
+
+      - name: Verify signing requirement
+        run: |
+          # 这一步就是干跑的全部意义：designated requirement 必须是证书锚。
+          # 是 cdhash ⇒ 证书没生效，升级后钥匙串 ACL 仍会失配、用户仍会弹窗。
+          set -o pipefail
+          APP=".build/release/MEditor.app"
+          DR="$(codesign -d --requirements - "$APP" 2>&1 | grep -E 'designated' | head -1)"
+          echo "$DR"
+          if echo "$DR" | grep -q "cdhash"; then
+            echo "::error::designated requirement 仍是 cdhash（$DR）——证书签名未生效"
+            exit 1
+          fi
+          if ! echo "$DR" | grep -q "certificate"; then
+            echo "::error::designated requirement 不含 certificate 锚（$DR）"
+            exit 1
+          fi
+          echo "OK: 证书锚 designated requirement，跨构建稳定"
+
+      - name: Verify bundle integrity
+        run: |
+          # 签名与嵌套代码都要过：Sparkle 的 XPC helper 若被外层签名污染，
+          # 自动更新会在用户机上静默失效（CI 上看不出来）
+          set -o pipefail
+          APP=".build/release/MEditor.app"
+          codesign --verify --deep --strict "$APP" && echo "codesign --verify OK"
+          codesign -dv "$APP" 2>&1 | grep -E "^Identifier|^TeamIdentifier|^Signature" || true
+          test -f "$APP/Contents/Resources/Preview/katex.min.js" && echo "KaTeX js 已进包"
+          test -d "$APP/Contents/Resources/Preview/css/fonts" && echo "KaTeX 字体已进包"
+          if ls "$APP/Contents/PlugIns/MEditorQuickLook.appex/Contents/Resources/Preview/"*katex* >/dev/null 2>&1; then
+            echo "::error::Quick Look 扩展里出现了 KaTeX 资源（QL 无 DOM，用不上）"
+            exit 1
+          fi
+          echo "Quick Look 扩展未误带 KaTeX"

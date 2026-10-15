@@ -248,6 +248,18 @@ fi
 # Validate Info.plist
 plutil -lint "$APP_BUNDLE/Contents/Info.plist" > /dev/null
 
+# 签名身份：默认 ad-hoc（`-`）。设了 SIGNING_IDENTITY 就用证书签。
+#
+# 为什么值得多这一步：ad-hoc 的 designated requirement 是 **cdhash**
+# （`codesign -d --requirements -` 会看到 `designated => cdhash H"…"`），
+# 每次重编都变；而证书签的是 **证书锚**（`identifier "…" and certificate leaf = H"…"`），
+# 跨构建稳定。这直接决定钥匙串 ACL 会不会失配——MEditor 把 AI API key 存在
+# 钥匙串里（Sources/MEditor/Services/Storage/Keychain.swift 用系统默认 ACL，
+# item 只信任创建它的应用，按 code signature 判定）：签名身份不稳时，用户每次
+# 升级都会看到一次「想要使用储存在钥匙串中的机密信息」授权弹窗。
+# CI 默认不配证书 ⇒ 行为与以前完全一致；配了 secret 才走证书路径。
+SIGN_ID="${SIGNING_IDENTITY:--}"
+
 # Ad-hoc sign the bundle (required for macOS to launch from .app)
 # 签名顺序「由内向外」（codesign 只 seal 本层，不会代替你签嵌套代码）：
 #   1. appex 单独签并带沙箱 entitlement——若对整个 .app 用 --deep，
@@ -259,25 +271,30 @@ plutil -lint "$APP_BUNDLE/Contents/Info.plist" > /dev/null
 #   3. 主 bundle 最后签，且不再 --deep，避免覆盖前两步。
 if command -v codesign &>/dev/null; then
   # appex 签名失败 = 扩展必挂，不容许静默通过（其余步骤维持原静默风格）
-  codesign --force --sign - \
+  codesign --force --sign "$SIGN_ID" \
     --entitlements "$PROJECT_DIR/Sources/$QL_NAME/Entitlements.plist" \
     "$QL_APPEX" 2>/dev/null || { echo "error: Quick Look 扩展签名失败" >&2; exit 1; }
 
   SPARKLE_B="$APP_BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
   if [ -d "$SPARKLE_B" ]; then
     for xpc in "$SPARKLE_B/XPCServices/"*.xpc; do
-      [ -e "$xpc" ] && codesign --force --sign - "$xpc" 2>/dev/null
+      [ -e "$xpc" ] && codesign --force --sign "$SIGN_ID" "$xpc" 2>/dev/null
     done
     if [ -d "$SPARKLE_B/Updater.app" ]; then
       # Updater.app 内部的可执行文件必须先签，再签它外层 bundle
       [ -f "$SPARKLE_B/Updater.app/Contents/MacOS/Updater" ] && \
-        codesign --force --sign - "$SPARKLE_B/Updater.app/Contents/MacOS/Updater" 2>/dev/null
-      codesign --force --sign - "$SPARKLE_B/Updater.app" 2>/dev/null
+        codesign --force --sign "$SIGN_ID" "$SPARKLE_B/Updater.app/Contents/MacOS/Updater" 2>/dev/null
+      codesign --force --sign "$SIGN_ID" "$SPARKLE_B/Updater.app" 2>/dev/null
     fi
-    [ -f "$SPARKLE_B/Autoupdate" ] && codesign --force --sign - "$SPARKLE_B/Autoupdate" 2>/dev/null
+    [ -f "$SPARKLE_B/Autoupdate" ] && codesign --force --sign "$SIGN_ID" "$SPARKLE_B/Autoupdate" 2>/dev/null
   fi
-  codesign --force --sign - "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" 2>/dev/null
-  codesign --force --sign - "$APP_BUNDLE" 2>/dev/null
+  codesign --force --sign "$SIGN_ID" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" 2>/dev/null
+  codesign --force --sign "$SIGN_ID" "$APP_BUNDLE" 2>/dev/null
+
+  # 把最终 designated requirement 打进日志：证书签名必须是 `certificate leaf = H"…"`
+  # 而不是 `cdhash H"…"`。后者意味着每次构建都变，钥匙串 ACL 升级后必然失配。
+  echo "🔏 signing identity: ${SIGN_ID}"
+  codesign -d --requirements - "$APP_BUNDLE" 2>&1 | grep -E "^# designated|^designated" | head -2
 fi
 
 echo "✅ $APP_NAME.app created at:"

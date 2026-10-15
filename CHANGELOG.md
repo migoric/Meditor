@@ -10,6 +10,30 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
+## [Unreleased]
+
+### Added
+
+- **发布签名身份可配置**（消除升级时的钥匙串授权弹窗）：`release.yml` 新增
+  `Import code signing identity` 与 `Verify signing requirement` 两步，`bundle.sh`
+  新增 `SIGNING_IDENTITY` 环境变量。配了 `MACOS_SIGNING_CERT_P12_BASE64` /
+  `MACOS_SIGNING_CERT_PASSWORD` 两个 secret 就用证书签，没配则保持 ad-hoc、
+  行为与之前完全一致（不阻断发布）。
+  动机：ad-hoc 的 designated requirement 是 **cdhash**，每次构建都变；而 AI API key
+  存在钥匙串里、用系统默认 ACL（只信任创建它的应用、按 code signature 判定），
+  于是每次升级 ACL 都失配、用户看到一次「想要使用储存在钥匙串中的机密信息」弹窗。
+  证书签名的 designated requirement 是**证书锚**（`certificate leaf = H"…"`），
+  跨构建稳定。`Verify signing requirement` 会核对这一点——若还是 cdhash 直接失败，
+  不出这种包。⚠️ 权衡：证书私钥进 CI secret；且自签名证书不解决 Gatekeeper
+  （首次启动仍需右键 → Open），要两者都解决需 Developer ID + 公证。
+
+### Fixed
+
+- **`AIService.swift` 的假注释**：原写「Keychain 的宽松 ACL（`trustedList: nil`）已解决
+  开发期替换二进制反复弹授权窗的问题」，与 `Keychain.swift` 已为安全移除
+  `trustedList: nil` 的事实矛盾，描述的是被推翻的旧设计。改为如实说明默认 ACL 的代价
+  （签名身份不稳定时升级后会弹一次授权窗，这是有意的安全取舍）。
+
 ## [0.12.2] - 2026-10-15
 
 **用户报的三件事 + 一个会让升级白干的打包 bug。** 按用户报告的顺序：预览支持 LaTeX
