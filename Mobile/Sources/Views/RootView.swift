@@ -1,20 +1,21 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 根视图：文档列表 / 设置 两个一级页面（底部页面胶囊切换），文档页推送进入。
-/// 底部栏毛玻璃态：左=页面胶囊，右=＋新建与 AI + 打开（均带 hero 展开动画）。
+/// 根视图：原生 `TabView` 承载「文档 / 设置」两个一级页面，文档页内 push 进入编辑器。
+/// 一级页面切换、tab 栏滚动收起、底部附件栏（打开 / AI / 新建）全部走 iOS 原生组件，
+/// 不再自绘悬浮胶囊底栏；品牌（朱砂强调色）经 `tint` 注入 tab 栏。
 struct RootView: View {
     @Environment(DocumentStore.self) private var store
 
-    enum Page { case home, settings }
+    enum Page: Hashable { case home, settings }
 
     @State private var page: Page = .home
     @State private var showDocument = false
     @State private var aiHero = AIHeroState()
     @State private var plusHero = PlusHeroState()
     @State private var showingFilePicker = false
+    /// hero 连续变形命名空间：＋ 钮放大成整页纸底（`PlusZoomOverlay`）。
     @Namespace private var heroNS
-    @Namespace private var pageIndicator
 
     private static let importableTypes: [UTType] = [
         .plainText, .html,
@@ -24,30 +25,35 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            // 内容层：填满全屏，键盘弹出时自行上推
-            NavigationStack {
-                ZStack {
-                    DocumentHomeView(onOpenDocument: { showDocument = true })
-                        .opacity(page == .home ? 1 : 0)
-                        .allowsHitTesting(page == .home)
-                        // 不可见页必须移出无障碍树：opacity(0) 本身不移除，
-                        // VoiceOver 会读到两页元素，焦点顺序按 ZStack 层序而非可见页。
-                        .accessibilityHidden(page != .home)
-                    SettingsView()
-                        .opacity(page == .settings ? 1 : 0)
-                        .allowsHitTesting(page == .settings)
-                        .accessibilityHidden(page != .settings)
+            TabView(selection: $page) {
+                Tab("文档", systemImage: "doc.text", value: .home) {
+                    NavigationStack {
+                        DocumentHomeView(onOpenDocument: { showDocument = true })
+                            .navigationDestination(isPresented: $showDocument) {
+                                DocumentView()
+                            }
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(PaperTheme.Motion.standard, value: page)
-                .navigationDestination(isPresented: $showDocument) {
-                    DocumentView()
+
+                Tab("设置", systemImage: "gearshape", value: .settings) {
+                    SettingsView()
                 }
             }
-            // 外部来源（微信传入 / Agent 打开）的成功打开自动推进文档页；
+            // 朱砂色染 tab 栏选中态；内容区控件各自显式取 PaperTheme.accent，不受影响
+            .tint(PaperTheme.accent)
+            // 向下滚动时 tab 栏自动收起（iOS 26 原生行为，替代自绘悬浮栏的显隐逻辑）
+            .tabBarMinimizeBehavior(.onScrollDown)
+            // 底部附件栏：挂在 tab 栏上的原生附属区，不再自绘玻璃胶囊
+            .tabViewBottomAccessory {
+                if !showDocument {
+                    bottomAccessory
+                }
+            }
+            // 外部来源（微信传入 / Agent 打开）成功打开自动推进文档页并回到列表 tab；
             // 文档被删除则退回列表。列表内打开走 onOpenDocument 闭包（同一篇重开也有效）。
             .onChange(of: store.sandboxURL) { _, url in
                 showDocument = url != nil
+                if url != nil { page = .home }
             }
             .onAppear {
                 if store.hasDocument {
@@ -60,22 +66,49 @@ struct RootView: View {
                 }
                 #endif
             }
-
-            // 底栏层：与 NavigationStack 平级，浮在内容之上；键盘弹出时上推内容但不动底栏
-            VStack(spacing: 0) {
-                Spacer()
-                if !showDocument {
-                    bottomBar
-                        .transition(.opacity.combined(with: .offset(y: 12)))
+            .fileImporter(
+                isPresented: $showingFilePicker,
+                allowedContentTypes: Self.importableTypes,
+                allowsMultipleSelection: false
+            ) { result in
+                if case .success(let urls) = result, let url = urls.first {
+                    store.openIncoming(url)
+                    if store.lastError == nil { showDocument = true }
                 }
             }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
-            .animation(PaperTheme.Motion.standard, value: showDocument)
-
-            // hero 浮层：盖在所有之上
-            if aiHero.isOpen {
-                AIHeroOverlay()
+            // AI 面板：原生 sheet（可拖拽抓手 / 多档高度 / 交互式下滑关闭），
+            // 状态仍走 AIHeroState，BarAIButton 与文档页的「AI 改写」入口无需改动。
+            .sheet(isPresented: aiSheet) {
+                AIChatSheet()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
+            .task(priority: .low) {
+                // 首帧后预热 WKWebView 进程（无 JS），mermaid 文档打开时省去进程创建
+                MermaidRenderer.shared.prewarm()
+            }
+            .task {
+                for await action in QuickActionHandler.shared.stream {
+                    switch action {
+                    case .newDocument:
+                        page = .home
+                        store.createDocument()
+                        showDocument = true
+                    case .openFile:
+                        page = .home
+                        showingFilePicker = true
+                    case .openRecent(let path):
+                        let url = store.workspace.appendingPathComponent(path)
+                        if store.loadFromSandbox(url) {
+                            page = .home
+                            showDocument = true
+                        }
+                    }
+                }
+            }
+
+            // ＋ 新建 hero：圆钮放大成整页纸底，随后创建并推入新文档，纸底淡出。
+            // matchedGeometryEffect 是 SwiftUI 原生 API，品牌连续性不靠自绘 chrome。
             if plusHero.isZooming {
                 PlusZoomOverlay(namespace: heroNS)
             }
@@ -83,175 +116,43 @@ struct RootView: View {
         .environment(aiHero)
         .environment(plusHero)
         .environment(\.heroNamespace, heroNS)
-        .fileImporter(
-            isPresented: $showingFilePicker,
-            allowedContentTypes: Self.importableTypes,
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                store.openIncoming(url)
-                if store.lastError == nil { showDocument = true }
-            }
-        }
-        .task(priority: .low) {
-            // 首帧后预热 WKWebView 进程（无 JS），mermaid 文档打开时省去进程创建
-            MermaidRenderer.shared.prewarm()
-        }
-        .task {
-            for await action in QuickActionHandler.shared.stream {                switch action {
-                case .newDocument:
-                    page = .home
-                    store.createDocument()
-                    showDocument = true
-                case .openFile:
-                    page = .home
-                    showingFilePicker = true
-                case .openRecent(let path):
-                    let url = store.workspace.appendingPathComponent(path)
-                    if store.loadFromSandbox(url) {
-                        page = .home
-                        showDocument = true
-                    }
+    }
+
+    /// AI sheet 的呈现绑定：直接读 AIHeroState，避免再造一份平行状态。
+    private var aiSheet: Binding<Bool> {
+        Binding(
+            get: { aiHero.isOpen },
+            set: { aiHero.isOpen = $0 }
+        )
+    }
+
+    // MARK: - 底部附件栏
+
+    /// 挂在 tab 栏上的原生附属区：左「打开文件」，右「AI 助手 / 新建」。
+    /// `GlassEffectContainer` 是 iOS 26 的正确用法——多个玻璃元素必须同容器，
+    /// 否则各自独立采样会互相遮挡。一条原生玻璃胶囊替代原来的 4 层手搓玻璃底。
+    /// 文档页打开时整块隐藏（该页有自己的底部动作条）。
+    private var bottomAccessory: some View {
+        GlassEffectContainer {
+            HStack(spacing: 6) {
+                Button { showingFilePicker = true } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 17, weight: .medium))
+                        .frame(width: 40, height: 40)
                 }
+                .buttonStyle(.glass)
+                .accessibilityLabel("打开文件")
+
+                Spacer(minLength: 12)
+
+                BarAIButton(context: "root")
+                    .buttonStyle(.glass)
+                BarPlusButton(context: "root")
+                    .buttonStyle(.glass)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .glassEffect(.regular.tint(PaperTheme.accent.opacity(0.10)), in: .capsule)
         }
-    }
-
-    // MARK: - 底部栏
-
-    private var bottomBar: some View {
-        BottomBarView(page: $page, pageIndicator: pageIndicator, showingFilePicker: $showingFilePicker)
-    }
-}
-
-// MARK: - 底部栏（独立 struct，隔离 page 变化的动画事务）
-
-/// 整条底部栏：页面切换胶囊 + 动作按钮。
-/// 独立 struct 避免 withAnimation 事务传播到 RootView 其他部分。
-private struct BottomBarView: View {
-    @Binding var page: RootView.Page
-    let pageIndicator: Namespace.ID
-    @Binding var showingFilePicker: Bool
-
-    var body: some View {
-        HStack(spacing: 0) {
-            // 页面胶囊：文档 / 设置（一级页面，matchedGeometry 滑动）
-            HStack(spacing: 4) {
-                pageButton(.home, icon: "doc.text", label: "文档")
-                pageButton(.settings, icon: "gearshape", label: "设置")
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
-            .background(GlassCapsuleBackground())
-
-            Spacer()
-
-            ActionButtons(showingFilePicker: $showingFilePicker)
-                .transaction { $0.animation = nil }
-        }
-        .padding(.horizontal, 28)
-        .padding(.bottom, 4)
-    }
-
-    private func pageButton(_ item: RootView.Page, icon: String, label: String) -> some View {
-        let selected = page == item
-        return Button {
-            withAnimation(PaperTheme.Motion.standard) { page = item }
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .medium))
-                .symbolEffect(.bounce, value: selected)
-                .foregroundStyle(selected ? PaperTheme.accent : PaperTheme.inkSecondary)
-                .frame(width: 52)
-                .padding(.vertical, 8)
-                .background {
-                    if selected {
-                        GlassSelection(indicator: pageIndicator)
-                    }
-                }
-                .contentShape(Capsule())
-        }
-        .sensoryFeedback(.impact(weight: .medium), trigger: selected)
-        .buttonStyle(.pressable)
-        .accessibilityLabel(label)
-    }
-}
-
-// MARK: - 选中玻璃指示器（毛玻璃 + TimelineView 流光 shimmer）
-
-/// 胶囊切换的选中 pill：与底栏 GlassCapsuleBackground 统一语言的玻璃质感，
-/// 带周期性流光扫过，让表面有真实玻璃的反射感。
-/// 使用 TimelineView 驱动 shimmer，不触发 SwiftUI 视图重建，不影响父视图。
-private struct GlassSelection: View {
-    let indicator: Namespace.ID
-
-    @Environment(\.colorScheme) private var colorScheme
-    private var isDark: Bool { colorScheme == .dark }
-
-    var body: some View {
-        Capsule(style: .continuous)
-            .fill(.thickMaterial)
-            .overlay {
-                Capsule(style: .continuous)
-                    .fill(PaperTheme.accent.opacity(0.15))
-            }
-            .overlay {
-                TimelineView(.periodic(from: .now, by: 0.05)) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate
-                        .truncatingRemainder(dividingBy: 3) / 3
-                    GeometryReader { geo in
-                        LinearGradient(
-                            colors: [
-                                .white.opacity(0),
-                                .white.opacity(0.12),
-                                .white.opacity(0),
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                        .frame(width: geo.size.width * 0.4)
-                        .offset(x: geo.size.width * (t * 1.4 - 0.7))
-                        .blur(radius: 6)
-                        .mask(Capsule(style: .continuous))
-                    }
-                    // shimmer 每 50ms 重绘一帧：gradient + blur + mask 的图层树若逐帧
-                    // 重建会持续消耗 CPU/GPU。drawingGroup() 把整条链光栅化到离屏位图，
-                    // 后续帧只平移位图（与 DotGridBackground 同一处理）。
-                    .drawingGroup()
-                }
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(PaperTheme.hairline, lineWidth: PaperTheme.Stroke.hairline)
-            }
-            .shadow(color: .black.opacity(isDark ? 0.25 : 0.08), radius: 4, y: 2)
-            .matchedGeometryEffect(id: "page-indicator", in: indicator)
-    }
-}
-
-// MARK: - 动作胶囊（隔离刷新，不受页面切换影响）
-
-/// 右胶囊：打开 + AI + 新建，独立 struct 避免因 page 变化触发父视图重算。
-private struct ActionButtons: View {
-    @Binding var showingFilePicker: Bool
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Button { showingFilePicker = true } label: {
-                Image(systemName: "folder")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(width: 34, height: 34)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.pressable)
-            .accessibilityLabel("打开文件")
-
-            BarAIButton(context: "root")
-            BarPlusButton(context: "root")
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .background(GlassCapsuleBackground())
     }
 }

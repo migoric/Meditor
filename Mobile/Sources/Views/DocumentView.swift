@@ -321,7 +321,9 @@ struct DocumentView: View {
             } label: {
                 Label("打开文件", systemImage: "folder")
             }
-            .buttonStyle(.paperPrimary)
+            // 与首页空态一致：原生 glassProminent + 朱砂 tint，替代自绘朱砂底按钮
+            .buttonStyle(.glassProminent)
+            .tint(PaperTheme.accent)
             .padding(.top, 26)
 
             // 快速模板
@@ -354,41 +356,42 @@ struct DocumentView: View {
 // MARK: - 文档底栏（独立 struct，隔离 HeroState/Store 观察范围）
 
 /// 文档页的底部动作栏：编辑/预览切换 + AI/新建。独立 struct 避免父视图状态变化时重建。
+/// 两条胶囊底用 iOS 26 原生 `glassEffect`（原来 4 层手搓玻璃的自制 Liquid Glass，
+/// 在部署目标提到 26.0 后由系统接管）；多个玻璃元素必须在同一 `GlassEffectContainer` 内。
 private struct DocActionBar: View {
     @Environment(DocumentStore.self) private var store
-    @Environment(\.heroNamespace) private var heroNS
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 4) {
-                Button { store.showPreview.toggle() } label: {
-                    Image(systemName: store.showPreview ? "pencil" : "doc.richtext")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(store.showPreview ? PaperTheme.inkSecondary : PaperTheme.accent)
-                        .contentTransition(.symbolEffect(.replace.downUp))
-                        .frame(width: 52)
-                        .padding(.vertical, 8)
-                        .contentShape(Capsule())
+        GlassEffectContainer {
+            HStack(spacing: 0) {
+                HStack(spacing: 4) {
+                    Button { store.showPreview.toggle() } label: {
+                        Image(systemName: store.showPreview ? "pencil" : "doc.richtext")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(store.showPreview ? PaperTheme.inkSecondary : PaperTheme.accent)
+                            .contentTransition(.symbolEffect(.replace.downUp))
+                            .frame(width: 52)
+                            .padding(.vertical, 8)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel(store.showPreview ? "编辑" : "预览")
                 }
-                .buttonStyle(.pressable)
-                .accessibilityLabel(store.showPreview ? "编辑" : "预览")
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
-            .background(GlassCapsuleBackground())
+                .glassEffect(.regular.tint(PaperTheme.accent.opacity(0.10)), in: .capsule)
 
-            Spacer()
+                Spacer()
 
-            HStack(spacing: 8) {
-                BarAIButton(context: "doc")
-                BarPlusButton(context: "doc")
+                HStack(spacing: 8) {
+                    BarAIButton(context: "doc")
+                        .buttonStyle(.glass)
+                    BarPlusButton(context: "doc")
+                        .buttonStyle(.glass)
+                }
+                .glassEffect(.regular.tint(PaperTheme.accent.opacity(0.10)), in: .capsule)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 5)
-            .background(GlassCapsuleBackground())
+            .padding(.horizontal, 28)
+            .padding(.bottom, 4)
         }
-        .padding(.horizontal, 28)
-        .padding(.bottom, 4)
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }

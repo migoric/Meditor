@@ -276,31 +276,10 @@ private struct PaperNoiseOverlay: View {
 
 // MARK: - 可复用样式
 
-/// 品牌主按钮：朱砂底白字，按压缩放 + 转深色 + 轻触觉。
-struct PaperPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.body.weight(.medium))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            .background(
-                configuration.isPressed ? PaperTheme.accentPressed : PaperTheme.accent,
-                in: RoundedRectangle(cornerRadius: PaperTheme.Radius.button, style: .continuous)
-            )
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
-            .animation(PaperTheme.Motion.quick, value: configuration.isPressed)
-            .sensoryFeedback(.impact(weight: .light), trigger: configuration.isPressed) { _, pressed in pressed }
-    }
-}
-
-extension ButtonStyle where Self == PaperPrimaryButtonStyle {
-    static var paperPrimary: PaperPrimaryButtonStyle { PaperPrimaryButtonStyle() }
-}
-
 /// 通用按压样式：不改动 label 外观，只加按压缩放 / 透明度 / 回弹 / 轻触觉。
 /// 用于 tab、头部按钮、chips、操作行等自绘外观的按钮。
+/// 注：主按钮已改用 iOS 26 原生 `.buttonStyle(.glassProminent)` + `.tint(朱砂)`，
+/// 原自绘朱砂底 `PaperPrimaryButtonStyle` 随之删除。
 struct PressableButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
