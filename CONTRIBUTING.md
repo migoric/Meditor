@@ -130,6 +130,47 @@ git push origin v0.12.0
   （`Tests/MEditorTests/SignUpdateScriptTests.swift`：真脚本子进程 + 公钥验签）。
 - `workflow_dispatch` 只能指向 `v*` tag；指向普通分支会被脚本拒绝。
 
+### 发布签名身份（可选 secret）
+
+`release.yml` 默认用 **ad-hoc** 签名（`codesign --sign -`）。它的 designated requirement 是
+**cdhash**，每次构建都变 —— 而 MEditor 把 AI API key 放在钥匙串里、用系统默认 ACL
+（`Sources/MEditor/Services/Storage/Keychain.swift`，item 只信任创建它的应用、按 code
+signature 判定），于是**用户每次升级都会看到一次**「想要使用储存在钥匙串中的机密信息」
+授权弹窗。配一张证书签名即可根治：证书的 designated requirement 是**证书锚**
+（`certificate leaf = H"…"`），跨构建稳定，ACL 不失配。
+
+| secret | 内容 |
+|---|---|
+| `MACOS_SIGNING_CERT_P12_BASE64` | `.p12`（含私钥）的 base64，**单行无换行** |
+| `MACOS_SIGNING_CERT_PASSWORD` | 该 p12 的导出密码 |
+
+```bash
+# 生成自签名代码签名证书（Code Signing EKU，10 年）
+openssl req -new -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -keyout cs.key -out cs.crt \
+  -subj "/CN=MEditor Self-Signed Code Signing" \
+  -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=critical,codeSigning"
+# 导出 p12：必须用 legacy PBE 且密码非空，否则 macOS `security import` 报
+# "MAC verification failed during PKCS12 import (wrong password?)"
+openssl pkcs12 -export -inkey cs.key -in cs.crt -out cs.p12 \
+  -passout pass:'<你的密码>' -name "MEditor Self-Signed Code Signing" \
+  -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+
+base64 -i cs.p12 | tr -d '\n' | gh secret set MACOS_SIGNING_CERT_P12_BASE64
+gh secret set MACOS_SIGNING_CERT_PASSWORD --body '<你的密码>'
+```
+
+两个都没配 ⇒ 走 ad-hoc，行为与配之前完全一致，**不阻断发布**。配了之后
+`release.yml` 会多两步：`Import code signing identity`（建临时钥匙串并导入）和
+`Verify signing requirement`（核对 designated requirement 确实是证书锚；若还是 cdhash
+就直接失败，不出这种包）。
+
+⚠️ **安全权衡**：证书私钥进了 CI secret，意味着能读到 secret 的人就能签出匹配用户钥匙串
+ACL 的 app、静默读走 API key。自签名证书只解决「少弹一次框」，**不解决** Gatekeeper
+（首次启动仍需右键 → Open）。要同时解决两者，需要 Developer ID Application 证书 + 公证
+（Apple Developer Program，$99/年）——见 README 路线图。
+
 ## 报 issue
 
 用 issue 模板（Bug 报告 / 功能建议）。安全漏洞**不要**开公开 issue —— 见 [`SECURITY.md`](./SECURITY.md)。

@@ -157,8 +157,10 @@ struct AIConfig: Sendable {
 // MARK: - API key store
 
 /// API Key 存储：macOS Keychain（generic password，复用 Keychain 封装，
-/// 与 Gist token / 分享 token 一致）。Keychain 的宽松 ACL（trustedList: nil）
-/// 已解决开发期替换二进制反复弹授权窗的问题，因此不再用 UserDefaults 明文。
+/// 与 Gist token / 分享 token 一致）。使用**系统默认 ACL**——item 只信任创建它的
+/// 应用（按 code signature）。代价是：签名身份不稳定时（如 ad-hoc 签名，每次构建
+/// designated requirement 都是新的 cdhash），升级后 ACL 匹配不上，用户会看到一次
+/// 钥匙串授权弹窗；这是有意选择，安全性优先于少弹一次框（见 `Keychain` 的 ACL 策略）。
 ///
 /// 迁移：首次 load 时若发现 UserDefaults 旧明文（"meditor.ai.apiKey"），
 /// 写入 Keychain 并删除明文。Keychain 写入失败时降级为进程内内存值并记日志，

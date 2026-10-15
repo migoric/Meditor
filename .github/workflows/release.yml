@@ -78,7 +78,41 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
+      - name: Import code signing identity
+        id: signing
+        env:
+          SIGN_CERT_P12_B64: ${{ secrets.MACOS_SIGNING_CERT_P12_BASE64 }}
+          SIGN_CERT_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+        run: |
+          # 稳定签名身份（可选，见 bundle.sh 里 SIGNING_IDENTITY 的说明）。
+          # 没配 secret 时保持 ad-hoc，行为与以前完全一致——不阻断发布。
+          if [[ -z "${SIGN_CERT_P12_B64}" || -z "${SIGN_CERT_PASSWORD}" ]]; then
+            echo "::notice::未配置 MACOS_SIGNING_CERT_* secret，本次用 ad-hoc 签名（升级后钥匙串 ACL 会失配，用户会看到一次授权弹窗）"
+            echo "identity=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set -euo pipefail
+          KC="meditor-signing.keychain"
+          KC_PW="$(openssl rand -hex 24)"
+          security create-keychain -p "$KC_PW" "$KC"
+          security set-keychain-settings -t 3600 -l "$KC"
+          security unlock-keychain -p "$KC_PW" "$KC"
+          printf '%s' "$SIGN_CERT_P12_B64" | base64 --decode > /tmp/signing.p12
+          # -A：允许 codesign 免提示使用私钥（runner 上无 GUI，不能弹窗）
+          security import /tmp/signing.p12 -k "$KC" -P "$SIGN_CERT_PASSWORD" -T /usr/bin/codesign -A
+          rm -f /tmp/signing.p12
+          security list-keychains -d user -s "$KC" login.keychain
+          ID_NAME="$(security find-identity -v -p codesigning "$KC" | sed -n 's/.*"\(.*\)"/\1/p' | head -1)"
+          if [[ -z "$ID_NAME" ]]; then
+            echo "::error::证书已导入但在钥匙串里找不到代码签名身份"
+            exit 1
+          fi
+          echo "identity=$ID_NAME" >> "$GITHUB_OUTPUT"
+          echo "using signing identity: $ID_NAME"
+
       - name: Bundle .app
+        env:
+          SIGNING_IDENTITY: ${{ steps.signing.outputs.identity }}
         run: |
           # 版本号取 git tag（去 v 前缀）；build 号用 run_number（单调整型）——
           # Sparkle 按 CFBundleVersion 比新旧，整型才能盖过 1.1 时代的老包
@@ -86,6 +120,25 @@ jobs:
           export MEDITOR_BUILD_NUMBER="$GITHUB_RUN_NUMBER"
           bash scripts/bundle.sh release
           ditto -c -k --keepParent .build/release/MEditor.app MEditor-${{ github.ref_name }}.zip
+
+      - name: Verify signing requirement
+        if: ${{ steps.signing.outputs.identity != '' }}
+        run: |
+          # 钥匙串 ACL 会不会因升级失配，取决于 designated requirement 是不是证书锚。
+          # 必须是 `certificate leaf = H"…"`；若还是 `cdhash H"…"`，说明证书没生效，
+          # 这一版发出去用户仍会看到授权弹窗——直接失败，别出这种包。
+          set -o pipefail
+          DR="$(codesign -d --requirements - .build/release/MEditor.app 2>&1 | grep -E 'designated' | head -1)"
+          echo "$DR"
+          if echo "$DR" | grep -q "cdhash"; then
+            echo "::error::designated requirement 仍是 cdhash（$DR）——证书签名未生效，升级后钥匙串 ACL 仍会失配"
+            exit 1
+          fi
+          if ! echo "$DR" | grep -q "certificate"; then
+            echo "::error::designated requirement 不含 certificate 锚（$DR）——无法保证跨构建稳定"
+            exit 1
+          fi
+          echo "OK: 证书锚 designated requirement，跨构建稳定"
 
       - name: Sign update package
         env:
