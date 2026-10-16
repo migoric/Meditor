@@ -471,7 +471,7 @@
 				GENERATE_INFOPLIST = NO;
 				INFOPLIST_FILE = MEditorMobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.meditor.mobile;
 				PRODUCT_NAME = MEditorMobile;
 				SDKROOT = iphoneos;
@@ -493,7 +493,7 @@
 				GENERATE_INFOPLIST = NO;
 				INFOPLIST_FILE = MEditorMobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.meditor.mobile;
 				PRODUCT_NAME = MEditorMobile;
 				SDKROOT = iphoneos;
