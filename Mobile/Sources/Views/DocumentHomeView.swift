@@ -38,8 +38,18 @@ struct DocumentHomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PaperTheme.paperBackground)
-        // 一级页面标题由原生 tab 栏承载，导航栏只放原生搜索框：
-        // 取消按钮、键盘处理、滚动折叠、无结果态全部由系统负责，
+        // 原生 tab 栏已隐藏（底部只有自绘通栏），页面标题由导航栏承载：
+        // 衬线「文档」是品牌元素，与设置页的导航标题对齐。
+        .navigationTitle("文档")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("文档")
+                    .font(.system(.headline, design: .serif, weight: .semibold))
+                    .foregroundStyle(PaperTheme.ink)
+            }
+        }
+        // 原生搜索框：取消按钮、键盘处理、滚动折叠、无结果态全部由系统负责，
         // 替代原来手写的卡片搜索框（DocumentHomeView 历史上的 searchField）。
         .searchable(
             text: $query,

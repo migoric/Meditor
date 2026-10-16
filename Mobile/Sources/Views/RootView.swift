@@ -1,9 +1,11 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 根视图：原生 `TabView` 承载「文档 / 设置」两个一级页面，文档页内 push 进入编辑器。
-/// 一级页面切换、tab 栏滚动收起、底部附件栏（打开 / AI / 新建）全部走 iOS 原生组件，
-/// 不再自绘悬浮胶囊底栏；品牌（朱砂强调色）经 `tint` 注入 tab 栏。
+/// 根视图：原生 `TabView` 承载「文档 / 设置」两个一级页面（各自独立导航栈），
+/// 文档页内 push 进入编辑器。原生 tab 栏隐藏——它放不了「打开 / AI / 新建」
+/// 动作钮，与底部附件栏并存还会叠成双层；底部只保留自绘通栏，**单层左右结构**：
+/// 左=页面切换胶囊，右=动作胶囊。玻璃用 iOS 26 原生 `.glassEffect`
+/// （一条胶囊一层玻璃，内部纯图标——不再玻璃叠玻璃，也不再给容器套大胶囊）。
 struct RootView: View {
     @Environment(DocumentStore.self) private var store
 
@@ -16,6 +18,8 @@ struct RootView: View {
     @State private var showingFilePicker = false
     /// hero 连续变形命名空间：＋ 钮放大成整页纸底（`PlusZoomOverlay`）。
     @Namespace private var heroNS
+    /// 页面切换胶囊的选中 pill 滑动命名空间（matchedGeometryEffect）。
+    @Namespace private var pageIndicator
 
     private static let importableTypes: [UTType] = [
         .plainText, .html,
@@ -33,23 +37,12 @@ struct RootView: View {
                                 DocumentView()
                             }
                     }
+                    .toolbar(.hidden, for: .tabBar)
                 }
 
                 Tab("设置", systemImage: "gearshape", value: .settings) {
                     SettingsView()
-                }
-            }
-            // 朱砂色染 tab 栏选中态；内容区控件各自显式取 PaperTheme.accent，不受影响
-            .tint(PaperTheme.accent)
-            // 向下滚动时 tab 栏自动收起（iOS 26 原生行为，替代自绘悬浮栏的显隐逻辑）
-            .tabBarMinimizeBehavior(.onScrollDown)
-            // 底部附件栏：挂在 tab 栏上的原生附属区，不再自绘玻璃胶囊。
-            // 仅文档 tab 显示——打开文件 / AI / 新建都是文档向动作，设置页是表单，
-            // 挂上去只是噪音（Safari 的原生底部工具栏同样是按 tab 上下文化的）。
-            // 文档页打开时也整块隐藏（该页有自己的底部动作条）。
-            .tabViewBottomAccessory {
-                if !showDocument && page == .home {
-                    bottomAccessory
+                        .toolbar(.hidden, for: .tabBar)
                 }
             }
             // 外部来源（微信传入 / Agent 打开）成功打开自动推进文档页并回到列表 tab；
@@ -110,6 +103,22 @@ struct RootView: View {
                 }
             }
 
+            // 底部通栏：与 TabView 平级，浮在内容之上；键盘弹出时上推内容但不动底栏。
+            // 文档页打开时整条隐藏（该页有自己的底部动作条）。
+            VStack(spacing: 0) {
+                Spacer()
+                if !showDocument {
+                    BottomBarView(
+                        page: $page,
+                        pageIndicator: pageIndicator,
+                        showingFilePicker: $showingFilePicker
+                    )
+                    .transition(.opacity.combined(with: .offset(y: 12)))
+                }
+            }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .animation(PaperTheme.Motion.standard, value: showDocument)
+
             // ＋ 新建 hero：圆钮放大成整页纸底，随后创建并推入新文档，纸底淡出。
             // matchedGeometryEffect 是 SwiftUI 原生 API，品牌连续性不靠自绘 chrome。
             if plusHero.isZooming {
@@ -128,41 +137,78 @@ struct RootView: View {
             set: { aiHero.isOpen = $0 }
         )
     }
+}
 
-    // MARK: - 底部附件栏
+// MARK: - 底部通栏（独立 struct，隔离 page 变化的动画事务）
 
-    /// 挂在 tab 栏上的原生附属区：左「打开文件」，右「AI 助手 / 新建」。
-    /// iOS 26 玻璃的正确用法：多个交互元素同置 `GlassEffectContainer`，
-    /// **每个元素各自** `.buttonStyle(.glass)`，容器只统一采样——不要给容器
-    /// 整体再套一层 `.glassEffect(in: .capsule)`，那样整条会糊成一实色块，
-    /// 与下面的原生 tab 栏胶囊叠成「双层抽屉把手」。
-    /// 文档页打开时整块隐藏（该页有自己的底部动作条）。
-    /// 挂在 tab 栏上的原生附属区：打开文件 / AI 助手 / 新建，通栏等距分布。
-    /// 实证：系统为 `tabViewBottomAccessory` 自带整条玻璃背景（探针实验：
-    /// 内容只放一个 Text 也照常出现玻璃条），因此按钮**不再**各自
-    /// `.buttonStyle(.glass)`——那是玻璃叠玻璃；图标直接落在系统玻璃条上，
-    /// 即 Safari 底部工具栏 + tab 栏的原生组合形态。
-    /// 文档页打开时整块隐藏（该页有自己的底部动作条）。
-    private var bottomAccessory: some View {
+/// 单层左右结构：左=页面切换胶囊（文档 / 设置），右=动作胶囊（打开 / AI / 新建）。
+/// 独立 struct 避免 withAnimation 事务传播到 RootView 其他部分。
+/// 玻璃只由胶囊自身承担（`.glassEffect`），内部一律纯图标——曾经犯过的错：
+/// 给容器套大胶囊、按钮再各自带玻璃、玻璃钮里嵌圆底，三种叠层采样都会糊。
+private struct BottomBarView: View {
+    @Binding var page: RootView.Page
+    let pageIndicator: Namespace.ID
+    @Binding var showingFilePicker: Bool
+
+    var body: some View {
         HStack(spacing: 0) {
-            Button { showingFilePicker = true } label: {
-                Image(systemName: "folder")
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(PaperTheme.ink)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .contentShape(Rectangle())
+            // 左：页面胶囊（一级页面切换，matchedGeometry 滑动选中 pill）
+            HStack(spacing: 4) {
+                pageButton(.home, icon: "doc.text", label: "文档")
+                pageButton(.settings, icon: "gearshape", label: "设置")
             }
-            .buttonStyle(.pressable)
-            .accessibilityLabel("打开文件")
+            .padding(.horizontal, 6)
+            .padding(.vertical, 5)
+            .glassEffect(.regular, in: .capsule)
 
-            BarAIButton(context: "root")
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .contentShape(Rectangle())
+            Spacer(minLength: 12)
 
-            BarPlusButton(context: "root")
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .contentShape(Rectangle())
+            // 右：动作胶囊（打开 / AI / 新建）
+            HStack(spacing: 8) {
+                Button { showingFilePicker = true } label: {
+                    Image(systemName: "folder")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(PaperTheme.ink)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.pressable)
+                .accessibilityLabel("打开文件")
+
+                BarAIButton(context: "root")
+                BarPlusButton(context: "root")
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 5)
+            .glassEffect(.regular, in: .capsule)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 28)
+        .padding(.bottom, 4)
+    }
+
+    private func pageButton(_ item: RootView.Page, icon: String, label: String) -> some View {
+        let selected = page == item
+        return Button {
+            withAnimation(PaperTheme.Motion.standard) { page = item }
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
+                .symbolEffect(.bounce, value: selected)
+                .foregroundStyle(selected ? PaperTheme.accent : PaperTheme.inkSecondary)
+                .frame(width: 52)
+                .padding(.vertical, 8)
+                .background {
+                    if selected {
+                        Capsule(style: .continuous)
+                            .fill(PaperTheme.accent.opacity(0.14))
+                            .matchedGeometryEffect(id: "page-indicator", in: pageIndicator)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: selected)
+        .buttonStyle(.pressable)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
