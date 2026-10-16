@@ -10,38 +10,46 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
-## [Unreleased]
+## [0.12.3] - 2026-10-16
+
+**iOS 端 UI 全面原生化 + 发布签名身份可配置。** iOS 端按「用 iOS 自己的 UI 组件、
+UI 交互以及动画」的方向，把自绘 chrome 逐项换成苹果原生实现。macOS 端本轮**无功能
+变化**（改动全部在 `Mobile/` 与发布基建，`Sources/` 一行未动）——Sparkle 用户会收到
+一个仅构建号变化的更新。iOS 部署目标 `17.0` → `26.0` 是破坏性变更，伴生 App 版本号
+同步 `1.1` → `1.2`。
 
 ### Changed
 
-- **iOS 端 UI 全面原生化**：部署目标 `17.0` → `26.0`，用苹果原生组件 / 交互 / 动画
-  替换自绘 chrome。逐项对拍后只动「控件与交互」层，品牌视觉（宣纸色板、朱砂印、
-  衬线标题、纸纹、`BrandMark`）保留并经 `tint` / `foregroundStyle` 注入原生控件。
+- **iOS 端 UI 原生化**：自绘 chrome 逐项换成原生实现。原则是只动「控件与交互」层，
+  品牌视觉（宣纸色板、朱砂印、衬线标题、纸纹、`BrandMark`）保留，经 `tint` /
+  `foregroundStyle` 注入原生控件。
 
-  | 原来自绘 | 换成原生 | 位置 |
-  |---|---|---|
-  | `opacity` 手工切页 + 自定义胶囊底栏 | `TabView` + `Tab(_:systemImage:value:)` | `RootView.swift` |
-  | 底栏常驻、无滚动行为 | `.tabBarMinimizeBehavior(.onScrollDown)` | `RootView.swift` |
-  | 右侧自绘动作胶囊 | `.tabViewBottomAccessory` | `RootView.swift` |
-  | `GlassCapsuleBackground` 4 层手搓玻璃（材质 + 受光渐变 + 受光描边 + 发丝线 + 双层软影，49 行） | `.glassEffect(.regular.tint(…).interactive(), in: .capsule)`，多处玻璃同置于 `GlassEffectContainer` | 原 `GlassCapsule.swift` 整文件删除 |
-  | `GlassSelection` 的 `TimelineView` 流光（每 50ms 重绘一帧） | 选中态交回 `matchedGeometryEffect` 滑动 + 系统 tint | `RootView.swift` |
-  | 手写卡片搜索框 | `.searchable(placement: .navigationBarDrawer(displayMode: .always))` | `DocumentHomeView.swift` |
-  | 手写空态 ×1、搜索无结果态 ×1 | `ContentUnavailableView` / `ContentUnavailableView.search(text:)` | `DocumentHomeView.swift` |
-  | AI 面板自绘 overlay（遮罩 + 抓手 + 上滑 `DragGesture` + 350ms 延迟卸载） | `.sheet` + `presentationDetents` + `presentationDragIndicator(.visible)` | `HeroOverlays.swift` |
-  | `PaperPrimaryButtonStyle` 自绘朱砂底按钮 | `.buttonStyle(.glassProminent)` + `.tint(朱砂)` | `MobileTheme.swift`、`DocumentHomeView.swift`、`DocumentView.swift` |
+  | 原来自绘 | 换成原生 |
+  |---|---|
+  | `GlassCapsuleBackground` 4 层手搓玻璃（材质 + 受光渐变 + 受光描边 + 发丝线 + 双层软影，49 行） | 一条胶囊一层 `.glassEffect(.regular, in: .capsule)`；该文件整删 |
+  | `GlassSelection` 的 `TimelineView` 流光选中 pill（每 50ms 重绘一帧） | `matchedGeometryEffect` 滑动 + 系统 tint |
+  | 手写卡片搜索框 | `.searchable(placement: .navigationBarDrawer(displayMode: .always))` |
+  | 手写「暂无文档」空态、搜索无结果态 | `ContentUnavailableView` / `ContentUnavailableView.search(text:)` |
+  | AI 面板自绘 overlay（遮罩 + 抓手 + 上滑 `DragGesture` + 350ms 延迟卸载） | `.sheet` + `presentationDetents` + `presentationDragIndicator(.visible)` |
+  | `PaperPrimaryButtonStyle` 自绘朱砂底按钮 | `.buttonStyle(.glassProminent)` + `.tint(朱砂)`；最后一个调用点改完后该样式成死代码，随之删除 |
 
-  净变化 **−277 行**（+195 / −472）。保留未动：`PaperTheme.Motion`（本身就是
-  `Animation.spring` 原生原语的调参常量，不为它动 24 个调用点）、`SealStamp`、
-  `PaperNoiseOverlay`、`DocumentView` 的品牌空态（`BrandMark` + 印章落款 + 模板入口，
-  品牌资产重于控件语义）。
+  页面切换保留原生 `TabView`（`selection` 绑定 + 每 tab 独立导航栈 + 原生转场），
+  但**隐藏其 tab 栏**——原生 tab 栏放不了「打开 / AI / 新建」动作钮，与底部通栏并存
+  还会叠成双层。底部为**单层左右通栏**：左 = 页面切换胶囊（文档 / 设置，
+  `matchedGeometryEffect` 滑动选中 pill + `symbolEffect` + `sensoryFeedback`），
+  右 = 动作胶囊（打开 / AI / 新建）。文档页动作条同款两胶囊结构。
+  ⚠️ 实现细节：`.toolbar(.hidden, for: .tabBar)` 必须加在 **tab 内容**上才生效，
+  加在 `TabView` 自身在 iOS 26 的新 tab 栏上无效。
 
-  ⚠️ **代价：放弃 iOS 17–25 设备**（部署目标 26.0）。这是拿到 Liquid Glass、
-  原生 `Tab(...)`、`tabBarMinimizeBehavior`、`.buttonStyle(.glass)` 的前提——
-  这些 API 在 iOS 17 上不存在，硬要「原生化」只能得到比自绘更差的近似品。
+  保留未动及理由：`PaperTheme.Motion`（本身就是 `Animation.spring` 原生原语的调参
+  常量，不为它动 24 个调用点）、`SealStamp`、`PaperNoiseOverlay`、`DocumentView` 的
+  品牌空态（`BrandMark` + 印章落款 + 模板入口，品牌资产重于控件语义）。
 
-  ⚠️ 已知观感差异：底部附件栏（打开 / AI / 新建）在「文档」tab 显示、在「设置」tab
-  不显示——系统按 tab 内容自行决定附属区可见性。这三个动作本就是文档向的，
-  倾向视为合理，待真机确认。
+  净变化：`Mobile/` **+203 / −415 行**。
+
+  ⚠️ **代价：放弃 iOS 17–25 设备**（部署目标 26.0）。这是拿到 `.glassEffect` 原生
+  玻璃、原生 `Tab(...)`、`.buttonStyle(.glassProminent)` 的前提——这些 API 在
+  iOS 17 上不存在，硬要「原生化」只能得到比自绘更差的近似品。
 
 ### Added
 
@@ -64,6 +72,10 @@
   开发期替换二进制反复弹授权窗的问题」，与 `Keychain.swift` 已为安全移除
   `trustedList: nil` 的事实矛盾，描述的是被推翻的旧设计。改为如实说明默认 ACL 的代价
   （签名身份不稳定时升级后会弹一次授权窗，这是有意的安全取舍）。
+
+- **官网下载按钮的版本标签停在 `v0.12.1`**（0.12.2 发版时漏改，实际提供的包一直是
+  最新的）：`website/index.html` 与 `website/compare.html` 的硬编码标签同步为当前版本。
+  下载链接本身是 `/update/pkg`（永远指向最新包），不受影响。
 
 ## [0.12.2] - 2026-10-15
 
