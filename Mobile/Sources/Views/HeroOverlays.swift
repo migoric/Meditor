@@ -69,7 +69,8 @@ struct BarPlusButton: View {
     }
 }
 
-/// AI 助手：朱砂浅底小圆徽 + 衬线「墨」——保留品牌印记但去实心重感。
+/// AI 助手：朱砂色 sparkles 图标。不另加圆底——玻璃按钮自身即容器，
+/// 再嵌一个圆底会和 folder / plus 三种长相打架（品牌区分靠图标颜色就够）。
 struct BarAIButton: View {
     let context: String
 
@@ -84,7 +85,6 @@ struct BarAIButton: View {
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(PaperTheme.accent)
                 .frame(width: 34, height: 34)
-                .background(PaperTheme.seal.opacity(0.12), in: Circle())
                 .contentShape(Circle())
                 .modifier(HeroMatch(id: "ai-\(context)", namespace: heroNS, hidden: aiHero.isOpen))
         }

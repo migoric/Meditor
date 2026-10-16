@@ -43,9 +43,12 @@ struct RootView: View {
             .tint(PaperTheme.accent)
             // 向下滚动时 tab 栏自动收起（iOS 26 原生行为，替代自绘悬浮栏的显隐逻辑）
             .tabBarMinimizeBehavior(.onScrollDown)
-            // 底部附件栏：挂在 tab 栏上的原生附属区，不再自绘玻璃胶囊
+            // 底部附件栏：挂在 tab 栏上的原生附属区，不再自绘玻璃胶囊。
+            // 仅文档 tab 显示——打开文件 / AI / 新建都是文档向动作，设置页是表单，
+            // 挂上去只是噪音（Safari 的原生底部工具栏同样是按 tab 上下文化的）。
+            // 文档页打开时也整块隐藏（该页有自己的底部动作条）。
             .tabViewBottomAccessory {
-                if !showDocument {
+                if !showDocument && page == .home {
                     bottomAccessory
                 }
             }
@@ -129,30 +132,37 @@ struct RootView: View {
     // MARK: - 底部附件栏
 
     /// 挂在 tab 栏上的原生附属区：左「打开文件」，右「AI 助手 / 新建」。
-    /// `GlassEffectContainer` 是 iOS 26 的正确用法——多个玻璃元素必须同容器，
-    /// 否则各自独立采样会互相遮挡。一条原生玻璃胶囊替代原来的 4 层手搓玻璃底。
+    /// iOS 26 玻璃的正确用法：多个交互元素同置 `GlassEffectContainer`，
+    /// **每个元素各自** `.buttonStyle(.glass)`，容器只统一采样——不要给容器
+    /// 整体再套一层 `.glassEffect(in: .capsule)`，那样整条会糊成一实色块，
+    /// 与下面的原生 tab 栏胶囊叠成「双层抽屉把手」。
+    /// 文档页打开时整块隐藏（该页有自己的底部动作条）。
+    /// 挂在 tab 栏上的原生附属区：打开文件 / AI 助手 / 新建，通栏等距分布。
+    /// 实证：系统为 `tabViewBottomAccessory` 自带整条玻璃背景（探针实验：
+    /// 内容只放一个 Text 也照常出现玻璃条），因此按钮**不再**各自
+    /// `.buttonStyle(.glass)`——那是玻璃叠玻璃；图标直接落在系统玻璃条上，
+    /// 即 Safari 底部工具栏 + tab 栏的原生组合形态。
     /// 文档页打开时整块隐藏（该页有自己的底部动作条）。
     private var bottomAccessory: some View {
-        GlassEffectContainer {
-            HStack(spacing: 6) {
-                Button { showingFilePicker = true } label: {
-                    Image(systemName: "folder")
-                        .font(.system(size: 17, weight: .medium))
-                        .frame(width: 40, height: 40)
-                }
-                .buttonStyle(.glass)
-                .accessibilityLabel("打开文件")
-
-                Spacer(minLength: 12)
-
-                BarAIButton(context: "root")
-                    .buttonStyle(.glass)
-                BarPlusButton(context: "root")
-                    .buttonStyle(.glass)
+        HStack(spacing: 0) {
+            Button { showingFilePicker = true } label: {
+                Image(systemName: "folder")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(PaperTheme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .glassEffect(.regular.tint(PaperTheme.accent.opacity(0.10)), in: .capsule)
+            .buttonStyle(.pressable)
+            .accessibilityLabel("打开文件")
+
+            BarAIButton(context: "root")
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+
+            BarPlusButton(context: "root")
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
         }
+        .padding(.horizontal, 12)
     }
 }

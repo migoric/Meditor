@@ -362,22 +362,21 @@ private struct DocActionBar: View {
     @Environment(DocumentStore.self) private var store
 
     var body: some View {
+        // 与底部附件栏同规则：玻璃只由按钮各自承担（.buttonStyle(.glass)），
+        // 组级不再套 .glassEffect 大胶囊——叠层采样会让整块糊成实色。
         GlassEffectContainer {
             HStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    Button { store.showPreview.toggle() } label: {
-                        Image(systemName: store.showPreview ? "pencil" : "doc.richtext")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(store.showPreview ? PaperTheme.inkSecondary : PaperTheme.accent)
-                            .contentTransition(.symbolEffect(.replace.downUp))
-                            .frame(width: 52)
-                            .padding(.vertical, 8)
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel(store.showPreview ? "编辑" : "预览")
+                Button { store.showPreview.toggle() } label: {
+                    Image(systemName: store.showPreview ? "pencil" : "doc.richtext")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(store.showPreview ? PaperTheme.inkSecondary : PaperTheme.accent)
+                        .contentTransition(.symbolEffect(.replace.downUp))
+                        .frame(width: 52)
+                        .padding(.vertical, 8)
+                        .contentShape(Capsule())
                 }
-                .glassEffect(.regular.tint(PaperTheme.accent.opacity(0.10)), in: .capsule)
+                .buttonStyle(.glass)
+                .accessibilityLabel(store.showPreview ? "编辑" : "预览")
 
                 Spacer()
 
@@ -387,7 +386,6 @@ private struct DocActionBar: View {
                     BarPlusButton(context: "doc")
                         .buttonStyle(.glass)
                 }
-                .glassEffect(.regular.tint(PaperTheme.accent.opacity(0.10)), in: .capsule)
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 4)
