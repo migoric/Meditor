@@ -5,7 +5,7 @@
 
 > ⚠️ 本文件从 **0.12.0** 起建立。更早的版本在文件创建前发布，只有 GitHub Release 上那条
 > 自动生成的记录（`release.yml` 用 tag 区间的提交标题拼的），见
-> <https://github.com/retrychx/Meditor/releases> —— 不在这里补写，补写就等于编历史。
+> <https://github.com/migoric/Meditor/releases> —— 不在这里补写，补写就等于编历史。
 >
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
