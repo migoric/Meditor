@@ -69,7 +69,8 @@ struct BarPlusButton: View {
     }
 }
 
-/// AI 助手：朱砂浅底小圆徽 + 衬线「墨」——保留品牌印记但去实心重感。
+/// AI 助手：朱砂色 sparkles 图标。不另加圆底——玻璃按钮自身即容器，
+/// 再嵌一个圆底会和 folder / plus 三种长相打架（品牌区分靠图标颜色就够）。
 struct BarAIButton: View {
     let context: String
 
@@ -84,7 +85,6 @@ struct BarAIButton: View {
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(PaperTheme.accent)
                 .frame(width: 34, height: 34)
-                .background(PaperTheme.seal.opacity(0.12), in: Circle())
                 .contentShape(Circle())
                 .modifier(HeroMatch(id: "ai-\(context)", namespace: heroNS, hidden: aiHero.isOpen))
         }
@@ -93,100 +93,37 @@ struct BarAIButton: View {
     }
 }
 
-// MARK: - Hero 浮层
+// MARK: - AI 面板（原生 sheet 内容）
 
-/// AI 面板：底部上滑入场（iOS sheet 风格）。
-struct AIHeroOverlay: View {
+/// AI 面板：以原生 sheet 呈现（抓手、多档高度、交互式下滑关闭全部由系统提供）。
+/// 只补一件 overlay 时代替不了的事——导航栏里的「历史会话」入口。
+struct AIChatSheet: View {
     @Environment(AIHeroState.self) private var aiHero
-    @State private var contentVisible = false
-    @State private var overlayActive = false
     @State private var showHistory = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // 遮罩
-            Color.black.opacity(contentVisible ? 0.22 : 0)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture { close() }
-                .allowsHitTesting(overlayActive)
-
-            // 卡片：底部上滑 + 淡入，内容同时出现
-            VStack(spacing: 0) {
-                Spacer(minLength: 44)
-                if contentVisible {
-                    VStack(spacing: 0) {
-                        // 顶部：抓手居中，左历史右关闭
-                        ZStack {
-                            Capsule()
-                                .fill(PaperTheme.inkSecondary.opacity(0.3))
-                                .frame(width: 36, height: 5)
-                            HStack {
-                                Button { showHistory = true } label: {
-                                    Image(systemName: "clock.arrow.circlepath")
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundStyle(PaperTheme.inkSecondary)
-                                        .frame(width: 32, height: 32)
-                                        .contentShape(Circle())
-                                }
-                                .buttonStyle(.pressable)
-                                .accessibilityLabel("历史会话")
-                                Spacer()
-                                Button { close() } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundStyle(PaperTheme.inkSecondary)
-                                        .frame(width: 32, height: 32)
-                                        .contentShape(Circle())
-                                }
-                                .buttonStyle(.pressable)
-                                .accessibilityLabel("关闭")
-                            }
+        NavigationStack {
+            AIChatView()
+                .navigationTitle("AI 助手")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { showHistory = true } label: {
+                            Image(systemName: "clock.arrow.circlepath")
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 9)
-                        .padding(.bottom, 3)
-                        .contentShape(Rectangle())
-                        .simultaneousGesture(
-                            DragGesture().onEnded { value in
-                                if value.translation.height > 40 { close() }
-                            }
-                        )
-
-                        AIChatView()
-                            .toolbar(.hidden, for: .navigationBar)
+                        .accessibilityLabel("历史会话")
                     }
-                    .background(PaperTheme.card, in: RoundedRectangle(cornerRadius: PaperTheme.Radius.xlarge, style: .continuous))
-                    .clipShape(UnevenRoundedRectangle(
-                        topLeadingRadius: PaperTheme.Radius.xlarge, bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0, topTrailingRadius: PaperTheme.Radius.xlarge,
-                        style: .continuous
-                    ))
-                    .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { aiHero.isOpen = false } label: {
+                            Image(systemName: "xmark")
+                        }
+                        .accessibilityLabel("关闭")
+                    }
                 }
-            }
-            .ignoresSafeArea(.container, edges: .bottom)
-            .animation(PaperTheme.Motion.standard, value: contentVisible)
-            .sheet(isPresented: $showHistory) {
-                AIHistorySheet()
-                    .presentationDetents([.medium, .large])
-            }
         }
-        .onAppear {
-            withAnimation(PaperTheme.Motion.standard) { contentVisible = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { overlayActive = true }
-        }
-    }
-
-    private func close() {
-        withAnimation(PaperTheme.Motion.standard) { contentVisible = false }
-        // 等滑出动画完成后才移除 overlay，避免关闭动画被截断
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))
-            guard contentVisible == false else { return }
-            aiHero.isOpen = false
+        .sheet(isPresented: $showHistory) {
+            AIHistorySheet()
+                .presentationDetents([.medium, .large])
         }
     }
 }

@@ -12,6 +12,37 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **iOS 端 UI 全面原生化**：部署目标 `17.0` → `26.0`，用苹果原生组件 / 交互 / 动画
+  替换自绘 chrome。逐项对拍后只动「控件与交互」层，品牌视觉（宣纸色板、朱砂印、
+  衬线标题、纸纹、`BrandMark`）保留并经 `tint` / `foregroundStyle` 注入原生控件。
+
+  | 原来自绘 | 换成原生 | 位置 |
+  |---|---|---|
+  | `opacity` 手工切页 + 自定义胶囊底栏 | `TabView` + `Tab(_:systemImage:value:)` | `RootView.swift` |
+  | 底栏常驻、无滚动行为 | `.tabBarMinimizeBehavior(.onScrollDown)` | `RootView.swift` |
+  | 右侧自绘动作胶囊 | `.tabViewBottomAccessory` | `RootView.swift` |
+  | `GlassCapsuleBackground` 4 层手搓玻璃（材质 + 受光渐变 + 受光描边 + 发丝线 + 双层软影，49 行） | `.glassEffect(.regular.tint(…).interactive(), in: .capsule)`，多处玻璃同置于 `GlassEffectContainer` | 原 `GlassCapsule.swift` 整文件删除 |
+  | `GlassSelection` 的 `TimelineView` 流光（每 50ms 重绘一帧） | 选中态交回 `matchedGeometryEffect` 滑动 + 系统 tint | `RootView.swift` |
+  | 手写卡片搜索框 | `.searchable(placement: .navigationBarDrawer(displayMode: .always))` | `DocumentHomeView.swift` |
+  | 手写空态 ×1、搜索无结果态 ×1 | `ContentUnavailableView` / `ContentUnavailableView.search(text:)` | `DocumentHomeView.swift` |
+  | AI 面板自绘 overlay（遮罩 + 抓手 + 上滑 `DragGesture` + 350ms 延迟卸载） | `.sheet` + `presentationDetents` + `presentationDragIndicator(.visible)` | `HeroOverlays.swift` |
+  | `PaperPrimaryButtonStyle` 自绘朱砂底按钮 | `.buttonStyle(.glassProminent)` + `.tint(朱砂)` | `MobileTheme.swift`、`DocumentHomeView.swift`、`DocumentView.swift` |
+
+  净变化 **−277 行**（+195 / −472）。保留未动：`PaperTheme.Motion`（本身就是
+  `Animation.spring` 原生原语的调参常量，不为它动 24 个调用点）、`SealStamp`、
+  `PaperNoiseOverlay`、`DocumentView` 的品牌空态（`BrandMark` + 印章落款 + 模板入口，
+  品牌资产重于控件语义）。
+
+  ⚠️ **代价：放弃 iOS 17–25 设备**（部署目标 26.0）。这是拿到 Liquid Glass、
+  原生 `Tab(...)`、`tabBarMinimizeBehavior`、`.buttonStyle(.glass)` 的前提——
+  这些 API 在 iOS 17 上不存在，硬要「原生化」只能得到比自绘更差的近似品。
+
+  ⚠️ 已知观感差异：底部附件栏（打开 / AI / 新建）在「文档」tab 显示、在「设置」tab
+  不显示——系统按 tab 内容自行决定附属区可见性。这三个动作本就是文档向的，
+  倾向视为合理，待真机确认。
+
 ### Added
 
 - **发布签名身份可配置**（消除升级时的钥匙串授权弹窗）：`release.yml` 新增

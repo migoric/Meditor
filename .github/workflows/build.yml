@@ -46,9 +46,12 @@ jobs:
 
   ios:
     name: Build (iOS Simulator)
-    # macos-15 = Xcode 16+：项目文件是 objectVersion 77（文件系统同步组），
-    # macos-14 默认的 Xcode 15.4 打不开（"future Xcode project file format (77)"）。
-    runs-on: macos-15
+    # macos-26：部署目标 26.0 需要 iOS 26 SDK。历史上用 macos-15 是因为项目文件
+    # objectVersion 77（文件系统同步组）要 Xcode 16+，那个约束早就被 macos-15
+    # 自带的 Xcode 满足了；但 macos-15 镜像的 Xcode 只到 iOS 18.x SDK，
+    # 装不下 26.0 的部署目标（报 "range of supported deployment target versions
+    # is 12.0 to 18.5.99"）。与仓库其余 job / release.yml 统一用 macos-26。
+    runs-on: macos-26
     timeout-minutes: 45
 
     steps:

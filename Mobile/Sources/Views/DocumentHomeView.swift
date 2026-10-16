@@ -18,9 +18,8 @@ struct DocumentHomeView: View {
     @State private var actionError: String? = nil
     /// 待确认删除的目标（非 nil 时弹确认对话框）。
     @State private var confirmDelete: RecentHistory.RecentDocument? = nil
-    /// 列表搜索词。
+    /// 列表搜索词（由原生 .searchable 驱动）。
     @State private var query = ""
-    @FocusState private var searchFocused: Bool
 
     /// 与 DocumentView 保持一致的可导入类型。
     private static let importableTypes: [UTType] = [
@@ -31,11 +30,6 @@ struct DocumentHomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 搜索框始终可见，无论是否有文档
-            searchField
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-
             if recents.documents.isEmpty {
                 emptyState
             } else {
@@ -44,6 +38,8 @@ struct DocumentHomeView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PaperTheme.paperBackground)
+        // 原生 tab 栏已隐藏（底部只有自绘通栏），页面标题由导航栏承载：
+        // 衬线「文档」是品牌元素，与设置页的导航标题对齐。
         .navigationTitle("文档")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -53,6 +49,13 @@ struct DocumentHomeView: View {
                     .foregroundStyle(PaperTheme.ink)
             }
         }
+        // 原生搜索框：取消按钮、键盘处理、滚动折叠、无结果态全部由系统负责，
+        // 替代原来手写的卡片搜索框（DocumentHomeView 历史上的 searchField）。
+        .searchable(
+            text: $query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "搜索文档"
+        )
         .fileImporter(
             isPresented: $showingFilePicker,
             allowedContentTypes: Self.importableTypes,
@@ -139,22 +142,13 @@ struct DocumentHomeView: View {
                     }
                 }
             }
-            // 搜索无结果
+            // 搜索无结果：原生 ContentUnavailableView.search（iOS 17+），
+            // 文案/图标/排版由系统提供，含「清除搜索」语义。
             if !query.isEmpty && filteredDocs.isEmpty {
                 cardRow {
-                    VStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 20))
-                            .foregroundStyle(PaperTheme.inkSecondary)
-                        Text("没有找到匹配的文档")
-                            .font(.subheadline)
-                            .foregroundStyle(PaperTheme.inkSecondary)
-                        Text("试试换个关键词")
-                            .font(.caption)
-                            .foregroundStyle(PaperTheme.inkSecondary.opacity(0.7))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 30)
+                    ContentUnavailableView.search(text: query)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 30)
                 }
             }
         }
@@ -165,22 +159,28 @@ struct DocumentHomeView: View {
         .contentMargins(.bottom, 84, for: .scrollContent)
     }
 
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15))
-                .foregroundStyle(PaperTheme.inkSecondary)
-            TextField("搜索文档", text: $query)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($searchFocused)
-                .submitLabel(.search)
-                .onSubmit { searchFocused = false }
+    /// 空态：原生 ContentUnavailableView（iOS 16+）承载标题/说明/动作三件套。
+    /// 按钮用原生 glass 样式；朱砂色经 tint 注入，主按钮仍走 glassProminent 保持品牌权重。
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("暂无文档", systemImage: "doc.text")
+        } description: {
+            Text("从文件 App 选择 .md / .html 打开，或在微信等 App 中选择「用其他应用打开」发送到 MEditor。")
+        } actions: {
+            Button { showingFilePicker = true } label: {
+                Label("打开文件", systemImage: "folder")
+            }
+            .buttonStyle(.glass)
+
+            Button {
+                store.createDocument()
+                onOpenDocument()
+            } label: {
+                Label("新建文档", systemImage: "plus")
+            }
+            .buttonStyle(.glassProminent)
+            .tint(PaperTheme.accent)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(PaperTheme.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: PaperTheme.cardShadow, radius: 8, y: 3)
     }
 
     /// 当前文档是否正在打开。沙盒外文档的 relativePath 是完整路径，直接比对。
@@ -281,44 +281,6 @@ struct DocumentHomeView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - 空态
-
-    private var emptyState: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            Image(systemName: "doc.text")
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(PaperTheme.inkSecondary)
-            Text("暂无文档")
-                .font(PaperTheme.Typography.uiTitle3())
-                .foregroundStyle(PaperTheme.ink)
-                .padding(.top, 16)
-            Text("从文件 App 选择 .md / .html 打开，或在微信等 App 中选择「用其他应用打开」发送到 MEditor。")
-                .font(.subheadline)
-                .foregroundStyle(PaperTheme.inkSecondary)
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .frame(maxWidth: 300)
-                .padding(.top, 12)
-            HStack(spacing: 16) {
-                Button { showingFilePicker = true } label: {
-                    Label("打开文件", systemImage: "folder")
-                }
-                Button {
-                    store.createDocument()
-                    onOpenDocument()
-                } label: {
-                    Label("新建文档", systemImage: "plus")
-                }
-                .buttonStyle(.paperPrimary)
-            }
-            .padding(.top, 24)
-            Spacer()
-        }
-        .padding(.horizontal, PaperTheme.Spacing.page)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - 操作
