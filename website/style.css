@@ -303,7 +303,8 @@
     }
     .hero-note {
       margin-top: 20px;
-      font-family: var(--mono); font-size: 12.5px; color: var(--text-3);
+      /* 体积 / 系统要求 / 许可 / BYOK —— 首屏的关键规格，不是装饰。 */
+      font-family: var(--mono); font-size: 12.5px; color: var(--text-2);
       letter-spacing: -0.01em;
     }
     .hero-note b { color: var(--text-2); font-weight: 500; }
@@ -386,7 +387,8 @@
       margin-top: 11px;
       font-family: var(--mono); font-size: 11.5px;
       letter-spacing: 0.05em; text-transform: uppercase;
-      color: var(--text-3);
+      /* A 方案：11.5px 小字用 --text-3 只有 3.08:1，读不清；提到第二层。 */
+      color: var(--text-2);
     }
 
     /* ═══════════════ Bento features ═══════════════ */
@@ -561,7 +563,8 @@
       font-size: 46px; font-weight: 640; letter-spacing: -0.045em; line-height: 1;
       margin-bottom: 12px;
     }
-    .price-amount span { font-size: 15px; font-weight: 450; color: var(--text-3); letter-spacing: -0.01em; }
+    /* 价格单位（/ month、/ forever）是关键信息，不是装饰 —— 提到第二层。 */
+    .price-amount span { font-size: 15px; font-weight: 450; color: var(--text-2); letter-spacing: -0.01em; }
     .price-tagline { font-size: 14.5px; color: var(--text-2); margin-bottom: 26px; }
     .price-list {
       list-style: none; display: grid; gap: 11px;
@@ -577,14 +580,15 @@
       width: 5px; height: 5px; border-radius: 50%;
       background: var(--accent-hi);
     }
-    .price-list li.soon { color: var(--text-3); }
-    .price-list li.soon::before { background: var(--text-3); }
-    .price-list em { font-style: normal; color: var(--text-3); font-size: 12.5px; }
+    .price-list li.soon { color: var(--text-2); }
+    .price-list li.soon::before { background: var(--text-3); }   /* 圆点是装饰，保持第三层 */
+    .price-list em { font-style: normal; color: var(--text-2); font-size: 12.5px; }
     .price-card .btn { justify-content: center; }
 
     .pricing-note {
       text-align: center; margin-top: 26px;
-      font-size: 13px; color: var(--text-3);
+      /* 定价可能变更的免责说明，必须读清。 */
+      font-size: 13px; color: var(--text-2);
     }
 
     /* ═══════════════ CTA banner ═══════════════ */
@@ -631,11 +635,12 @@
       font-size: 13px; color: var(--text-3);
     }
     .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+    /* 页脚导航是可点击入口，不该比正文淡到读不清。hover 提到 --text 保留反馈。 */
     .footer-links a {
-      color: var(--text-3); text-decoration: none;
+      color: var(--text-2); text-decoration: none;
       transition: color .2s var(--ease);
     }
-    .footer-links a:hover { color: var(--text-2); }
+    .footer-links a:hover { color: var(--text); }
 
     /* ═══════════════ Reveal animation ═══════════════ */
     .reveal { opacity: 0; transform: translateY(26px); }
