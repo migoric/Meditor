@@ -6,7 +6,7 @@
 ## 快速上手
 
 ```bash
-git clone https://github.com/retrychx/Meditor.git
+git clone https://github.com/migoric/Meditor.git
 cd Meditor
 swift build                  # 编译桌面端
 ./scripts/test.sh            # 全量测试（= swift test，显式指向 Xcode 工具链）

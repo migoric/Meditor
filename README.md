@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/retrychx/Meditor/actions/workflows/build.yml"><img src="https://github.com/retrychx/Meditor/actions/workflows/build.yml/badge.svg" alt="Build & Test" /></a>
+  <a href="https://github.com/migoric/Meditor/actions/workflows/build.yml"><img src="https://github.com/migoric/Meditor/actions/workflows/build.yml/badge.svg" alt="Build & Test" /></a>
   <img src="https://img.shields.io/badge/macOS-14.0+-blue?logo=apple" alt="macOS 14+" />
   <img src="https://img.shields.io/badge/Swift-6.2-orange?logo=swift" alt="Swift 6.2" />
-  <a href="https://github.com/retrychx/Meditor/releases/latest"><img src="https://img.shields.io/github/v/release/retrychx/Meditor" alt="Latest release" /></a>
+  <a href="https://github.com/migoric/Meditor/releases/latest"><img src="https://img.shields.io/github/v/release/migoric/Meditor" alt="Latest release" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
 </p>
 
@@ -109,7 +109,7 @@ More on the [website](https://meditorapp.pages.dev).
 ### Quick start
 
 ```bash
-git clone https://github.com/retrychx/Meditor.git
+git clone https://github.com/migoric/Meditor.git
 cd Meditor
 swift build
 swift run

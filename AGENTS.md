@@ -19,30 +19,33 @@
 Meditor/
 ├── Package.swift                 # swift-tools-version 6.2（⇒ 必须 Xcode 26 工具链）
 ├── VERSION                       # macOS 版本单源（bundle.sh 注入 Info.plist）
-├── Sources/MEditor/              # 桌面端主体 —— 265 个 .swift / ~50.3k 行
+├── Sources/MEditor/              # 桌面端主体 —— 267 个 .swift / ~50.9k 行
 │   ├── Models/  Protocols/       # 数据模型与结构接口（最底层，零上层依赖）
 │   ├── Services/                 # 能力层：AI（Agent/Backends/Tools）、MCP、Core、File…
 │   ├── Managers/                 # 状态管理：Tab / FileTree / Share / Template / Todo…
 │   ├── ViewModels/               # AppState（组合式状态层）＋ 各 @Observable UI 状态
 │   └── Views/                    # SwiftUI + AppKit 视图
-├── Tests/MEditorTests/           # 106 个 .swift / ~21k 行
+├── Tests/MEditorTests/           # 111 个 .swift / ~22.4k 行
 ├── Mobile/                       # iOS 伴生 App（独立 Xcode 工程）
-│   └── Sources/                  # 28 个 .swift / ~5.8k 行
+│   └── Sources/                  # 27 个 .swift / ~5.7k 行
 ├── worker/                       # Cloudflare Workers（在线发布后端，独立 toolchain）
 ├── website/  pages/              # 静态站与文档页
 └── scripts/                      # 打包 / 测试 / 覆盖率 / 守卫脚本
 ```
 
-**体量读数会腐烂** —— 上面的数字是 2026-10 的实测值，**引用前请现场复算**：
+**体量读数会腐烂** —— 上面的数字是 2026-10-17 的实测值，**引用前请现场复算**：
 
 ```bash
 find Sources/MEditor -name '*.swift' | wc -l
 find Sources/MEditor -name '*.swift' -exec cat {} + | wc -l
 ```
 
-当前最大的四个文件（也是重构优先级最高的四个）：`Services/Core/Localization.swift` 1271 行、
-`Views/AI/AtMention/AtMentionComposerView.swift` 809 行、`ViewModels/AppState.swift` 762 行、
-`Services/AI/AIService.swift` 742 行。
+当前最大的五个文件（也是重构优先级最高的五个）：`Services/Core/Localization.swift` 1271 行、
+`Services/AI/Agent/AgentRunner.swift` 843 行、`Views/AI/AtMention/AtMentionComposerView.swift` 812 行、
+`ViewModels/AppState.swift` 762 行、`Services/AI/AIService.swift` 757 行。
+
+（上一版只列四个，漏掉了实际第二大的 `AgentRunner.swift` —— 它是 Agent 的核心执行器，
+大小和重要性都不该缺席。数字为 2026-10-17 实测。）
 
 ---
 

@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/retrychx/Meditor/actions/workflows/build.yml"><img src="https://github.com/retrychx/Meditor/actions/workflows/build.yml/badge.svg" alt="Build & Test" /></a>
+  <a href="https://github.com/migoric/Meditor/actions/workflows/build.yml"><img src="https://github.com/migoric/Meditor/actions/workflows/build.yml/badge.svg" alt="Build & Test" /></a>
   <img src="https://img.shields.io/badge/macOS-14.0+-blue?logo=apple" alt="macOS 14+" />
   <img src="https://img.shields.io/badge/Swift-6.2-orange?logo=swift" alt="Swift 6.2" />
-  <a href="https://github.com/retrychx/Meditor/releases/latest"><img src="https://img.shields.io/github/v/release/retrychx/Meditor" alt="最新版本" /></a>
+  <a href="https://github.com/migoric/Meditor/releases/latest"><img src="https://img.shields.io/github/v/release/migoric/Meditor" alt="最新版本" /></a>
   <img src="https://img.shields.io/badge/%E5%8D%8F%E8%AE%AE-MIT-green" alt="MIT License" />
 </p>
 
@@ -92,7 +92,7 @@ MEditor 是 **macOS 上给技术人写文档的 Agent 工作台**。核心闭环
 
 ```bash
 # 克隆仓库
-git clone https://github.com/retrychx/Meditor.git
+git clone https://github.com/migoric/Meditor.git
 cd Meditor
 
 # 使用 SPM 构建
