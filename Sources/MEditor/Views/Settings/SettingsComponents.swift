@@ -193,7 +193,7 @@ struct SettingsNavItem: View {
             RoundedRectangle(cornerRadius: DS.Radius.sm + 1, style: .continuous)
                 .fill(
                     isSelected
-                        ? Color.selectionFill
+                        ? DS.Color.selectionFill
                         : isHovered ? DS.Color.rowHover : Color.clear
                 )
                 .animation(.easeOut(duration: 0.1), value: isSelected)

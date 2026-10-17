@@ -105,7 +105,7 @@ private struct AIHistoryRow: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isActive ? Color.selectionFill : (hovered ? theme.craftHover : .clear))
+                .fill(isActive ? DS.Color.selectionFill : (hovered ? theme.craftHover : .clear))
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)

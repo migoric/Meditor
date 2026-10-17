@@ -450,7 +450,7 @@ private struct SidebarIconButton: View {
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(
-                            isActive ? Color.selectionFill
+                            isActive ? DS.Color.selectionFill
                             : isHovered ? Color.primary.opacity(0.07) : Color.clear
                         )
                 )
@@ -496,7 +496,7 @@ private struct DocFileRow: View {
                 .fill(
                     isSelected
                         // 与 FileRow 保持一致：跟随应用内强调色设置，不用纯系统级颜色
-                        ? AnyShapeStyle(Color.selectionFill)
+                        ? AnyShapeStyle(DS.Color.selectionFill)
                         : isHovered
                             ? AnyShapeStyle(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
                             : AnyShapeStyle(Color.clear)

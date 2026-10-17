@@ -356,7 +356,7 @@ struct QuickOpenSheet: View {
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
-        .listRowBackground(idx == highlighted ? Color.selectionFill : theme.chromeBackground)
+        .listRowBackground(idx == highlighted ? DS.Color.selectionFill : theme.chromeBackground)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .id(idx)
