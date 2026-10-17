@@ -54,7 +54,7 @@ struct SettingsHeroOverlay: View {
                     RoundedRectangle(cornerRadius: DS.Radius.xl, style: .continuous)
                         .stroke(Color.primary.opacity(0.10), lineWidth: DS.Stroke.regular)
                 )
-                .shadow(color: .black.opacity(0.34), radius: 34, x: 0, y: 14)
+                .dsElevation(.hero)
                 .scaleEffect(shown ? 1 : 0.18, anchor: anchorPoint)
                 .opacity(shown ? 1 : 0)
         }

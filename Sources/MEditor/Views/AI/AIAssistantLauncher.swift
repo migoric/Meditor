@@ -105,7 +105,7 @@ struct AIAssistantButton: View {
                     .blendMode(.plusLighter)
             )
             // Soft floating drop shadow + tight contact shadow.
-            .shadow(color: .black.opacity(theme.isDark ? 0.40 : 0.18), radius: 14, x: 0, y: 6)
+            .dsElevation(.popover)
             .shadow(color: .black.opacity(theme.isDark ? 0.20 : 0.08), radius: 2, x: 0, y: 1)
             .scaleEffect(hovered ? 1.05 : 1)
             .brightness(hovered ? 0.04 : 0)
@@ -172,7 +172,7 @@ struct AIAssistantHeroOverlay: View {
                         )
                 )
                 .compositingGroup()
-                .shadow(color: .black.opacity(0.32), radius: 24, x: 0, y: 12)
+                .dsElevation(.hero)
                 .scaleEffect(shown ? 1 : 0.16, anchor: anchorPoint)
                 .opacity(shown ? 1 : 0)
                 .padding(.trailing, 16)

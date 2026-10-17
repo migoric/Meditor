@@ -232,7 +232,7 @@ struct PreviewPanel: View {
                         .stroke(state.themeStore.current.separator.opacity(state.themeStore.current.isDark ? 0.5 : 0.24), lineWidth: DS.Stroke.regular)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .shadow(color: Color.black.opacity(state.themeStore.current.isDark ? 0.28 : 0.06), radius: 10, y: 3)
+                .dsElevation(.toast)
             }
             Spacer()
         }
@@ -317,7 +317,7 @@ private struct PreviewFindBar: View {
                 .stroke(theme.separator.opacity(theme.isDark ? 0.9 : 0.6), lineWidth: DS.Stroke.regular)
         )
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .shadow(color: Color.black.opacity(theme.isDark ? 0.3 : 0.08), radius: 10, y: 4)
+        .dsElevation(.toast)
         .onAppear {
             fieldFocused = true
         }

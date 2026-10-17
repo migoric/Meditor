@@ -311,7 +311,7 @@ struct BeautifySheet: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(.regularMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        .dsElevation(.floatingBar)
     }
 
     // MARK: Actions

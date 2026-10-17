@@ -454,6 +454,6 @@ struct AgentResultPanel: View {
         }
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.15), radius: 20, x: 0, y: 8)
+        .dsElevation(.popover)
     }
 }

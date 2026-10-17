@@ -167,7 +167,7 @@ struct WelcomeView: View {
                         lineWidth: DS.Stroke.regular
                     )
             }
-            .shadow(color: .black.opacity(0.28), radius: 20, x: 0, y: 8)
+            .dsElevation(.popover)
             .shadow(color: Self.auroraBlue.opacity(0.12), radius: 30, x: 0, y: 12)
         }
     }

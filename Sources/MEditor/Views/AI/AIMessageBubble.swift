@@ -98,7 +98,7 @@ extension AIAssistantPanel {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(theme.separator.opacity(theme.isDark ? 0.5 : 0.7), lineWidth: DS.Stroke.regular)
                     )
-                    .shadow(color: .black.opacity(theme.isDark ? 0.18 : 0.04), radius: 5, x: 0, y: 1)
+                    .dsElevation(.floatingBar)
 
                     if !isStreamingReply {
                         HStack(spacing: 12) {

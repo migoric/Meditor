@@ -39,7 +39,7 @@ extension SettingsView {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.06), lineWidth: DS.Stroke.regular)
             )
-            .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 1)
+            .dsElevation(.floatingBar)
         }
         .padding(.bottom, 22)
     }

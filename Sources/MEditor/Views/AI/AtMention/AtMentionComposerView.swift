@@ -722,7 +722,7 @@ struct AtMentionPickerView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.primary.opacity(theme.isDark ? 0.18 : 0.10), lineWidth: DS.Stroke.hairline)
         )
-        .shadow(color: .black.opacity(theme.isDark ? 0.45 : 0.16), radius: 16, x: 0, y: 6)
+        .dsElevation(.popover)
         .shadow(color: .black.opacity(theme.isDark ? 0.20 : 0.06), radius: 4, x: 0, y: 2)
         // highlight 随候选列表变化自动 clamp
         .onChange(of: currentCandidates.count) { _, count in
