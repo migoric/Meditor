@@ -250,7 +250,7 @@ extension SettingsView {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(isInstalled
                               ? Color.primary.opacity(0.05)
-                              : Color.appAccent.opacity(0.12))
+                              : Color.selectionFill)
                 )
                 .foregroundStyle(isInstalled ? .secondary : Color.appAccent)
             }
