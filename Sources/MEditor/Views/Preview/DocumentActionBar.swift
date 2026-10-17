@@ -53,7 +53,7 @@ struct DocumentActionBar: View {
         .padding(.vertical, 5)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous))
-        .shadow(color: .black.opacity(theme.isDark ? 0.35 : 0.12), radius: 6, x: 0, y: 2)
+        .dsElevation(.floatingBar)
         .overlay(
             RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
                 .strokeBorder(Color.primary.opacity(theme.isDark ? 0.12 : 0.07), lineWidth: DS.Stroke.hairline)

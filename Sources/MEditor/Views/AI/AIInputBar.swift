@@ -202,7 +202,7 @@ extension AIAssistantPanel {
                         .strokeBorder(accent.fill(theme).opacity(inputFocused ? 0.5 : 0), lineWidth: DS.Stroke.regular)
                 )
                 // Tight, soft shadow — no wide grey halo.
-                .shadow(color: .black.opacity(theme.isDark ? 0.24 : 0.06), radius: 6, x: 0, y: 2)
+                .dsElevation(.floatingBar)
         )
         .animation(DS.Motion.fast, value: inputFocused)
         // 拖拽图片文件进入输入区（截图粘贴走 MentionTextView.paste 链路）

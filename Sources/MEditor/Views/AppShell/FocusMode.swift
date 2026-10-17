@@ -25,8 +25,7 @@ struct FocusToggleButton: View {
                 .background(
                     Circle()
                         .fill(.regularMaterial)
-                        .shadow(color: .black.opacity(theme.isDark ? 0.40 : 0.14),
-                                radius: 5, x: 0, y: 1)
+                        .dsElevation(.floatingBar)
                 )
                 // Breathing accent halo — slow pulse that signals focus is active.
                 .background(
@@ -83,7 +82,7 @@ struct FocusExitHoverZone: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(.regularMaterial, in: Capsule())
-                        .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
+                        .dsElevation(.floatingBar)
                     }
                     .buttonStyle(.plain)
                     // 留出 macOS 流量灯宽度
@@ -115,8 +114,7 @@ struct FocusHintToast: View {
         .background(
             Capsule()
                 .fill(.regularMaterial)
-                .shadow(color: .black.opacity(theme.isDark ? 0.40 : 0.12),
-                        radius: 6, x: 0, y: 2)
+                .dsElevation(.floatingBar)
         )
     }
 }

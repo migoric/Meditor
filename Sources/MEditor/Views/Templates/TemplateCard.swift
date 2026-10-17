@@ -19,9 +19,7 @@ struct TemplateCard: View {
                             .stroke(isSelected ? kind.accent.opacity(0.9) : Color.primary.opacity(0.08),
                                     lineWidth: isSelected ? 2 : 1)
                     )
-                    .shadow(color: .black.opacity(isHovered || isSelected ? 0.14 : 0.06),
-                            radius: isHovered || isSelected ? 9 : 4,
-                            y: isHovered || isSelected ? 4 : 2)
+                    .dsElevation(isHovered || isSelected ? DS.Elevation.toast : .floatingBar)
 
                 TemplateThumbnail(kind: kind, accent: kind.accent)
                     .padding(12)

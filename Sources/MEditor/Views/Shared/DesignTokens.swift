@@ -67,14 +67,39 @@ enum DS {
 
     // MARK: - Elevation
     //
-    // 这里曾经有一套 `enum Shadow`（card()/cardRadius/cardY/popoverRadius/popoverY/
-    // popoverOpacity，6 个成员，全仓 0 引用），已删除（P0-5）。
-    // 删它的理由不是「没用到」而是「半成品会误导」：card() 返回的是**颜色**，
-    // 半径/偏移是另一组散落的常量，二者没有绑定关系 —— 任何采纳者都得自己重新
-    // 配对，等于每个调用点各写一套。而实际 UI 里的 29 处 `.shadow(...)` 也确实是
-    // 各写一套（透明度 0.04–0.45、半径 1–34），说明这套抽象没对上真实需求。
-    // 待办（视觉决策，需看界面）：真要做统一抬升语言，应把 color/radius/x/y 绑成一个
-    // 值类型（如 `.floatingBar` / `.popover` / `.toast`），再逐处替换并核对观感。
+    // 这里曾经有一套 `enum Shadow`（card()/cardRadius/...，6 个成员，全仓 0 引用），
+    // 已删（P0-5）。删的理由不是「没用到」而是「半成品会误导」：card() 返回的是**颜色**，
+    // 半径/偏移另写在散落的常量里，二者没有绑定关系 —— 采纳者仍得自己配对。
+    //
+    // 2026-10-17 补上真的实现：color / radius / y 绑成一个值，一处改、处处改。
+    // 档位按**用途**命名而非尺寸阶梯 —— 实测 29 处 `.shadow(...)` 的选择依据是
+    // 「这是什么层」（浮条 / 提示 / 弹出 / hero），不是「多大」。
+    //
+    // 22 处已收敛，**7 处刻意保留**（形态不同，硬塞会丢信息）：
+    //   · 3 处接触阴影（launcher r2/y1、@mention r4/y2、tab bar r1/y0）—— 与主阴影成对
+    //   · 2 处品牌发光（AIInputBar 的 accent glow、WelcomeView 的 accent/aurora 光晕）
+    //     —— 不是 elevation，是与强调色绑定的视觉反馈
+    //   · 1 处尺寸相关（SettingsComponents 的 `size * 0.18`）
+    //   · 1 处条件式（TemplateCard 的 hover 分级）—— 已映射为 `.toast` / `.floatingBar`
+    //
+    // 取值口径：各类原值的中位数。深色档显著重于浅色档，沿用原代码里普遍的
+    // `dark ? 0.40 : 0.12` 比例关系。
+    enum Elevation {
+        case floatingBar   // 浮条 / 内联编辑条 / 工具栏胶囊
+        case toast         // 轻提示
+        case popover       // 弹出层 / 候选列表
+        case hero          // 大浮层 / 启动器展开
+
+        /// (color, radius, y)
+        func components(dark: Bool) -> (SwiftUI.Color, CGFloat, CGFloat) {
+            switch self {
+            case .floatingBar: return (.black.opacity(dark ? 0.40 : 0.12), 6, 2)
+            case .toast:       return (.black.opacity(dark ? 0.30 : 0.14), 10, 3)
+            case .popover:     return (.black.opacity(dark ? 0.42 : 0.18), 18, 7)
+            case .hero:        return (.black.opacity(dark ? 0.42 : 0.30), 28, 13)
+            }
+        }
+    }
 
     // MARK: - Semantic Colors
     //
@@ -147,6 +172,28 @@ struct HoverBrightness: ViewModifier {
 extension View {
     func hoverBrightness(_ amount: Double = 0.06) -> some View {
         modifier(HoverBrightness(amount: amount))
+    }
+}
+
+/// 应用统一抬升。
+///
+/// 明暗走系统 `colorScheme` 而非 `theme.isDark`：阴影属于窗口 chrome，跟随系统外观。
+/// 若将来要让 chrome 跟随预览主题，改这一处判断即可 —— 所有调用点会一次性跟着变，
+/// 而不是像以前那样每处各判断一次（那正是这套 token 想解决的重复）。
+struct DSElevationModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let level: DS.Elevation
+
+    func body(content: Content) -> some View {
+        let (color, radius, y) = level.components(dark: colorScheme == .dark)
+        return content.shadow(color: color, radius: radius, x: 0, y: y)
+    }
+}
+
+extension View {
+    /// 统一抬升：`.dsElevation(.floatingBar)` / `.toast` / `.popover` / `.hero`
+    func dsElevation(_ level: DS.Elevation) -> some View {
+        modifier(DSElevationModifier(level: level))
     }
 }
 

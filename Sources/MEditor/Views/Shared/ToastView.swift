@@ -19,7 +19,7 @@ struct ToastView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 9)
         .background(.regularMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
+        .dsElevation(.toast)
         .accessibilityElement(children: .combine)
     }
 }
@@ -110,7 +110,7 @@ struct ClaudeFilePromptToast: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.appAccent.opacity(0.25), lineWidth: DS.Stroke.regular)
         )
-        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 3)
+        .dsElevation(.toast)
         .frame(maxWidth: 360)
     }
 }

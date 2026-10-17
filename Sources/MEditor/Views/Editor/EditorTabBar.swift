@@ -187,7 +187,7 @@ private struct TabItem: View {
             // 选中态：更实的卡片 + 更强的阴影，在磨砂背景上明显凸起
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isDark ? Color(white: 0.26) : Color.white)
-                .shadow(color: .black.opacity(isDark ? 0.45 : 0.18), radius: 6, x: 0, y: 2)
+                .dsElevation(.floatingBar)
                 .shadow(color: .black.opacity(isDark ? 0.2 : 0.06), radius: 1, x: 0, y: 0)
                 .padding(.horizontal, 2)
                 .padding(.vertical, 4)
