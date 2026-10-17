@@ -152,7 +152,7 @@ struct GlobalSearchSheet: View {
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
-        .listRowBackground(idx == highlighted ? Color.appAccent.opacity(0.15) : theme.chromeBackground)
+        .listRowBackground(idx == highlighted ? DS.Color.selectionFill : theme.chromeBackground)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .id(idx)

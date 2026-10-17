@@ -83,10 +83,11 @@ enum DS {
     // 已删除的三个正是这种情况（P0-5）：
     //   - chromeBg / statusBg —— 已被系统 material 取代（`.background(.bar)`、
     //     `.regularMaterial`）。手抄一组 RGB 反而是降级：丢掉窗口失焦时的自动褪色。
-    //   - rowSelected (appAccent.opacity0.13) —— 数值已与实况脱节，实际选中行用的是
-    //     appAccent.opacity(0.16)（FileRow.swift:109、FileSidebar.swift:497）与
-    //     0.12（FileSidebar.swift:451 等）。留着 0.13 只会诱惑下一个人用错档。
-    //     待办（视觉决策，需看界面）：新增一个真正的 row-selection token 并统一这 5 处。
+    //   - rowSelected (appAccent.opacity0.13) —— 数值已与实况脱节。
+    //     2026-10-17 已补上真正的 row-selection token（`selectionFill`）并统一了全部
+    //     10 处选中态底色：此前实际是四档并存（0.12×5 / 0.13×1 / 0.15×4 / 0.16×2，
+    //     原注释只记了其中两档共 5 处，是不完整的）。装饰性光晕（WelcomeView.cardGlow、
+    //     CalendarGridViews 的今日圆点）不属选中态，未并入。
     enum Color {
         /// Sidebar background — slightly offset from editor
         static var sidebarBg: SwiftUI.Color {
@@ -115,6 +116,15 @@ enum DS {
         /// Status bar pill background
         static var pillBg: SwiftUI.Color {
             SwiftUI.Color.primary.opacity(0.06)
+        }
+
+        /// Row / item selection fill —— 所有「选中态底色」的唯一来源。
+        ///
+        /// 取 0.14 是因为它是 2026-10 实测原值的中位数：0.12×5 / 0.13×1 / 0.15×4 / 0.16×2。
+        /// 统一后每个调用点的偏移 ≤0.02，肉眼不可辨 —— 目的不是换个好看的值，而是消掉
+        /// 四档并存（同一件事写四遍，下一个人只会再发明第五档）。
+        static var selectionFill: SwiftUI.Color {
+            SwiftUI.Color.appAccent.opacity(0.14)
         }
     }
 }

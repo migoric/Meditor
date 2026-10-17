@@ -106,7 +106,7 @@ struct FileRow: View {
                     // 不用 NSColor.selectedContentBackgroundColor——那是纯系统级颜色，
                     // 只跟 macOS 系统偏好设置的强调色走，不感知 App 内 aiAccentStyle
                     // 选择，会跟 LooseFileRow / AI 气泡等已经跟随 appAccent 的控件不一致。
-                    ? AnyShapeStyle(Color.appAccent.opacity(0.16))
+                    ? AnyShapeStyle(DS.Color.selectionFill)
                     : isHovered
                         ? AnyShapeStyle(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
                         : AnyShapeStyle(Color.clear)

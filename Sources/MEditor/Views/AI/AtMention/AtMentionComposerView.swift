@@ -563,7 +563,7 @@ final class MentionAttachmentCell: NSTextAttachmentCell {
             : NSColor(Color.appAccent.opacity(0.9))
         cachedBackground = isDir
             ? NSColor(Color.purple.opacity(0.12))
-            : NSColor(Color.appAccent.opacity(0.12))
+            : NSColor(DS.Color.selectionFill)
         cachedBorder = isDir
             ? NSColor(Color.purple.opacity(0.28))
             : NSColor(Color.appAccent.opacity(0.28))

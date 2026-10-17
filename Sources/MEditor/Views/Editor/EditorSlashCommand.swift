@@ -418,7 +418,7 @@ struct SlashCommandMenuRow: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(isSelected ? Color.appAccent.opacity(0.13) : Color.clear)
+                .fill(isSelected ? DS.Color.selectionFill : Color.clear)
         )
     }
 }
