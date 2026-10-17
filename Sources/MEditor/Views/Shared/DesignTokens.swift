@@ -90,13 +90,20 @@ enum DS {
         case popover       // 弹出层 / 候选列表
         case hero          // 大浮层 / 启动器展开
 
-        /// (color, radius, y)
-        func components(dark: Bool) -> (SwiftUI.Color, CGFloat, CGFloat) {
+        /// 一个档位的完整描述。用 struct 而非三元组 —— SwiftLint 的 `large_tuple`
+        /// 禁止超过 2 个成员的元组，而且带名字的字段比 `.0 / .1 / .2` 可读。
+        struct Spec {
+            let color: SwiftUI.Color
+            let radius: CGFloat
+            let y: CGFloat
+        }
+
+        func spec(dark: Bool) -> Spec {
             switch self {
-            case .floatingBar: return (.black.opacity(dark ? 0.40 : 0.12), 6, 2)
-            case .toast:       return (.black.opacity(dark ? 0.30 : 0.14), 10, 3)
-            case .popover:     return (.black.opacity(dark ? 0.42 : 0.18), 18, 7)
-            case .hero:        return (.black.opacity(dark ? 0.42 : 0.30), 28, 13)
+            case .floatingBar: return Spec(color: .black.opacity(dark ? 0.40 : 0.12), radius: 6, y: 2)
+            case .toast:       return Spec(color: .black.opacity(dark ? 0.30 : 0.14), radius: 10, y: 3)
+            case .popover:     return Spec(color: .black.opacity(dark ? 0.42 : 0.18), radius: 18, y: 7)
+            case .hero:        return Spec(color: .black.opacity(dark ? 0.42 : 0.30), radius: 28, y: 13)
             }
         }
     }
@@ -185,8 +192,8 @@ struct DSElevationModifier: ViewModifier {
     let level: DS.Elevation
 
     func body(content: Content) -> some View {
-        let (color, radius, y) = level.components(dark: colorScheme == .dark)
-        return content.shadow(color: color, radius: radius, x: 0, y: y)
+        let spec = level.spec(dark: colorScheme == .dark)
+        return content.shadow(color: spec.color, radius: spec.radius, x: 0, y: spec.y)
     }
 }
 
