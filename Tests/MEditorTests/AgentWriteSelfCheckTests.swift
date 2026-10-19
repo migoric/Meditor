@@ -175,4 +175,135 @@ final class AgentWriteSelfCheckTests: XCTestCase {
         XCTAssertNil(state.selectedTab, "无可修问题时不应打开/切换任何文档")
         XCTAssertFalse(state.diffReview.isStreaming, "无可修问题时不应进入写回流程")
     }
+
+    // MARK: - Mermaid 异步校验（注入 mock 校验器，不起真 webview）
+
+    @MainActor
+    private final class MockMermaidValidator: MermaidSyntaxChecking {
+        /// code → 错误消息；不在表里 = 语法合法
+        var results: [String: String] = [:]
+        private(set) var validatedCodes: [String] = []
+        /// 非 0 时每次校验先睡这么久（制造「在途校验」测取消竞态）。
+        /// Task.sleep 随任务取消提前抛错返回，取消后校验立即走到合并守卫。
+        var delayNanos: UInt64 = 0
+
+        func validate(code: String) async -> String? {
+            validatedCodes.append(code)
+            if delayNanos > 0 { try? await Task.sleep(nanoseconds: delayNanos) }
+            return results[code]
+        }
+    }
+
+    /// 轮询直到条件满足（异步校验是 MainActor 上的 Task，sleep 出让即可推进）。
+    private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return condition()
+    }
+
+    private func mermaidIssues(_ report: AgentWriteSelfCheck.Report?) -> [DocumentIssue] {
+        (report?.reportOnly ?? []).filter {
+            if case .mermaidSyntax = $0.kind { return true }
+            return false
+        }
+    }
+
+    func testMermaidErrorMergesIntoReportOnlyAtFenceStartLine() async {
+        let check = makeCheck()
+        let mock = MockMermaidValidator()
+        mock.results["graph TD\n  A --> B"] = "Parse error on line 2"
+        check.mermaidValidator = mock
+
+        let content = "# Title\n\n```mermaid\ngraph TD\n  A --> B\n```\n"
+        check.notifyAgentWrite(url: urlA, content: content)
+        check.runPendingChecks()
+        XCTAssertNil(check.pendingReport, "同步诊断干净时报告先为 nil，等异步校验")
+
+        let merged = await waitUntil { !self.mermaidIssues(check.pendingReport).isEmpty }
+        XCTAssertTrue(merged, "mermaid 语法错误应异步合并进报告")
+        let issues = mermaidIssues(check.pendingReport)
+        XCTAssertEqual(issues.count, 1)
+        XCTAssertEqual(issues.first?.line, 2, "mermaid 错误行号 = 围栏块开栏行")
+        XCTAssertEqual(issues.first?.fileURL, urlA)
+        XCTAssertTrue(check.pendingReport?.fixable.isEmpty ?? false,
+                      "mermaid 错误不应进一键修复列表")
+    }
+
+    func testValidMermaidBlocksProduceNoReport() async {
+        let check = makeCheck()
+        let mock = MockMermaidValidator()
+        check.mermaidValidator = mock
+        var reported = false
+        check.onReport = { _ in reported = true }
+
+        check.notifyAgentWrite(url: urlA, content: "text\n\n```mermaid\ngraph TD\n```\n")
+        check.runPendingChecks()
+        let ran = await waitUntil { mock.validatedCodes.count == 1 }
+        XCTAssertTrue(ran, "含 mermaid 块的写入应触发异步校验")
+        XCTAssertNil(check.pendingReport, "语法合法不产生报告")
+        XCTAssertFalse(reported, "语法合法不回调通知（静默）")
+    }
+
+    func testMermaidErrorMergesIntoExistingSyncReport() async {
+        let check = makeCheck()
+        let mock = MockMermaidValidator()
+        mock.results["bad"] = "Parse error"
+        check.mermaidValidator = mock
+
+        let content = "## Dup\n\n## Dup\n\n```mermaid\nbad\n```\n"
+        check.notifyAgentWrite(url: urlA, content: content)
+        check.runPendingChecks()
+        XCTAssertEqual(check.pendingReport?.fixable.count, 1, "重复标题先进同步报告")
+
+        let merged = await waitUntil { !self.mermaidIssues(check.pendingReport).isEmpty }
+        XCTAssertTrue(merged)
+        XCTAssertEqual(check.pendingReport?.fixable.count, 1, "合并不应丢同步结果")
+        XCTAssertEqual(check.pendingReport?.reportOnly.count, 1)
+        XCTAssertEqual(check.pendingReport?.fileURLs, [urlA])
+    }
+
+    func testNewRoundCancelsInFlightValidation() async {
+        let check = makeCheck()
+        let mock = MockMermaidValidator()
+        mock.delayNanos = 5_000_000_000   // 不取消的话 5 秒后才返回（取消会立即打断 sleep）
+        mock.results["graph TD"] = "Parse error"
+        check.mermaidValidator = mock
+
+        // 第一轮：含 mermaid 块，校验在途
+        check.notifyAgentWrite(url: urlA, content: "```mermaid\ngraph TD\n```\n")
+        check.runPendingChecks()
+        let started = await waitUntil { mock.validatedCodes.count == 1 }
+        XCTAssertTrue(started, "第一轮校验应在途")
+
+        // 第二轮：干净内容（无 mermaid 块）→ 取消第一轮未完成的校验
+        check.notifyAgentWrite(url: urlA, content: "# clean\n")
+        check.runPendingChecks()
+
+        // 第一轮的迟到结果（sleep 已被取消打断，立即返回错误消息）不得合并
+        let settled = await waitUntil(timeout: 2) { check.pendingReport == nil }
+        XCTAssertTrue(settled)
+        // 再多等一拍，确认没有迟到的合并
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertNil(check.pendingReport, "被取消的上一轮校验结果不得混入新报告")
+    }
+
+    func testDismissCancelsInFlightValidation() async {
+        let check = makeCheck()
+        let mock = MockMermaidValidator()
+        mock.delayNanos = 5_000_000_000
+        mock.results["graph TD"] = "Parse error"
+        check.mermaidValidator = mock
+
+        check.notifyAgentWrite(url: urlA, content: "```mermaid\ngraph TD\n```\n")
+        check.runPendingChecks()
+        _ = await waitUntil { mock.validatedCodes.count == 1 }
+
+        // 用户在校验在途时点「忽略」：迟到的错误不应让报告条复活
+        check.dismissReport()
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertNil(check.pendingReport, "忽略后迟到的校验结果不得复活报告条")
+    }
 }

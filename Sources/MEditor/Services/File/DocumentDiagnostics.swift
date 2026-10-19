@@ -9,10 +9,12 @@ struct DocumentIssue: Identifiable, Equatable, Sendable {
         case headingLevelSkip(from: Int, to: Int)  // 标题层级跳跃（如 H1 → H3）
         case emptyHeading                     // 只有 # 没有文字的标题
         case unclosedCodeBlock                // 围栏代码块没有收尾（报在开栏行）
+        case mermaidSyntax(String)            // Mermaid 块语法错误（关联值是 mermaid.parse 的错误消息）
 
         /// 模型能否通过改文本修复（「让 Agent 修复」入口的可用性口径）。
         /// missingImage 是纯缺失资源——模型变不出图片文件，改文本只能删引用，
         /// 不算可修复；死链模型可以改路径/去掉链接，算可修复。
+        /// mermaidSyntax 也走默认 true：错误消息里就带着定位线索，模型改图代码即可修复。
         var isAgentFixable: Bool {
             if case .missingImage = self { return false }
             return true
@@ -21,12 +23,13 @@ struct DocumentIssue: Identifiable, Equatable, Sendable {
         /// 写后自检的分级（比 isAgentFixable 更严）：文本层面可确定性修复、
         /// 结果不依赖外部因素的才进「一键修复」列表。
         /// deadLink 的目标文件可能稍后才被创建（Agent 分批写文件的中途态），
-        /// 与 missingImage 一样只报告不自动改。
+        /// 与 missingImage 一样只报告不自动改。mermaidSyntax 同样只报告：
+        /// 怎么改对要靠模型判断，不是确定性文本替换。
         var isDeterministicFix: Bool {
             switch self {
             case .duplicateHeading, .headingLevelSkip, .emptyHeading, .unclosedCodeBlock:
                 return true
-            case .deadLink, .missingImage:
+            case .deadLink, .missingImage, .mermaidSyntax:
                 return false
             }
         }
@@ -45,7 +48,7 @@ struct DocumentIssue: Identifiable, Equatable, Sendable {
 
     var severity: Severity {
         switch kind {
-        case .missingImage, .unclosedCodeBlock: return .error
+        case .missingImage, .unclosedCodeBlock, .mermaidSyntax: return .error
         case .deadLink, .duplicateHeading, .headingLevelSkip, .emptyHeading: return .warning
         }
     }

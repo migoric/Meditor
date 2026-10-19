@@ -10,6 +10,29 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
+## [Unreleased]
+
+### Added
+
+- **Mermaid 语法错误回传给 Agent 自修**（「agent 画的图，错了自己修」）：Agent 写入的
+  文档含 ```mermaid 块时，写后自检在同步诊断之后用隐藏 WKWebView 跑真 `mermaid.parse`
+  （复用预览的按需拷贝机制，懒初始化 + 串行 + 15s 超时重建），语法错误以
+  `DocumentIssue.mermaidSyntax` 合并进自检报告条——报在围栏开栏行、分级为 reportOnly
+  （修复要靠模型判断，不进确定性「一键修复」），点击可跳转该行，「让 Agent 修复」
+  链路（/fix）的 prompt 会带上错误消息。此前 mermaid 错误只渲染成预览里的
+  `.error-block`，没有任何通道回传。
+
+- **定时任务支持 `autoApprove`（无人值守产出的前提）**：`schedules.json` 条目新增可选字段
+  `autoApprove: true`（可选 `writeAllowlist: ["dir/"]` 限定工作区相对目录前缀）。声明后该任务的
+  后台 run 写入免确认——此前后台 run 无人盯守时确认条挂起不响应，定时任务无法产出成品。
+  安全边界不变：只跳过确认条 / 审阅态，写入仍限工作区内，run 级快照回滚照常记录；
+  缺省 `false`，交互式聊天 run 的确认链路完全不受影响。
+
+- **导出/预览 CSS 补中文字体栈**：预览主题 `base.css` 与 HTML 导出模板（craft 系列及
+  `--font` 主题变量）补 `PingFang SC` / `Hiragino Sans GB` / `Microsoft YaHei`——此前仅
+  导出模板含 PingFang SC，预览主题中文完全靠系统 fallback，且全链路缺 Windows 中文字体，
+  成品发给非 Mac 收件人时中文渲染不可控（与演示模式 `slides.css` 既有字体栈对齐）。
+
 ## [0.12.3] - 2026-10-16
 
 **iOS 端 UI 全面原生化 + 发布签名身份可配置。** iOS 端按「用 iOS 自己的 UI 组件、

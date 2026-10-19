@@ -11,6 +11,7 @@ extension DocumentIssue.Kind {
         case .headingLevelSkip:  return "list.number"
         case .emptyHeading:      return "character.textbox"
         case .unclosedCodeBlock: return "curlybraces"
+        case .mermaidSyntax:     return "chart.bar.doc.horizontal"
         }
     }
 
@@ -28,6 +29,8 @@ extension DocumentIssue.Kind {
             return L("diagnostics.emptyHeading")
         case .unclosedCodeBlock:
             return L("diagnostics.unclosedCodeBlock")
+        case .mermaidSyntax(let message):
+            return L("diagnostics.mermaidSyntax", message)
         }
     }
 }

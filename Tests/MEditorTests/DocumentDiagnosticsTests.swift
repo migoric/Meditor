@@ -165,10 +165,22 @@ final class DocumentDiagnosticsTests: XCTestCase {
     func testIsAgentFixable_textEditableKindsAreFixable() {
         let kinds: [DocumentIssue.Kind] = [
             .deadLink("x.md"), .duplicateHeading("T"),
-            .headingLevelSkip(from: 1, to: 3), .emptyHeading, .unclosedCodeBlock
+            .headingLevelSkip(from: 1, to: 3), .emptyHeading, .unclosedCodeBlock,
+            .mermaidSyntax("parse error")
         ]
         for kind in kinds {
             XCTAssertTrue(kind.isAgentFixable, "\(kind) 应可由模型改文本修复")
         }
+    }
+
+    // MARK: - mermaidSyntax 分级
+
+    func testMermaidSyntax_isReportOnlyError() {
+        let kind = DocumentIssue.Kind.mermaidSyntax("Parse error on line 1")
+        // 修复要靠模型判断（不是确定性文本替换）⇒ 不进「一键修复」列表
+        XCTAssertFalse(kind.isDeterministicFix, "mermaid 语法错误应只报告（reportOnly）")
+        // 语法错的图在导出产物里是缺内容 ⇒ error 级
+        let issue = DocumentIssue(kind: kind, fileURL: fileURL, line: 0)
+        XCTAssertEqual(issue.severity, .error)
     }
 }

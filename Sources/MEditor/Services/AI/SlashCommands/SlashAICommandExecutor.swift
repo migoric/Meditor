@@ -232,6 +232,8 @@ enum SlashAICommandExecutor {
                 desc = "空标题：只有 # 没有文字"
             case .unclosedCodeBlock:
                 desc = "围栏代码块未闭合"
+            case .mermaidSyntax(let message):
+                desc = "Mermaid 语法错误：\(message)"
             }
             // 行号转 1-based 展示（DocumentIssue.line 是 0-based）
             return "- 第 \(issue.line + 1) 行：\(desc)"

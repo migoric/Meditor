@@ -97,6 +97,7 @@ MEditorApp → ContentView (Views/AppShell/)
 - **斜杠命令**：9 静态 Markdown 展开 + 10 注册表 AI 命令；NSPopover 光标定位；模糊搜索（别名/标题/关键词）；↑↓/回车/Tab/Esc 全键盘；takesArgument 命令空格放行
 - **内联编辑条**：编辑器底部胶囊（≤4 主动作 + 更多 + 插件 + 问 AI）/ 预览选区跟随胶囊（无转表格）→ AgentRunner 流式 → DiffReviewOverlay 段落级审阅（接受/跳过/连续微调）→ 可撤销写回
 - **写确认**：命令/写文件确认条 + diff 展示 + 本次运行全部允许
+- **写后自检**：Agent 写入防抖合并后跑本地诊断（死链/缺图/标题/围栏），含 ```mermaid 块时再用隐藏 WKWebView 跑真 mermaid.parse 异步校验，错误合并进报告条（报在开栏行，reportOnly——修复走「让 Agent 修复」回传模型）
 
 ---
 

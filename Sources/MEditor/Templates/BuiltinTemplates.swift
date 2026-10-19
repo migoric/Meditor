@@ -274,7 +274,7 @@ enum BuiltinTemplates {
     <title>产品落地页</title>
     <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; color: #1d1d1f; background: #fff; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #1d1d1f; background: #fff; }
     .hero { text-align: center; padding: 120px 24px 96px; background: linear-gradient(180deg, #f5f7fa 0%, #fff 100%); }
     .hero .badge { display: inline-block; font-size: 13px; color: #0066cc; background: #eaf2fd; padding: 5px 14px; border-radius: 999px; margin-bottom: 24px; }
     .hero h1 { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 18px; }
@@ -324,7 +324,7 @@ enum BuiltinTemplates {
     <title>数据报告</title>
     <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; color: #1d1d1f; background: #f5f5f7; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #1d1d1f; background: #f5f5f7; }
     .container { max-width: 880px; margin: 0 auto; padding: 48px 24px; }
     header { margin-bottom: 36px; }
     header .meta { font-size: 13px; color: #86868b; margin-bottom: 8px; }
@@ -391,7 +391,7 @@ enum BuiltinTemplates {
     <title>个人简历</title>
     <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; color: #2c2c2e; background: #ececee; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #2c2c2e; background: #ececee; }
     .page { max-width: 800px; margin: 40px auto; background: #fff; padding: 56px 64px; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
     header { border-bottom: 2px solid #2c2c2e; padding-bottom: 20px; margin-bottom: 28px; }
     header h1 { font-size: 32px; letter-spacing: 0.02em; }
@@ -548,7 +548,7 @@ enum BuiltinTemplates {
       --accent: #0066cc;
       --bg: #f5f5f7;
       --text: #1d1d1f;
-      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
       --width: 720px;
       --font-mono: 'SF Mono', Menlo, monospace;
     }
@@ -582,7 +582,7 @@ enum BuiltinTemplates {
       --accent: #58a6ff;
       --bg: #0d1117;
       --text: #e6edf3;
-      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
       --width: 760px;
       --font-mono: 'SF Mono', Menlo, 'Courier New', monospace;
     }
