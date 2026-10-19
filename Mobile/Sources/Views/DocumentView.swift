@@ -240,7 +240,8 @@ struct DocumentView: View {
         if store.showPreview {
             switch store.kind {
             case .html:
-                HTMLPreviewView(html: store.text)
+                // baseURL = 文档所在目录：让 HTML 里的相对资源（本地图片、同级 CSS）可解析。
+                HTMLPreviewView(html: store.text, baseURL: store.sandboxURL?.deletingLastPathComponent())
             case .markdown:
                 MarkdownPreviewView(source: store.text)
             case .other:

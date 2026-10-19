@@ -77,7 +77,18 @@ final class AgentContext: AgentContextProtocol {
         try doc.writeDocument(content)
         if let tabURL { checkpoint?.markWritten(url: tabURL, content: content) }
     }
-    func insertIntoDocument(_ text: String)               { doc.insertIntoDocument(text) }
+    /// 插入到当前文档。与 writeDocument / patchDocument 同一取舍：快照记 tab 写前原文，
+    /// 否则「撤销本次运行的全部修改」覆盖不到插入（步骤面板会漏掉这类改动）。
+    func insertIntoDocument(_ text: String) {
+        let tabURL = doc.currentTabURL
+        if let tabURL, let pre = doc.currentDocument {
+            checkpoint?.captureBeforeWrite(url: tabURL, knownContent: pre)
+        }
+        doc.insertIntoDocument(text)
+        if let tabURL, let post = doc.currentDocument {
+            checkpoint?.markWritten(url: tabURL, content: post)
+        }
+    }
 
     func patchDocument(find: String, replace: String, all: Bool) throws -> Int {
         let tabURL = doc.currentTabURL

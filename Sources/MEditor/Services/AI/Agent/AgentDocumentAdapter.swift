@@ -134,7 +134,16 @@ final class AppStateDocumentAdapter: AgentDocumentAdapter {
     }
 
     func insertIntoDocument(_ text: String) {
-        appState?.insertIntoEditor(text)
+        guard let state = appState else { return }
+        let tabID = state.selectedTab?.id
+        state.insertIntoEditor(text)
+        // 写后自检：与 writeDocument / patchDocument 同一通知点，否则插入后没有诊断条。
+        // 插入走编辑器 nonce 路径（NSTextView 稍后才应用），此刻 tab.content 可能还是旧值，
+        // 所以让出一个 runloop 再取内容——拿旧文本跑诊断只会给出错位的报告。
+        Task { @MainActor in
+            guard let tab = state.openTabs.first(where: { $0.id == tabID }) else { return }
+            state.agentWriteSelfCheck.notifyAgentWrite(url: tab.url, content: tab.content)
+        }
     }
 
     // MARK: - Tab

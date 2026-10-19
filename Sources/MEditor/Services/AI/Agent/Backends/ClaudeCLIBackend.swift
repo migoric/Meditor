@@ -166,6 +166,10 @@ struct ClaudeCLIBackend: AgentBackend {
 
 ## Available Tools
 
+You have NO built-in tools of your own: you cannot run shell commands, read or write
+files, or browse. The ONLY way you can act is by emitting a tool call in the exact XML
+format below; the host application executes it and returns the result.
+
 To call a tool, output EXACTLY this XML block on its own line:
 
 <tool_call>
@@ -173,7 +177,8 @@ To call a tool, output EXACTLY this XML block on its own line:
 <arguments>{"key": "value"}</arguments>
 </tool_call>
 
-Rules: arguments MUST be valid JSON • wait for result before continuing • never refuse a tool call.
+Rules: arguments MUST be valid JSON • wait for result before continuing • never refuse a tool call
+• use this format verbatim (not DSML, not antml, not JSON function calls).
 
 ### Tools (name(required: type, optional?: type) → description):
 

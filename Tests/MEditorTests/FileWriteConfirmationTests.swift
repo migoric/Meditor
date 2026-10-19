@@ -91,6 +91,54 @@ final class FileWriteConfirmationTests: XCTestCase {
         XCTAssertEqual(ctx.writtenFiles.count, 1)
     }
 
+    /// insert_at_cursor 曾经是唯一没有闸门的写工具：模型按工具描述（"Prefer this over
+    /// write_document …"）优先选它，于是「往文档里加一段」这个最常见的请求绕过了审批。
+    func testInsertAtCursor_asksConfirmation() async throws {
+        let tool = InsertAtCursorTool()
+        let result = try await tool.execute(
+            arguments: ["text": .string("补充说明\n第二行")],
+            context: ctx
+        )
+        XCTAssertEqual(ctx.confirmedWrites.count, 1, "插入前应挂起一次确认")
+        XCTAssertEqual(ctx.confirmedWrites[0].path, "doc.md")
+        XCTAssertTrue(ctx.confirmedWrites[0].summary.contains("插入"),
+                      "summary 应写明这是一次插入")
+        XCTAssertTrue(ctx.confirmedWrites[0].summary.contains("补充说明"),
+                      "summary 应带上插入内容的一句话预览")
+        XCTAssertEqual(ctx.insertedTexts.count, 1, "允许后应真正插入")
+        XCTAssertTrue(result.contains("[OK]"))
+    }
+
+    func testInsertAtCursor_rejected_doesNotInsert() async throws {
+        ctx.writeConfirmResult = false
+        let tool = InsertAtCursorTool()
+        let result = try await tool.execute(
+            arguments: ["text": .string("不该落进文档的内容")],
+            context: ctx
+        )
+        XCTAssertTrue(ctx.insertedTexts.isEmpty, "拒绝后不应插入")
+        XCTAssertTrue(result.contains("[!]") && result.contains("拒绝"),
+                      "拒绝时应返回模型可读的文案，而非静默成功")
+    }
+
+    /// 本 run 已「全部允许」时，插入与其他写工具一样不再逐次确认。
+    func testInsertAtCursor_allowAllForRun_skipsConfirmation() async throws {
+        ctx.fileWriteAllowedForRun = true
+        let tool = InsertAtCursorTool()
+        _ = try await tool.execute(arguments: ["text": .string("批量写入")], context: ctx)
+        XCTAssertTrue(ctx.confirmedWrites.isEmpty, "「本次运行全部允许」后不应再挂确认")
+        XCTAssertEqual(ctx.insertedTexts.count, 1)
+    }
+
+    /// 确认条摘要压成单行并截断，避免长文本把面板里的确认条撑爆。
+    func testInsertAtCursor_snippetIsSingleLineAndTruncated() {
+        XCTAssertEqual(InsertAtCursorTool.snippet("a\nb\nc"), "a b c")
+        let long = String(repeating: "长", count: 100)
+        let snippet = InsertAtCursorTool.snippet(long)
+        XCTAssertTrue(snippet.hasSuffix("…"))
+        XCTAssertEqual(snippet.count, 61, "60 字符 + 省略号")
+    }
+
     // MARK: - 拒绝：工具不执行，返回模型可读错误
 
     func testWriteDocument_rejected_doesNotWrite() async throws {

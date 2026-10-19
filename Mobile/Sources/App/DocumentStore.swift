@@ -222,6 +222,10 @@ final class DocumentStore {
         fileName = url.lastPathComponent
         text = content
         externalBookmark = bookmark
+        // 视图模式不跨文档粘滞：`showPreview` 是全局开关，新建文档会把它置为 false
+        // （编辑态）。若打开新文档时不清，之后打开的 md/html 会直接显示**源码**——
+        // 用户看到的就是「渲染坏了」（md 与 html 同形）。打开文档一律先给预览。
+        showPreview = true
         // 不吞掉上一文档的保存失败：宁可让用户看到错误，也不静默丢内容
         lastError = saveError
         remember(url, bookmark: bookmark)
@@ -275,6 +279,8 @@ final class DocumentStore {
         fileName   = url.lastPathComponent
         text       = content
         externalBookmark = nil
+        // 同 setCurrentDocument：打开即预览，避免继承上一份文档的编辑态显示源码
+        showPreview = true
         lastError  = saveError
         remember(url)
         return true

@@ -78,6 +78,38 @@ final class ClaudeCLIStreamParserTests: XCTestCase {
         XCTAssertEqual(p.yielded, "")
         XCTAssertNil(p.resultError)
     }
+
+    // MARK: - CLI 侧工具结果（user 事件）：失败要留痕，不能静默吞掉
+    //
+    // 背景：`claude -p` 默认带着自己的 Write / Edit / Bash 工具。它一旦被调用，MEditor
+    // 只会收到 tool_use 块 + 一条 is_error 的 tool_result（"requested permissions … but
+    // you haven't granted it yet"），此前整条事件被丢弃 ⇒ 用户只看到模型说"等待你授权"，
+    // 界面上没有任何按钮也没有任何错误。现在 CLI 工具已用 `--tools ""` 关掉，
+    // 这里兜底保证同类事件至少能被透出。
+
+    func test_userEvent_toolResultError_captured() {
+        var p = ClaudeStreamJSONParser()
+        let line = #"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","is_error":true,"content":"Claude requested permissions to write to /tmp/a.md, but you haven't granted it yet."}]}}"#
+        XCTAssertNil(p.ingest(line: line), "工具结果不上抛为文本增量")
+        XCTAssertEqual(p.toolErrorNotice,
+                       "Claude requested permissions to write to /tmp/a.md, but you haven't granted it yet.")
+    }
+
+    /// content 为 [{type:text,text:…}] 数组形态时同样能取到文本。
+    func test_userEvent_toolResultError_arrayContent() {
+        var p = ClaudeStreamJSONParser()
+        let line = #"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","is_error":true,"content":[{"type":"text","text":"Bash tool was denied"}]}]}}"#
+        XCTAssertNil(p.ingest(line: line))
+        XCTAssertEqual(p.toolErrorNotice, "Bash tool was denied")
+    }
+
+    /// 成功的工具结果不该被当成错误透出。
+    func test_userEvent_successToolResult_ignored() {
+        var p = ClaudeStreamJSONParser()
+        let line = #"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","is_error":false,"content":"ok"}]}}"#
+        XCTAssertNil(p.ingest(line: line))
+        XCTAssertNil(p.toolErrorNotice)
+    }
 }
 
 // MARK: - ToolCallStreamFilterTests
