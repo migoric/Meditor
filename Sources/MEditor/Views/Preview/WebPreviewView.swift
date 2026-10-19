@@ -21,6 +21,21 @@ struct WebPreviewView: NSViewRepresentable {
     static let selectionHandlerName = "selectionHandler"
     static let escapeHandlerName = "escapeHandler"
 
+    /// 预览页的消息处理器 + 注入脚本。
+    ///
+    /// 抽成独立工厂是为了可测：「脚本定义了却忘了装到 controller 上」是这类
+    /// 注入最常见的静默失效，`HTMLPreviewAnchorScrollTests` 直接断言装配结果。
+    static func makeUserContentController(coordinator: Coordinator) -> WKUserContentController {
+        let userContent = WKUserContentController()
+        userContent.add(coordinator, name: "copyHandler")
+        userContent.add(coordinator, name: selectionHandlerName)
+        userContent.add(coordinator, name: escapeHandlerName)
+        // 注入的 <base> 会把纯 fragment 链接也解析成 meditor-asset://，
+        // 点击因此静默失效——守卫在页面内接管这类点击（见 HTMLAnchorGuard）。
+        userContent.addUserScript(HTMLAnchorGuard.userScript())
+        return userContent
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(findController: findController, onSelectionChange: onSelectionChange, onAddTodo: onAddTodo)
     }
@@ -31,10 +46,7 @@ struct WebPreviewView: NSViewRepresentable {
         // applyLoad 的说明。scheme handler 必须在这里注册：WKWebView 只在
         // 「创建 WKWebView 实例时」认这个配置，事后给 configuration 补注册无效。
         config.setURLSchemeHandler(MeditorAssetSchemeHandler(), forURLScheme: MeditorAssetSchemeHandler.scheme)
-        let userContent = WKUserContentController()
-        userContent.add(context.coordinator, name: "copyHandler")
-        userContent.add(context.coordinator, name: Self.selectionHandlerName)
-        userContent.add(context.coordinator, name: Self.escapeHandlerName)
+        let userContent = Self.makeUserContentController(coordinator: context.coordinator)
         config.userContentController = userContent
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
