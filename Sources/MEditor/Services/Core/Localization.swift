@@ -1049,6 +1049,7 @@ extension LocalizationManager {
         "ai.error.cliGeneric": ("Claude CLI failed", "Claude CLI 执行失败"),
         "ai.error.cliTimeout": ("CLI request timed out (%ds) — process terminated", "CLI 请求超时（%ds），进程已终止"),
         "ai.error.cliMacOnly": ("Claude CLI is only supported on macOS", "Claude CLI 仅支持 macOS"),
+        "ai.error.cliToolBlocked": ("Claude CLI blocked a tool call: %@", "Claude CLI 拦下了一次工具调用：%@"),
 
         // Agent errors
         "agentErr.argsNotObject": ("Arguments aren't a JSON object", "参数不是 JSON 对象"),

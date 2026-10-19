@@ -5,10 +5,14 @@ import Foundation
 struct InsertAtCursorTool: AgentTool {
     // iOS 的 SwiftUI TextEditor 拿不到光标，insertIntoDocument 实际是追加到末尾，
     // 文案必须与行为一致，否则模型会预期插到光标处。
+    //
+    // 描述里刻意不再写「加新内容优先用我」：那句话会把「往文档里加一段」这个最常见的
+    // 请求主动引到本工具上，而本工具没有 diff 形态（拿不到插入后全文），只能给确认条；
+    // 要改文档的既有内容应该走 patch_document（局部）/ write_document（全量）。
     #if os(iOS)
-    private static let toolDescription = "Append text to the end of the current document. Prefer this over write_document when adding new content rather than replacing."
+    private static let toolDescription = "Append text to the end of the current document. Use only when the user wants to append; to change existing content use patch_document (partial edit) or write_document (full rewrite)."
     #else
-    private static let toolDescription = "Insert text at the current cursor position in the editor. Prefer this over write_document when adding new content rather than replacing."
+    private static let toolDescription = "Insert text at the current cursor position in the editor. Use only when the user explicitly asks to insert at the cursor; to change existing content use patch_document (partial edit) or write_document (full rewrite)."
     #endif
 
     let spec = AgentToolSpec(
@@ -26,8 +30,30 @@ struct InsertAtCursorTool: AgentTool {
         guard let text = arguments["text"]?.stringValue else {
             throw AgentError.executionError("缺少 text 参数")
         }
+        // 插入同样修改用户内容：与 patch_document / write_document 同级走写前确认。
+        // 这里给不了 diff——插入点由编辑器光标决定，工具拿不到「插入后全文」，
+        // 所以 base 走 .unavailable（确认条只显示目标 + 摘要，不进全屏审阅）。
+        if !(await context.isFileWriteAllowedForRun) {
+            let docName = await context.currentDocumentName ?? "当前文档"
+            let preview = WriteDiffPreviewBuilder.make(
+                path: docName,
+                summary: "在 \(docName) 插入 \(text.count) 字符：\(Self.snippet(text))",
+                base: .unavailable,
+                newContent: text)
+            guard await context.confirmFileWrite(preview) else {
+                return "[!] 用户已拒绝插入：\(docName)（未改动）"
+            }
+        }
         await context.insertIntoDocument(text)
         return "[OK] 内容已插入（\(text.count) 字符）"
+    }
+
+    /// 确认条上的一句话预览：压成单行并截断，避免长文本把确认条撑高。
+    static func snippet(_ text: String) -> String {
+        let oneLine = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return oneLine.count > 60 ? String(oneLine.prefix(60)) + "…" : oneLine
     }
 }
 

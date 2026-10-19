@@ -231,6 +231,11 @@ struct ClaudeStreamJSONParser: Sendable {
     private(set) var yielded = ""
     /// 终态错误描述（result 事件 subtype != "success" / is_error == true 时填充）
     private(set) var resultError: String? = nil
+    /// CLI 侧工具被拒 / 执行失败的错误描述（`user` 事件里 tool_result 的 is_error == true）。
+    ///
+    /// CLI 内建工具现在已用 `--tools ""` 关掉，这里是兜底：这类事件此前被整条丢弃，
+    /// 用户只会看到模型自己说"等待你授权"，而界面上没有任何提示或按钮。
+    private(set) var toolErrorNotice: String? = nil
 
     /// 喂入一行 stream-json，返回需要上抛的文本增量（无新增返回 nil）。
     mutating func ingest(line: String) -> String? {
@@ -267,9 +272,35 @@ struct ClaudeStreamJSONParser: Sendable {
             guard let text = obj["result"] as? String else { return nil }
             return emitSuffix(of: text)
 
+        case "user":
+            // 工具结果回灌：CLI 侧执行完工具后，结果以 user 消息回到流里。
+            // 只挑失败的记下来（成功结果由模型自己消费，UI 不需要展示）；
+            // 记了不 throw——本轮文本仍然有效，错误随文本尾巴透出（见 claudeCLIStream）。
+            guard toolErrorNotice == nil,
+                  let message = obj["message"] as? [String: Any],
+                  let content = message["content"] as? [[String: Any]] else { return nil }
+            for block in content {
+                guard block["type"] as? String == "tool_result",
+                      (block["is_error"] as? Bool) == true else { continue }
+                let text = Self.plainText(block["content"])
+                if !text.isEmpty { toolErrorNotice = text }
+                return nil
+            }
+            return nil
+
         default:
-            return nil   // system/init、user 回显等事件与文本流无关
+            return nil   // system/init、状态等事件与文本流无关
         }
+    }
+
+    /// tool_result.content 既可能是字符串，也可能是 [{type:text,text:...}] 数组。
+    private static func plainText(_ raw: Any?) -> String {
+        if let s = raw as? String { return s.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let blocks = raw as? [[String: Any]] {
+            return blocks.compactMap { $0["text"] as? String }.joined()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return ""
     }
 
     /// 快照差分：快照不是已 yield 内容的前缀延伸时（不应发生）保守不补，避免重复文本。
@@ -411,14 +442,25 @@ struct AIClient {
                         throw AIError.cliNotFound(config.cliPath)
                     }
 
-                    // Compose a single prompt: system context + conversation.
-                    let prompt = messages.map { m -> String in
-                        switch m.role {
-                        case .system:    return m.content
-                        case .user:      return "User: \(m.content)"
-                        case .assistant: return "Assistant: \(m.content)"
+                    // system 与对话必须分开送：system 走 --system-prompt（真正的 system 位），
+                    // 对话走 stdin。此前把两者拼成一条 user 文本喂进去，真正的 system 位
+                    // 仍是 Claude Code 自己的 prompt（"你是 Claude Code，你有 Write/Bash…"），
+                    // 模型因此会在「CLI 自带工具」和 MEditor 的 XML 工具协议之间摇摆。
+                    let systemContent = messages
+                        .filter { $0.role == .system }
+                        .map(\.content)
+                        .joined(separator: "\n\n")
+                    // Compose the conversation (system 已单独送，见上).
+                    let prompt = messages
+                        .filter { $0.role != .system }
+                        .map { m -> String in
+                            switch m.role {
+                            case .system:    return m.content   // 已被上面滤掉，仅为穷尽性
+                            case .user:      return "User: \(m.content)"
+                            case .assistant: return "Assistant: \(m.content)"
+                            }
                         }
-                    }.joined(separator: "\n\n")
+                        .joined(separator: "\n\n")
 
                     let process = Process()
                     process.executableURL = URL(fileURLWithPath: config.cliPath)
@@ -428,7 +470,23 @@ struct AIClient {
                     // stream-json + --verbose + --include-partial-messages：边生成边
                     // 输出 JSONL 事件（text_delta 增量 / assistant 快照 / result 终态），
                     // agent 与聊天路径的 UI 都能增量渲染，不再干等整段回复。
-                    var args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]
+                    // `--tools ""` 关掉 Claude Code 的全部内建工具（Write / Edit / Bash / Read…）。
+                    // 这些工具一旦被调用，MEditor 只会从 stream-json 里收到一个 tool_use 块
+                    // 和一条 is_error 的 tool_result（"requested permissions to write … but
+                    // you haven't granted it yet"）——MEditor 既不解析它们，也没有实现
+                    // SDK 的 can_use_tool 控制协议（而且 stdin 写完就 close 了）
+                    // ⇒ 权限请求无处投递，用户在面板里看不到任何审批按钮，动作也不会发生。
+                    // 关掉工具后 CLI 退化为纯文本模型，一切动作只能走 MEditor 的
+                    // <tool_call> 协议，审批重新回到确认条 / diff 审阅。
+                    var args = ["-p", "--output-format", "stream-json", "--verbose",
+                                "--include-partial-messages", "--tools", ""]
+                    // `--system-prompt` 把 MEditor 的 system（含工具协议）放进真正的 system 位。
+                    // 实测：只加 `--tools ""`、协议仍留在 stdin 文本里时，模型会改用自家
+                    // DSML 标记（<｜｜DSML｜｜ invoke …>），<tool_call> 命中 0 次 ⇒ 工具调用
+                    // 整轮丢失、同样看不到审批。两件必须一起做。
+                    // 版本兼容：`--system-prompt` 比这条流式路径依赖的
+                    // `--include-partial-messages` 更早存在，能跑通现有路径的 CLI 必然支持它。
+                    if !systemContent.isEmpty { args += ["--system-prompt", systemContent] }
                     // 设置页的 CLI 模型选择（aiCLIModel）；空则用 CLI 默认模型
                     if !config.cliModel.isEmpty { args += ["--model", config.cliModel] }
                     process.arguments = args
@@ -525,6 +583,11 @@ struct AIClient {
                     // 退出码为 0 但 result 事件标记失败（如 API 鉴权错误走 JSONL 回传）
                     if let cliError = parser.resultError {
                         throw AIError.cliFailed(cliError)
+                    }
+                    // CLI 侧工具被拒 / 失败：附在文本尾部透出，不能让用户只能看到模型
+                    // 自己说「等待授权」而界面上什么都没有。
+                    if let notice = parser.toolErrorNotice {
+                        continuation.yield("\n\n⚠️ \(L("ai.error.cliToolBlocked", notice))")
                     }
                     continuation.finish()
                 } catch let e as AIError {
