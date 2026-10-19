@@ -171,4 +171,47 @@ final class ScheduledTaskConfigTests: XCTestCase {
         XCTAssertFalse(result.entries[0].enabled)
         XCTAssertTrue(result.issues.isEmpty)
     }
+
+    // MARK: - autoApprove：无人值守写入免确认
+
+    func test_parse_autoApprove_defaultsFalse() {
+        let data = """
+        {"schedules": [
+          {"name": "a", "cron": "0 9 * * *", "prompt": "x"}
+        ]}
+        """.data(using: .utf8)!
+        let result = ScheduledTaskConfigLoader.parse(data: data, source: .global)
+        XCTAssertEqual(result.entries.count, 1)
+        XCTAssertFalse(result.entries[0].autoApprove, "autoApprove 缺省必须为 false（确认条是默认）")
+        XCTAssertTrue(result.entries[0].writeAllowlist.isEmpty)
+        XCTAssertEqual(result.entries[0].writeAutoApproval, .none)
+    }
+
+    func test_parse_autoApprove_withAllowlist() {
+        let data = """
+        {"schedules": [
+          {"name": "a", "cron": "0 9 * * *", "prompt": "x", "autoApprove": true, "writeAllowlist": ["weekly/", " /reports "]},
+          {"name": "b", "cron": "0 9 * * *", "prompt": "y", "autoApprove": true}
+        ]}
+        """.data(using: .utf8)!
+        let result = ScheduledTaskConfigLoader.parse(data: data, source: .global)
+        XCTAssertEqual(result.entries.count, 2)
+        XCTAssertEqual(result.entries[0].writeAllowlist, ["weekly/", "reports"],
+                       "白名单条目去首尾空白、去开头斜杠")
+        XCTAssertEqual(result.entries[0].writeAutoApproval, .dirs(["weekly/", "reports"]))
+        XCTAssertEqual(result.entries[1].writeAutoApproval, .all,
+                       "autoApprove 无白名单 = 工作区内全部免确认")
+    }
+
+    func test_parse_autoApprove_wrongType_isFalse() {
+        let data = """
+        {"schedules": [
+          {"name": "a", "cron": "0 9 * * *", "prompt": "x", "autoApprove": "yes"}
+        ]}
+        """.data(using: .utf8)!
+        let result = ScheduledTaskConfigLoader.parse(data: data, source: .global)
+        XCTAssertEqual(result.entries.count, 1)
+        XCTAssertFalse(result.entries[0].autoApprove,
+                       "非 Bool 的 autoApprove 按 false（容错方向是多弹确认，不是偷偷放行）")
+    }
 }

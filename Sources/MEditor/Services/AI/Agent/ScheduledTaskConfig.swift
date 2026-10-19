@@ -9,6 +9,12 @@ import Foundation
 // 格式：
 //   {"schedules": [{"name": "...", "cron": "0 9 * * 1-5", "prompt": "...", "enabled": true}]}
 //
+// 可选字段：
+//   autoApprove: true     — 该任务的后台 run 写入免确认（无人值守产出的前提）；
+//                           只跳过确认条 / 审阅态，工作区边界与 run 级快照回滚不变
+//   writeAllowlist: [...] — 配合 autoApprove：仅这些工作区相对目录前缀内的写入免确认，
+//                           白名单外仍走确认条；缺省 / 空数组 = 工作区内全部免确认
+//
 // 容错原则：单个坏条目（缺字段 / 非法 cron / 空 prompt）跳过并记录到 issues，
 // 不拖垮整个加载。issues 文案仅供诊断展示，不做本地化（同 mcp.json 惯例）。
 
@@ -29,6 +35,16 @@ struct ScheduledTaskConfig: Sendable, Equatable, Identifiable {
     /// 解析后的调度（加载时已校验，非法 cron 的条目不会出现在结果里）
     var schedule: CronSchedule
     var source: Source
+    /// 写入免确认（无人值守产出的前提；默认 false = 每步写入都走确认条）
+    var autoApprove: Bool = false
+    /// autoApprove 的目录白名单（工作区相对前缀）；空 = 工作区内全部免确认
+    var writeAllowlist: [String] = []
+
+    /// 映射为写工具的免确认策略（保持解析层与执行层同一语义，便于单测）。
+    var writeAutoApproval: WriteAutoApproval {
+        guard autoApprove else { return .none }
+        return writeAllowlist.isEmpty ? .all : .dirs(writeAllowlist)
+    }
 }
 
 /// schedules.json 加载结果：合法条目 + 跳过的坏条目说明（供设置页/日志展示）。
@@ -108,7 +124,9 @@ enum ScheduledTaskConfigLoader {
             if let config = parsed.config {
                 entries.append(ScheduledTaskConfig(name: config.name, cron: config.cron,
                                                    prompt: config.prompt, enabled: config.enabled,
-                                                   schedule: config.schedule, source: source))
+                                                   schedule: config.schedule, source: source,
+                                                   autoApprove: config.autoApprove,
+                                                   writeAllowlist: config.writeAllowlist))
             } else if let reason = parsed.issue {
                 issues.append("\(label): entry #\(index + 1) \(reason) — skipped")
             }
@@ -123,6 +141,8 @@ enum ScheduledTaskConfigLoader {
         let prompt: String
         let enabled: Bool
         let schedule: CronSchedule
+        let autoApprove: Bool
+        let writeAllowlist: [String]
     }
 
     /// 解析单个条目；失败原因用于 issues 记录（模式同 MCPClientConfigLoader.parseEntry）。
@@ -146,8 +166,17 @@ enum ScheduledTaskConfigLoader {
 
         // enabled 缺省视为 true（手写配置的最少字段就是 name/cron/prompt）
         let enabled = (entry["enabled"] as? Bool) ?? true
+        // autoApprove 缺省 false（无人值守写入必须显式声明）；非 Bool 一律按 false，
+        // 容错方向是「多弹确认」而不是「偷偷放行」
+        let autoApprove = (entry["autoApprove"] as? Bool) ?? false
+        // writeAllowlist：只收非空字符串，去掉首尾空白与开头的 "/"（语义是工作区相对前缀）
+        let writeAllowlist = (entry["writeAllowlist"] as? [Any] ?? [])
+            .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespaces) }
+            .map { $0.hasPrefix("/") ? String($0.dropFirst()) : $0 }
+            .filter { !$0.isEmpty }
         return (ParsedEntry(name: name, cron: rawCron, prompt: prompt, enabled: enabled,
-                            schedule: schedule), nil)
+                            schedule: schedule, autoApprove: autoApprove,
+                            writeAllowlist: writeAllowlist), nil)
     }
 }
 
@@ -158,13 +187,15 @@ enum ScheduledTaskConfigWriter {
     /// 无配置文件时写入的示例模板（JSON 不支持注释，用 _comment 字段 + 停用的示例条目说明格式）。
     static let template = """
     {
-      "_comment": "cron = 分 时 日 月 周（本地时区），支持 * , - */n；enabled=false 的条目不触发",
+      "_comment": "cron = 分 时 日 月 周（本地时区），支持 * , - */n；enabled=false 的条目不触发；autoApprove=true 让该任务写入免确认（可选 writeAllowlist 限定目录）",
       "schedules": [
         {
           "name": "example-weekly-digest",
           "cron": "0 9 * * 1-5",
           "prompt": "把昨天的日记汇总成周报草稿，写入 weekly/ 目录",
-          "enabled": false
+          "enabled": false,
+          "autoApprove": true,
+          "writeAllowlist": ["weekly/"]
         }
       ]
     }

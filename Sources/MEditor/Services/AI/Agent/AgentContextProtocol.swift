@@ -17,6 +17,49 @@ enum FileResolveResult {
 
 // MARK: - 窄接口拆分
 
+/// 写入免确认策略（定时任务 `autoApprove` 用，见 ScheduledTaskConfig）。
+///
+/// 只跳过确认条 / diff 审阅态，**不放宽任何其他边界**：写入仍被工具层限制在
+/// 工作区内（resolveFile / writeFile 的工作区约束不变），run 级快照回滚照常记录
+/// （checkpoint 在写工具落盘前 capture，与本策略无关）。交互式聊天 run 恒为 `.none`，
+/// 确认条链路与此前完全一致。
+enum WriteAutoApproval: Sendable, Equatable {
+    /// 默认：每步写入都要确认（现状）。
+    case none
+    /// 本 run 内所有工作区写入免确认（= 预设的「本次运行全部允许」）。
+    case all
+    /// 仅白名单目录（工作区相对前缀）内的写入免确认；白名单外仍走确认。
+    case dirs([String])
+
+    /// 指定路径（工具层拿到的原始形态：裸文件名 / 工作区相对 / 绝对路径）是否免确认。
+    func allows(path: String, workspaceRoot: URL?) -> Bool {
+        switch self {
+        case .none:
+            return false
+        case .all:
+            return true
+        case .dirs(let prefixes):
+            guard let workspaceRoot, !prefixes.isEmpty else { return false }
+            let target = Self.normalize(path.hasPrefix("/")
+                ? URL(fileURLWithPath: path)
+                : workspaceRoot.appendingPathComponent(path))
+            for prefix in prefixes {
+                let dir = Self.normalize(workspaceRoot.appendingPathComponent(prefix))
+                // 目录前缀比较：补尾斜杠，防止 "weekly" 误命中 "weekly-old"
+                if target == dir || target.hasPrefix(dir + "/") { return true }
+            }
+            return false
+        }
+    }
+
+    /// 归一化路径文本：标准化 + 解析符号链接。目标尚不存在时 symlink 解析可能
+    /// 整体放弃（macOS 只对完整存在的路径解析），此时前缀比较失败——失败方向是
+    /// 回落到确认条（保守），不会把白名单外的写入放行。
+    private static func normalize(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+}
+
 /// 当前文档读写操作。
 @MainActor
 protocol DocumentContext: AnyObject, Sendable {
@@ -91,6 +134,11 @@ protocol ShellContext: AnyObject, Sendable {
     /// 本次 agent run 的「全部允许」开关：用户在确认条点过「本次运行全部允许」后
     /// 为 true，之后本 run 的写工具直接放行、不再挂起确认。run 级作用域，新 run 重置。
     var isFileWriteAllowedForRun: Bool { get }
+    /// 指定路径的写入是否免确认：「全部允许」为 true 时任何路径都免确认；
+    /// 定时任务 autoApprove 条目的白名单命中时该路径免确认（见 WriteAutoApproval）。
+    /// path 为工具层拿到的原始形态（裸文件名 / 工作区相对 / 绝对路径）。
+    /// 是协议要求而非扩展方法：保证 existential 调用动态分发。
+    func isFileWritePreApproved(path: String) -> Bool
 }
 
 extension ShellContext {
@@ -112,6 +160,8 @@ extension ShellContext {
     func cancelPendingWriteConfirmation() {}
     /// 默认无「全部允许」状态——未接入 UI 的实现每次写都走 confirmFileWrite（其默认实现放行）。
     var isFileWriteAllowedForRun: Bool { false }
+    /// 默认只看「全部允许」——mock / headless / 移动端无 autoApprove 概念，行为与此前一致。
+    func isFileWritePreApproved(path: String) -> Bool { isFileWriteAllowedForRun }
 }
 
 /// 向后兼容别名：组合三个窄接口，现有代码无需改动。

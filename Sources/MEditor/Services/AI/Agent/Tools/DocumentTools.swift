@@ -138,9 +138,9 @@ struct WriteDocumentTool: AgentTool {
             let target: String
             if case .found(let foundURL) = resolved { target = foundURL.path } else { target = filename }
             var finalContent = content
-            // 写入前审阅：本 run 已「全部允许」则直接放行；否则是否进 diff 审阅态
-            // 由 context 决定（GUI 默认逐块审阅，headless / mock 直通或走确认条）
-            if !(await context.isFileWriteAllowedForRun) {
+            // 写入前审阅：本 run 已免确认（全部允许 / autoApprove 白名单命中）则直接放行；
+            // 否则是否进 diff 审阅态由 context 决定（GUI 默认逐块审阅，headless / mock 直通或走确认条）
+            if !(await context.isFileWritePreApproved(path: target)) {
                 // diff 预览：已存在文件取写前内容（fileContentFull = tab 内存优先，与
                 // AgentRunCheckpoint.captureBeforeWrite 的取舍一致）；新文件按纯新增
                 let base: WriteBaseContent
@@ -170,7 +170,7 @@ struct WriteDocumentTool: AgentTool {
         let sourceTabID = await context.currentTabID
         var finalContent = content
         // 写入前审阅（当前文档全量重写）；写前内容 = 当前 tab 内存内容
-        if !(await context.isFileWriteAllowedForRun) {
+        if !(await context.isFileWritePreApproved(path: docName)) {
             let base: WriteBaseContent =
                 (await context.currentDocument).map { .existing($0) } ?? .newFile
             let preview = WriteDiffPreviewBuilder.make(
@@ -235,9 +235,9 @@ struct PatchDocumentTool: AgentTool {
         let matchDesc = replaceAll ? "全部匹配" : "首个匹配"
 
         if let filename = arguments["filename"]?.stringValue, !filename.isEmpty {
-            // 写入前审阅：本 run 已「全部允许」则直接放行；否则是否进 diff 审阅态
-            // 由 context 决定（GUI 默认逐块审阅，headless / mock 直通或走确认条）
-            if !(await context.isFileWriteAllowedForRun) {
+            // 写入前审阅：本 run 已免确认（全部允许 / autoApprove 白名单命中）则直接放行；
+            // 否则是否进 diff 审阅态由 context 决定（GUI 默认逐块审阅，headless / mock 直通或走确认条）
+            if !(await context.isFileWritePreApproved(path: filename)) {
                 // diff 预览：解析目标取写前内容（fileContentFull = tab 内存优先），
                 // 找不到 / 读失败时降级为只显示 summary
                 var oldContent: String? = nil
@@ -292,7 +292,7 @@ struct PatchDocumentTool: AgentTool {
         // 锁定发起 tab（理由同 write_document 当前文档分支）
         let sourceTabID = await context.currentTabID
         // 写入前审阅（当前文档局部替换）；写前内容 = 当前 tab 内存内容
-        if !(await context.isFileWriteAllowedForRun) {
+        if !(await context.isFileWritePreApproved(path: docName)) {
             if let old = await context.currentDocument {
                 let applied = PatchEngine.apply(to: old, find: find, replace: replace, all: replaceAll)
                 let appliedCount = applied.count
