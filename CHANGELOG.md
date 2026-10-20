@@ -33,6 +33,14 @@
   不再放大发虚。iOS 端无 PDF 导出、macOS 端 PDF 本就走 `webView.createPDF` 矢量，
   均不在本项范围。
 
+- **演示模式新增 .pptx 导出**：「导出演示文稿…」保存面板新增格式弹窗
+  （HTML / PowerPoint .pptx）。.pptx 为纯 Swift 拼装的最小合法 OOXML 包
+  （`ZipWriter` 未压缩 stored 写入 + 自实现查表 CRC32，零第三方依赖），
+  分页与 HTML 演示导出共用同一份 `SlideSplitter` 结果。v1 只含文本
+  （标题 + 正文/项目符号，16:9 白底）：图片仅保留 alt 文本，代码块按等宽
+  纯文本保留（无高亮），有序列表渲染为 • 项目符号。产物经 `unzip -t`
+  CRC 校验与 macOS QuickLook 真实解析验证（成功渲染缩略图）。
+
 - **Mermaid 语法错误回传给 Agent 自修**（「agent 画的图，错了自己修」）：Agent 写入的
   文档含 ```mermaid 块时，写后自检在同步诊断之后用隐藏 WKWebView 跑真 `mermaid.parse`
   （复用预览的按需拷贝机制，懒初始化 + 串行 + 15s 超时重建），语法错误以

@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import OSLog
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum EditorLanguage: String {
     case markdown
@@ -716,28 +717,61 @@ final class AppState {
         }
     }
 
-    /// 把当前 Markdown 文档导出为单文件自包含的演讲 HTML（无选中或非 Markdown 时无操作）。
+    /// 把当前 Markdown 文档导出为演讲稿（无选中或非 Markdown 时无操作）。
+    /// 保存面板带格式弹窗：自包含 HTML（浏览器放映）或 .pptx（PowerPoint/Keynote/WPS）。
+    /// 两种格式共用 `SlideSplitter` 的同一份分页结果。
     func exportPresentation() {
         guard let tab = selectedTab, tab.language == .markdown else { return }
         let slides = SlideSplitter.split(tab.content)
-        // file:// 形式的 <base href>，使导出的 HTML 在浏览器中能加载相对路径图片
-        let baseHref = tab.url.deletingLastPathComponent().absoluteString
-        guard let html = PresentationExporter.makeHTML(slides: slides, theme: themeStore.current, baseHref: baseHref) else {
-            showToast(L("toast.presentationResourcesMissing"), icon: "exclamationmark.triangle")
-            return
-        }
+        let baseName = tab.url.deletingPathExtension().lastPathComponent + "-slides"
+        let pptxType = UTType(filenameExtension: "pptx", conformingTo: .compositeContent) ?? .data
 
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
-        savePanel.title = "Export Presentation"
-        savePanel.nameFieldStringValue = tab.url.deletingPathExtension().lastPathComponent + "-slides.html"
+        savePanel.title = L("export.presentation.title")
+        savePanel.nameFieldStringValue = baseName + ".html"
         savePanel.allowedContentTypes = [.html]
+
+        let popup = FormatPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 24), pullsDown: false)
+        popup.addItems(withTitles: [L("export.presentation.formatHTML"), L("export.presentation.formatPPTX")])
+        popup.onChange = { [weak savePanel] index in
+            guard let savePanel else { return }
+            let isPPTX = index == 1
+            savePanel.allowedContentTypes = isPPTX ? [pptxType] : [.html]
+            let base = (savePanel.nameFieldStringValue as NSString).deletingPathExtension
+            savePanel.nameFieldStringValue = base + (isPPTX ? ".pptx" : ".html")
+        }
+
+        let label = NSTextField(labelWithString: L("export.presentation.format"))
+        let accessory = NSStackView(views: [label, popup])
+        accessory.orientation = .horizontal
+        accessory.spacing = 8
+        accessory.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 12, right: 12)
+        savePanel.accessoryView = accessory
+
         savePanel.begin { response in
             guard response == .OK, let url = savePanel.url else { return }
             do {
-                try html.write(to: url, atomically: true, encoding: .utf8)
+                if popup.indexOfSelectedItem == 1 {
+                    let data = PPTXExporter.makePPTX(
+                        slides: slides,
+                        title: tab.url.deletingPathExtension().lastPathComponent
+                    )
+                    try data.write(to: url)
+                } else {
+                    // file:// 形式的 <base href>，使导出的 HTML 在浏览器中能加载相对路径图片
+                    let baseHref = tab.url.deletingLastPathComponent().absoluteString
+                    guard let html = PresentationExporter.makeHTML(
+                        slides: slides, theme: self.themeStore.current, baseHref: baseHref
+                    ) else {
+                        self.showToast(L("toast.presentationResourcesMissing"), icon: "exclamationmark.triangle")
+                        return
+                    }
+                    try html.write(to: url, atomically: true, encoding: .utf8)
+                }
             } catch {
-                self.report(.exportFailed(format: "HTML", underlying: error), logger: AppLog.exporter)
+                let format = popup.indexOfSelectedItem == 1 ? "PPTX" : "HTML"
+                self.report(.exportFailed(format: format, underlying: error), logger: AppLog.exporter)
             }
         }
     }
@@ -758,5 +792,23 @@ final class AppState {
                 self.observePresentationThemeChanges()
             }
         }
+    }
+}
+
+/// 保存面板格式弹窗：自承载 target/action，把选中变化转成闭包回调。
+/// （NSControl.target 是弱引用，独立 target 对象还得找地方 retain；自 target 最省事。）
+private final class FormatPopUpButton: NSPopUpButton {
+    var onChange: ((Int) -> Void)?
+
+    override init(frame frameRect: NSRect, pullsDown flag: Bool) {
+        super.init(frame: frameRect, pullsDown: flag)
+        target = self
+        action = #selector(selectionDidChange)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func selectionDidChange() {
+        onChange?(indexOfSelectedItem)
     }
 }

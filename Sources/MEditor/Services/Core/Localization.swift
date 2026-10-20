@@ -500,6 +500,12 @@ extension LocalizationManager {
         "export.image": ("Export as Image…", "导出为图片…"),
         "export.html": ("Export as HTML…", "导出为 HTML…"),
 
+        // Presentation export（演示导出保存面板的格式弹窗）
+        "export.presentation.title": ("Export Presentation", "导出演示文稿"),
+        "export.presentation.format": ("Format", "格式"),
+        "export.presentation.formatHTML": ("HTML (self-contained slideshow)", "HTML（自包含放映页）"),
+        "export.presentation.formatPPTX": ("PowerPoint (.pptx, text only)", "PowerPoint（.pptx，纯文本）"),
+
         // Export preflight check（导出前检查清单）
         "export.preflight.title": ("Export Check", "导出检查"),
         "export.preflight.summary": ("%d issue(s) found in this document", "本文档发现 %d 个问题"),

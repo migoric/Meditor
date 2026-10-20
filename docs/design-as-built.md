@@ -123,7 +123,7 @@ toast（底部胶囊 2.5s，可带操作按钮）/ EmptyStateView / WelcomeView�
 
 - Liquid Glass / macOS 26 适配（工具栏玻璃、侧栏材质、tab 条玻璃胶囊拆解）
 - AI 修改文档闭环（核心交互）：斜杠命令/选区动作条/对话 → AgentRunner 流式 → DiffReviewOverlay 段落级审阅（接受/跳过/连续微调）→ 可撤销写回；写文件前确认 + 本次运行全部允许
-- Git 状态标记（侧栏）· 本地历史快照（⌃⌘H）· 导出预检 · 全局搜索浮层 · LAN 分享 + Gist + ShareLink · 演示模式 · Quick Look 扩展 · 模板系统
+- Git 状态标记（侧栏）· 本地历史快照（⌃⌘H）· 导出预检 · 全局搜索浮层 · LAN 分享 + Gist + ShareLink · 演示模式（放映 + 导出 HTML/.pptx）· Quick Look 扩展 · 模板系统
 
 ---
 
