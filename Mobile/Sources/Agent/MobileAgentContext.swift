@@ -12,12 +12,21 @@ final class MobileAgentContext: AgentContextProtocol {
 
     private let store: DocumentStore
     private let repo: DefaultAgentFileRepository
+    /// 写文件的确认闸门。**必须**注入并覆写 `confirmFileWrite`——
+    /// 协议默认实现是 fail-closed（拒绝），不覆写等于 AI 完全不能写文件。
+    private let gate: WriteConfirmationGate
 
-    init(store: DocumentStore) {
+    init(store: DocumentStore, gate: WriteConfirmationGate? = nil) {
         self.store = store
         // 工作区跟随 store（可注入，测试友好），不再静态直引。
         self.repo  = DefaultAgentFileRepository { store.workspace }
+        // 默认参数里不能直接构造 @MainActor 类型（默认参数表达式在非隔离上下文求值），
+        // 所以收 nil 再在这里补。
+        self.gate  = gate ?? WriteConfirmationGate()
     }
+
+    /// 供视图层绑定确认条状态。
+    var writeGate: WriteConfirmationGate { gate }
 
     // MARK: - DocumentContext
 
@@ -141,4 +150,26 @@ final class MobileAgentContext: AgentContextProtocol {
     func markCommandApproved(_ key: String) {}
     var allowedCommandPatterns: [String]? { nil }
     func setAllowedCommandPatterns(_ patterns: [String]?) {}
+
+    // MARK: - 文件写入确认（移动端有 UI，必须真的问）
+
+    /// 写文件前挂起确认条。
+    ///
+    /// 这是本类型里唯一「非空实现」的 ShellContext 成员，也是最要紧的一个：
+    /// 协议默认值已改为 fail-closed，**不覆写这一条，iOS 上 AI 就写不了任何文件**；
+    /// 而在默认值还是 `true` 的年代，不覆写的结果是 AI 静默改掉用户的文档。
+    /// 两个方向都不可接受，所以这里显式接 UI。
+    func confirmFileWrite(_ path: String, summary: String) async -> Bool {
+        if gate.allowAllForRun { return true }
+        return await gate.request(path: path, summary: summary)
+    }
+
+    /// 丢弃 diff 预览，转交 path/summary 版本——移动端没有段落级审阅面。
+    func confirmFileWrite(_ preview: FileWritePreview) async -> Bool {
+        await confirmFileWrite(preview.path, summary: preview.summary)
+    }
+
+    var isFileWriteAllowedForRun: Bool { gate.allowAllForRun }
+
+    func cancelPendingWriteConfirmation() { gate.cancelPending() }
 }

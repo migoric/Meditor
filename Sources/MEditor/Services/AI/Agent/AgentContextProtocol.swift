@@ -144,8 +144,17 @@ protocol ShellContext: AnyObject, Sendable {
 extension ShellContext {
     /// 默认无挂起确认——mock / 测试实现无需关心此方法。
     func cancelPendingCommandConfirmation() {}
-    /// 默认放行——测试 / 无 UI（headless）场景无需感知确认流程，不破坏既有 conformer。
-    func confirmFileWrite(_ path: String, summary: String) async -> Bool { true }
+    /// 默认**拒绝**（fail-closed）。
+    ///
+    /// 这里曾经返回 `true`，理由是「headless / 未接入 UI 的 conformer 行为不变」。
+    /// 但默认放行意味着：**任何忘了覆写这条的 conformer，AI 的写入都会静默落盘**，
+    /// 而这恰是本产品最核心的安全承诺（写前必审阅）。iOS 端正是这样中了招——
+    /// `MobileAgentContext` 只实现了 5 个命令方法，写文件一路走默认值放行。
+    ///
+    /// 默认值的正确方向是拒绝：忘了覆写的后果是「AI 写不了文件」（可见、可报错、
+    /// 用户会来问），而不是「AI 悄悄改了你的文档」（不可见）。确实需要放行的
+    /// 无头场景（MCP，确认职责在宿主）必须**显式覆写并写清理由**。
+    func confirmFileWrite(_ path: String, summary: String) async -> Bool { false }
     /// 默认丢弃 diff、转发给 path/summary 版本——只实现旧签名的既有 conformer
     /// （mock / headless）语义不变，diff 预览只有接入 UI 的实现才消费。
     func confirmFileWrite(_ preview: FileWritePreview) async -> Bool {

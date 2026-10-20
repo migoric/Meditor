@@ -4,7 +4,7 @@ import XCTest
 // MARK: - FileWriteConfirmationTests
 //
 // 文件写入确认（agent 运行中的写操作需用户确认）单测：
-//   - 协议默认实现放行（不破坏 headless / 未接入 UI 的 conformer）
+//   - 协议默认实现**拒绝**（fail-closed：忘了覆写的 conformer 宁可写不了，也不能静默落盘）
 //   - 拒绝时工具不执行，且返回模型可读的错误文案
 //   - run 级「全部允许」后，同 run 后续写不再挂起确认
 // mock 模式参照 AgentToolTests.swift（MockAgentContext spy + 结果注入）。
@@ -35,12 +35,28 @@ final class FileWriteConfirmationTests: XCTestCase {
         func setAllowedCommandPatterns(_ patterns: [String]?) {}
     }
 
-    func testDefaultConfirmFileWrite_allows() async {
+    func testDefaultConfirmFileWrite_denies() async {
         let shell = MinimalShellContext()
         let allowed = await shell.confirmFileWrite("docs/a.md", summary: "写入 docs/a.md（约 3 行）")
-        XCTAssertTrue(allowed, "协议扩展的默认实现应直接放行（headless / 未接入 UI 场景）")
+        XCTAssertFalse(
+            allowed,
+            "协议扩展的默认实现必须拒绝：默认放行会让「忘了覆写」的 conformer 静默改用户文档（iOS 曾因此中招）"
+        )
         XCTAssertFalse(shell.isFileWriteAllowedForRun, "默认无「全部允许」状态")
         shell.cancelPendingWriteConfirmation()   // 默认 no-op，不应崩溃
+    }
+
+    /// 反向验证上面那条不是「纸面断言」：默认值确实曾经是 `true`，
+    /// 若哪天有人改回去，这个用例会立刻变红。
+    func testDefaultConfirmFileWrite_doesNotSilentlyAllow() async {
+        let shell = MinimalShellContext()
+        let preview = FileWritePreview(path: "docs/b.md", summary: "写入 docs/b.md", diff: .hunks([]))
+        let reviewed = await shell.reviewFileWrite(
+            preview,
+            base: .newFile,
+            newContent: "new"
+        )
+        XCTAssertNil(reviewed, "默认 reviewFileWrite 必须退化为「拒绝」，不能返回内容")
     }
 
     // MARK: - 用户确认流程（每个写工具都会挂起确认）

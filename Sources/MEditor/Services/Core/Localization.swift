@@ -16,27 +16,52 @@ final class LocalizationManager: @unchecked Sendable {
     private static let key = "MEditor.language"
 
     var language: AppLanguage {
-        didSet { UserDefaults.standard.set(language.rawValue, forKey: Self.key) }
-    }
-
-    private init() {
-        if let raw = UserDefaults.standard.string(forKey: Self.key),
-           let lang = AppLanguage(rawValue: raw) {
-            language = lang
-        } else {
-            language = .system
+        didSet {
+            lock.withLock { cachedResolved = Self.resolve(language) }
+            UserDefaults.standard.set(language.rawValue, forKey: Self.key)
         }
     }
 
-    /// Effective language after resolving `.system`.
-    var resolved: AppLanguage {
+    /// `resolved` 的非隔离读快照。
+    ///
+    /// 为什么需要它：`L(...)` 被大量 **非 MainActor** 的 Service 调用
+    /// （`TemplateStore` / `FileService` / `GitHubGistService` / `ShareLinkService` …），
+    /// 而 `language` 是可变状态。此前 `resolved` 直接读 `language`，等于让多个线程
+    /// 读一个正被设置页写的 var —— `@unchecked Sendable` 那句标注在替编译器担保
+    /// 一件并不成立的事。
+    ///
+    /// 现在写路径（主线程，didSet）更新快照，读路径一律取锁内快照：
+    /// `language` 本身留作 SwiftUI 观察用，跨线程只读 `resolved`。
+    @ObservationIgnored private let lock = NSLock()
+    @ObservationIgnored private var cachedResolved: AppLanguage
+
+    private init() {
+        let initial: AppLanguage
+        if let raw = UserDefaults.standard.string(forKey: Self.key),
+           let lang = AppLanguage(rawValue: raw) {
+            initial = lang
+        } else {
+            initial = .system
+        }
+        language = initial
+        cachedResolved = Self.resolve(initial)
+    }
+
+    /// `.system` → 实际语言。纯函数，不读实例状态（否则又回到竞态）。
+    private static func resolve(_ language: AppLanguage) -> AppLanguage {
         guard language == .system else { return language }
         let prefersZh = Locale.preferredLanguages.first?.hasPrefix("zh") ?? false
         return prefersZh ? .chinese : .english
     }
 
+    /// Effective language after resolving `.system`（线程安全：读锁内快照）。
+    var resolved: AppLanguage { lock.withLock { cachedResolved } }
+
     func localized(_ key: String) -> String {
-        // Reading `resolved` (which reads `language`) registers the dependency.
+        // 观察依赖：SwiftUI 在 body 里调 L()，这一行让「语言切换 → 重绘」成立。
+        // `language` 是可变 var，只在主线程读（body 恒在主线程）；
+        // 后台 Service 不在这里读它，走 resolved 的锁内快照。
+        if Thread.isMainThread { _ = language }
         let useZh = (resolved == .chinese)
         guard let pair = Self.table[key] else { return key }
         return useZh ? pair.zh : pair.en
