@@ -150,13 +150,20 @@ final class AgentWriteSelfCheck {
         startMermaidValidation(batch: batch)
     }
 
+    /// 一个待校验的 mermaid 块（SwiftLint large_tuple：三元组换成具名结构）。
+    private struct MermaidJob {
+        let url: URL
+        let line: Int
+        let code: String
+    }
+
     /// 对本批写入内容里的 ```mermaid 块逐个跑真语法校验（串行）。
     /// 校验器为 nil（测试关闭）或没有 mermaid 块时直接返回，不付 webview 成本。
     private func startMermaidValidation(batch: [String: (url: URL, content: String)]) {
         guard let validator = mermaidValidator else { return }
-        let jobs: [(url: URL, line: Int, code: String)] = batch.values.flatMap { entry in
+        let jobs: [MermaidJob] = batch.values.flatMap { entry in
             MermaidBlocks.extract(from: entry.content).map {
-                (url: entry.url, line: $0.startLine, code: $0.code)
+                MermaidJob(url: entry.url, line: $0.startLine, code: $0.code)
             }
         }
         guard !jobs.isEmpty else { return }
