@@ -43,8 +43,8 @@ enum PPTXExporter {
         add("ppt/presentation.xml", presentationXML(slideCount: contents.count))
         add("ppt/_rels/presentation.xml.rels", presentationRelsXML(slideCount: contents.count))
         add("ppt/theme/theme1.xml", themeXML)
-        add("ppt/slideMasters/slideMaster1.xml", slideMasterXML)
-        add("ppt/slideMasters/_rels/slideMaster1.xml.rels", slideMasterRelsXML)
+        add("ppt/slideMasters/slideMaster1.xml", slideParentXML)
+        add("ppt/slideMasters/_rels/slideMaster1.xml.rels", slideParentRelsXML)
         add("ppt/slideLayouts/slideLayout1.xml", slideLayoutXML)
         add("ppt/slideLayouts/_rels/slideLayout1.xml.rels", slideLayoutRelsXML)
         for (index, content) in contents.enumerated() {
@@ -294,7 +294,7 @@ enum PPTXExporter {
 
     /// 最小母版：空 spTree + 完整 clrMap + 引用唯一版式。空的 txStyles 让
     /// PowerPoint 用内置默认文字样式，免去三大段样板。
-    private static var slideMasterXML: String {
+    private static var slideParentXML: String {
         xmlHeader + """
         <p:sldMaster xmlns:a="\(nsA)" xmlns:p="\(nsP)" xmlns:r="\(nsR)">
         <p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>
@@ -310,7 +310,7 @@ enum PPTXExporter {
         """
     }
 
-    private static var slideMasterRelsXML: String {
+    private static var slideParentRelsXML: String {
         xmlHeader + """
         <Relationships xmlns="\(nsRel)">
         <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>

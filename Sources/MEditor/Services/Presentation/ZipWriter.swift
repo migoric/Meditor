@@ -26,8 +26,14 @@ enum ZipWriter {
         let dosTime: UInt16 = 0
 
         var out = Data()
-        /// 中央目录条目所需的回看信息。
-        var central: [(name: String, crc: UInt32, size: UInt32, offset: UInt32)] = []
+        /// 中央目录条目所需的回看信息（SwiftLint large_tuple：四元组换具名结构）。
+        struct CentralEntry {
+            let name: String
+            let crc: UInt32
+            let size: UInt32
+            let offset: UInt32
+        }
+        var central: [CentralEntry] = []
 
         for entry in entries {
             let nameBytes = Data(entry.name.utf8)
@@ -50,7 +56,7 @@ enum ZipWriter {
             out.append(nameBytes)
             out.append(entry.data)
 
-            central.append((entry.name, crc, size, offset))
+            central.append(CentralEntry(name: entry.name, crc: crc, size: size, offset: offset))
         }
 
         let centralOffset = UInt32(out.count)
