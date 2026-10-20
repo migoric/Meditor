@@ -3,8 +3,16 @@ name: Build & Test
 on:
   push:
     branches: [main]
+    # 纯文档/官网改动不触发 CI：这些路径不进编译产物，跑 4 台 macOS runner
+    # 只为验证一个 Markdown 链接的语法，是纯浪费（见 10 月账单复核）。
+    paths-ignore:
+      - '**.md'
+      - 'website/**'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'website/**'
 
 # 同一 ref 的新 push/PR 取消旧构建，省 runner 且让结果只看最新
 concurrency:
@@ -26,23 +34,57 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
-      - name: Build
-        run: swift build
-
-      - name: Test
-        run: swift test
-
-      - name: Archive .app bundle
+      # SwiftLint 此前是独立 job。它是纯静态检查（8 秒完事），却要付一次
+      # macOS runner 的启动成本（计费按 job 向上取整到分钟 ⇒ 至少 1 分钟 ×
+      # macOS 十倍系数）。并进来当第一步：既不额外占 VM，又因为排在测试前面
+      # 仍然是最快失败的闸门。
+      #
+      # portable 版是 universal 二进制（x86_64 + arm64），比 brew 更稳、更快。
+      # 固定版本：releases/latest 会随上游静默升级，可能突然引入新规则/新行为。
+      - name: Install SwiftLint (portable 0.65.0)
         run: |
-          bash scripts/bundle.sh
-          ditto -c -k --keepParent .build/debug/MEditor.app MEditor.zip
+          curl -sL -o /tmp/swiftlint.zip             https://github.com/realm/SwiftLint/releases/download/0.65.0/portable_swiftlint.zip
+          unzip -o -q /tmp/swiftlint.zip -d /tmp/swiftlint
 
-      - name: Upload .app artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: MEditor-macOS
-          path: MEditor.zip
-          compression-level: 0
+      - name: Lint
+        # --strict：warning 也视为失败。当前基线 0 warning，闸门从此对警告敏感。
+        run: /tmp/swiftlint/swiftlint lint --strict --config .swiftlint.yml Sources
+
+      # Quick Look 扩展不在 MEditorTests 的依赖图里，`swift test` 不保证编译它。
+      # 此前靠下一步的 swift build（全量）兜住；现在全量构建已移出 PR CI
+      # （见文件末尾说明），这里显式补一个 target 构建——若测试构建已覆盖过，
+      # 这一步就是空操作（SwiftPM 增量命中）。
+      - name: Compile Quick Look extension
+        run: swift build --target MEditorQuickLook
+
+      # 一次编译两次收益：测试本身就是编译 + 运行，再单跑 `swift build`
+      # 等于把同一份代码编两遍（实测 270s vs 152s，差的正是那次全量构建）。
+      # 编译错误依旧会让这一 job 失败，闸门没有变松。
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Export lcov
+        run: |
+          xcrun llvm-profdata merge -o default.profdata .build/**/codecov/*.profraw
+          xcrun llvm-cov export             .build/**/MEditorPackageTests.xctest/Contents/MacOS/MEditorPackageTests             -instr-profile default.profdata --format=lcov > coverage.lcov
+
+      - name: Enforce coverage gate
+        # 路径门槛按前缀匹配（见 scripts/coverage_gate.py）。数字取当前实测值往下留
+        # 8~12 个点：目的是防止关键层 Coverage 被悄悄拉低（棘轮），不是定目标值。
+        # Views/ 此前完全不设门槛（21,202 行、覆盖率约 2.2%）：那等于给出一条免费
+        # 通道——把代码挪进 Views/ 就能绕过 logic 门槛。现补一个**极低但存在**的
+        # 棘轮 floor（Views=1）：不指望它推动 View 层提覆盖率，只保证「挪进 Views」
+        # 不再使覆盖率无限下滑，且把这条口径问题显式摆在门禁里（真要把 Views 提到
+        # 有意义的水平是独立议题，需要 View 层测试策略，不在本门槛职责内）。
+        run: |
+          python3 scripts/coverage_gate.py coverage.lcov \
+            --min-dir Services/AI/Agent=75 \
+            --min-dir Services/MCP=70 \
+            --min-dir Managers=58 \
+            --min-dir ViewModels=48 \
+            --min-dir Models=42 \
+            --min-dir Skills=85 \
+            --min-dir Views=1
 
   ios:
     name: Build (iOS Simulator)
@@ -87,64 +129,6 @@ jobs:
 
       - name: Check iOS shared sources
         run: python3 scripts/check_ios_shared_sources.py
-
-  lint:
-    name: SwiftLint
-    runs-on: macos-26
-    timeout-minutes: 15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      # portable 版是 universal 二进制（x86_64 + arm64），比 brew 更稳、更快。
-      # 固定版本：releases/latest 会随上游静默升级，可能突然引入新规则/新行为。
-      - name: Install SwiftLint (portable 0.65.0)
-        run: |
-          curl -sL -o /tmp/swiftlint.zip             https://github.com/realm/SwiftLint/releases/download/0.65.0/portable_swiftlint.zip
-          unzip -o -q /tmp/swiftlint.zip -d /tmp/swiftlint
-
-      - name: Lint
-        # --strict：warning 也视为失败。当前基线 0 warning，闸门从此对警告敏感。
-        run: /tmp/swiftlint/swiftlint lint --strict --config .swiftlint.yml Sources
-
-  coverage:
-    name: Coverage Gate
-    runs-on: macos-26
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-
-      - name: Test with coverage
-        run: swift test --enable-code-coverage
-
-      - name: Export lcov
-        run: |
-          xcrun llvm-profdata merge -o default.profdata .build/**/codecov/*.profraw
-          xcrun llvm-cov export             .build/**/MEditorPackageTests.xctest/Contents/MacOS/MEditorPackageTests             -instr-profile default.profdata --format=lcov > coverage.lcov
-
-      - name: Enforce coverage gate
-        # 路径门槛按前缀匹配（见 scripts/coverage_gate.py）。数字取当前实测值往下留
-        # 8~12 个点：目的是防止关键层 Coverage 被悄悄拉低（棘轮），不是定目标值。
-        # Views/ 此前完全不设门槛（35584 行、覆盖率约 2.2%）：那等于给出一条免费通道
-        # ——把代码挪进 Views/ 就能绕过 logic 门槛。现补一个**极低但存在**的棘轮 floor
-        # （Views=1）：不指望它推动 View 层提覆盖率，只保证「挪进 Views」不再使覆盖率
-        # 无限下滑，且把这条口径问题显式摆在门禁里（真要把 Views 提到有意义的水平是
-        # 独立议题，需要 View 层测试策略，不在本门槛职责内）。
-        run: |
-          python3 scripts/coverage_gate.py coverage.lcov \
-            --min-dir Services/AI/Agent=75 \
-            --min-dir Services/MCP=70 \
-            --min-dir Managers=58 \
-            --min-dir ViewModels=48 \
-            --min-dir Models=42 \
-            --min-dir Skills=85 \
-            --min-dir Views=1
 
   worker:
     name: Worker Tests
@@ -199,3 +183,14 @@ jobs:
       - name: Dead design tokens
         run: python3 scripts/check_dead_tokens.py
 
+# ── 为什么 PR CI 里不再跑 scripts/bundle.sh ────────────────────────────────
+# 1. 那个 artifact 从来没有消费方（全仓 grep `download-artifact` 命中 0），
+#    上传的 MEditor.zip 只为占存储：计费按 GB-hour 算，10 月仅 storage 一项就
+#    把账户顶过了免费额度。
+# 2. bundle.sh 为了产出 Universal 包，会用 `--arch arm64` 和 `--arch x86_64`
+#    各跑一次 `swift build`（见脚本第 49/71 行）。runner 是 arm64，x86_64 那次
+#    是纯交叉全量编译，还带着 App Intents 的 const-values 参数（独立构建配置，
+#    无法复用任何缓存）——这是 Build job 270 秒里最大的一块。
+# 3. 打包/签名的正确性有专门的闸门：.github/workflows/release-dryrun.yml
+#    （手工触发，验证书锚 designated requirement + codesign --deep + 资源层级），
+#    比 PR 里打一个没人下载的包更严格。

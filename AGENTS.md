@@ -149,10 +149,11 @@ python3 scripts/check_service_layer_deps.py
 python3 scripts/check_dead_tokens.py
 ```
 
-CI 四个**必需**检查（分支保护里写死的名字，改 job 名会让 PR 卡死等一个永不到来的检查）：
-`Build & Test (macOS 26)` · `Build (iOS Simulator)` · `SwiftLint` · `Coverage Gate`。
-另有若干非必需的守卫 job（`iOS Shared Source Guard` / `Layer Guard` / `UI Guard` / `Worker Tests`）
-—— 它们同样要绿，只是没进保护名单。
+CI 里两个 main gate（其余见 `docs/engineering-practices.md` §1）：
+`Build & Test (macOS 26)` · `Build (iOS Simulator)`。
+`SwiftLint` 与 `Coverage Gate` 已并入 `Build & Test`（同一台 macOS runner 里顺序执行）。
+⚠️ 分支保护目前**没生效** —— 仓库是 private + 免费计划，`branches/main` 报 `protected: false`，
+保护 API 直接 403。想让 check 名变回强制，转 public / 升级 Pro 后把上面两个名字加回必需检查。
 
 **本地跑不动的两处，如实说明**：
 
