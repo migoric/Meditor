@@ -31,11 +31,13 @@ python3 scripts/check_service_layer_deps.py                 # 分层守卫
 python3 scripts/check_dead_tokens.py                        # 设计 token 守卫
 ```
 
-CI 四个**必需**检查：`Build & Test (macOS 26)` · `Build (iOS Simulator)` · `SwiftLint` ·
-`Coverage Gate`。另有若干非必需但同样要绿的守卫 job（`Layer Guard` / `UI Guard` …）。
+CI main gate：`Build & Test (macOS 26)`（含 SwiftLint + 覆盖率门槛）· `Build (iOS Simulator)`。
+另有若干同样要绿的守卫 job（`Layer Guard` / `UI Guard` / `Worker Tests` …）。
 
-> ⚠️ **改 job 的 `name:` 之前先看这条**：分支保护里写死的是上面四个名字。
-> 改名会让所有 PR 卡在一个永不到来的必需检查上（本仓的 `AGENTS.md` §3 也记了这句）。
+> ⚠️ **分支保护目前没生效**（2026-10-20 实测）：仓库是 private + 免费计划，保护 API 返回 403、
+> `branches/main` 报 `protected: false` ⇒ 上面的 check 名**不是强制的**，改 `name:` 不会卡死 PR。
+> 但仓库转 public / 升级 Pro 后要立刻把这两个名字加回必需检查，届时改名才会卡住所有 PR
+> （本仓 `AGENTS.md` §3 也记了这句）。
 
 覆盖率门槛本地跑法（要 lcov）见 [`docs/engineering-practices.md`](./docs/engineering-practices.md) §3。
 
@@ -114,7 +116,7 @@ git push origin v0.12.0
 
 1. **校验**：tag 形如 `^v\d+\.\d+\.\d+$`，且 `v<VERSION>` 与 tag 名**逐字相等** ——
    不一致直接在第一步失败，不会产出半发布状态。
-2. `swift build` + `swift test`（发布也要过测试）。
+2. `swift test`（发布也要过测试；`swift test` 自己会先编译，不再额外跑一次 `swift build`）。
 3. `scripts/bundle.sh` 打 Universal `.app` → 签名（Sparkle EdDSA）→ 压 `MEditor-vX.Y.Z.zip`。
 4. 生成/更新 `appcast.xml`（自动更新通道），并从 tag 区间的提交标题生成 Release 正文。
 5. 建 GitHub Release，回放校验 appcast 可取、字节数与安装包一致。
@@ -128,6 +130,10 @@ git push origin v0.12.0
 - `scripts/bundle.sh` **没有测试**，而 `release.yml` 依赖它的正确性（已知覆盖缺口，改它要格外
   小心）。同目录的 `sign_update.swift` 自 0.12.1 起有端到端测试
   （`Tests/MEditorTests/SignUpdateScriptTests.swift`：真脚本子进程 + 公钥验签）。
+- ⚠️ 自 2026-10-20 起 **PR CI 不再跑 `bundle.sh`**：它为产出 Universal 包要按 arm64 / x86_64
+  各做一次 `swift build`（runner 上 x86_64 是纯交叉全量编译、无法复用缓存），而它产出的
+  artifact 全仓没有任何消费方。⇒ **改 `bundle.sh` 后必须手工跑一次 Actions → Release Dry Run**，
+  那条链路才是打包正确性的闸门（证书锚 designated requirement + `codesign --deep` + 资源层级）。
 - `workflow_dispatch` 只能指向 `v*` tag；指向普通分支会被脚本拒绝。
 
 ### 发布签名身份（可选 secret）

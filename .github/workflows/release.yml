@@ -27,9 +27,10 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
-      - name: Build
-        run: swift build
-
+      # 只留一步：`swift test` 自己会先编译（app target 是测试 target 的依赖）。
+      # 此前先 `swift build` 再 `swift test` 等于把同一份代码编两遍。
+      # Quick Look 扩展不在这条依赖链上，但下面的 release job 会用
+      # `bundle.sh release` 全量构建它，无需在这里重复。
       - name: Test
         run: swift test
 
