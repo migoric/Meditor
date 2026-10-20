@@ -1,0 +1,18 @@
+# git 作者归一化。
+#
+# 本仓历史上有三个身份在交替出现，`git log` / `CHANGELOG` / Release notes 的作者
+# 归属因此是碎的：
+#
+#   migor    <863129776@qq.com>   10 次（GitHub 网页端合并产生，= 账号主身份）
+#   migor    <retrychx@163.com>   10 次（早期本地配置）
+#   t        <t@t>                17 次（某台机器的本地配置泄漏，name/email 都是占位）
+#   retrychx <retrychx@163.com>  341 次（更早的账号名）
+#
+# 下面把它统一到 `migor <863129776@qq.com>`。注意：mailmap **只影响本地
+# `git log` / `shortlog` / `blame` 的展示**，不改 GitHub 上的提交归属——
+# 那边看的是 commit 里原始的作者邮箱，要改只能改写历史。
+
+migor <863129776@qq.com> <retrychx@163.com>
+migor <863129776@qq.com> <t@t>
+migor <863129776@qq.com> retrychx <retrychx@163.com>
+migor <863129776@qq.com> t <t@t>

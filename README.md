@@ -57,7 +57,7 @@ Pure SwiftUI + AppKit — **no Electron**. Bring-your-own-key — **your documen
 ### 🔄 The loop: edit → render → iterate
 
 - **Live preview** — Real-time Markdown rendering (marked.js), code highlighting (highlight.js), diagrams (Mermaid.js), math formulas (KaTeX)
-- **Editor that keeps up** — Native `NSTextView` editing with 40+ language highlighting, bidirectional scroll sync, find & replace, Quick Open (⌘P), tabs, and an FSEvents-driven file browser
+- **Editor that keeps up** — Native `NSTextView` editing (Markdown / HTML syntax modes), bidirectional scroll sync, find & replace, Quick Open (⌘P), tabs, and an FSEvents-driven file browser. Code blocks in the **preview** get 35 language grammars via highlight.js
 - **Images land on disk by themselves** — ⌘V a screenshot or drag an image in; it's saved to `assets/` and inserted as a relative path
 - **Local history snapshots** — Every save keeps a snapshot with tiered retention; File History (⌃⌘H) diffs any two versions and restores in one click — and the restore itself is undoable
 - **Global search (⌘⇧F)**, TOC outline, tab context menus (close others / reveal in Finder / save as template), and Quick Look previews from Finder

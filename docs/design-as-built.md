@@ -1,7 +1,9 @@
 # MEditor UI Design As-Built（现状文档）
 
-> 版本：对应 macOS 端 0.8.x（macOS 26 / Xcode 26 SDK，Liquid Glass）
-> 依据：2026-08 对 Sources/MEditor 源码的只读调研（三个独立调研报告交叉验证）
+> 版本：对应 macOS 端 0.13（macOS 26 / Xcode 26 SDK，Liquid Glass）
+> 依据：2026-08 对 Sources/MEditor 源码的只读调研（三个独立调研报告交叉验证），
+> 此后按版本增量维护。**版本号与 `VERSION` 的一致性由
+> `scripts/check_docs_consistency.py` 在 CI 里看住**——改版忘了改这一行会直接红。
 > 用途：作为 design-spec-v3.md 的现状对照——记录**当前实际设计**，而非目标设计。
 
 ---
@@ -152,13 +154,12 @@ toast（底部胶囊 2.5s，可带操作按钮）/ EmptyStateView / WelcomeView�
 
 ## 10. 已知短板（与 spec 无关，纯现状）
 
-1. 无障碍缺失：全项目 accessibilityLabel/Identifier 为 0，无 VoiceOver 适配
-2. 无减少动态效果适配（prefersReducedMotion）
+1. 无障碍覆盖极低：21.2k 行视图里 `accessibilityLabel` 仅 20 处、
+   `accessibilityIdentifier` 为 0（等于没有 UI 测试挂点）、无 VoiceOver 走查
+2. 无减少动态效果适配（`accessibilityReduceMotion` 0 处；欢迎页那组无限循环动画照跑）
 3. 侧栏无拖拽（spec 遗留，若要恢复分层导航需补）
-4. 单文件偏大：AtMentionComposerView 774 行、Localization 879 行
-5. **无统一抬升语言**：29 处 `.shadow(...)` 各写一套（透明度 0.04–0.45、半径 1–34）。
-   原先的 `DS.Shadow` 是半成品（`card()` 返回颜色，半径/偏移是另一组散落常量，无法成套使用）
-   且全仓 0 引用，已随 P0-5 删除，现状是没有抬升 token。
-6. **行选中色无 token**：实际用 `appAccent.opacity(0.16)`（FileRow.swift:109、FileSidebar.swift:497）
-   与 `0.12`（FileSidebar.swift:451 等）两档并存；原先的 `DS.Color.rowSelected` 是脱节的 `0.13`，已删。
-   统一这 5 处需先定档（视觉决策）。
+4. 单文件偏大：`Localization.swift` 1315 行、`AgentRunner.swift` 843 行、`AIService.swift` 820 行
+5. **抬升语言已统一**（2026-10 修复）：`dsElevation` 24 处 + `DS.Elevation` 3 处；
+   裸 `.shadow(` 从 29 处降到 9 处。原「无抬升 token」条目作废。
+6. **行选中色已有 token**（2026-10 修复）：`selectionFill` 12 处统一取档；
+   原先 `appAccent.opacity(0.16)` / `0.12` 两档并存的问题已收口。

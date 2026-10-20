@@ -123,15 +123,18 @@ app 与测试 target 都在 `.swiftLanguageMode(.v6)` 下编译。几条本仓�
   裸加标注等于关掉编译器在这处的检查。
 - 主 actor 上同步调用 `nonisolated` API 用 `MainActor.assumeIsolated`；
   它只在调用点确实位于主线程时正确，**不要拿它当消音器**。
-- 已知的两处真并发逃逸（未加锁可变 static）记录在深度 review 报告的 P1 —— 碰 `AIService.memoryFallback`
-  与 `PreviewAssetMirror.mermaidProvisioned` 时留意。
+- 逃逸清单必须与代码同步。这里曾经列着两处「未加锁可变 static」，实测**早已加锁**
+  （`AIService.memoryFallback` → `fallbackLock`，`PreviewAssetMirror.mermaidProvisioned`
+  → `mermaidLock`），而真正没加锁的 `LocalizationManager.language` 反倒不在清单里。
+  现状：三处都已改成锁内访问，**清单为空**。
+  ⇒ 下次加 `@unchecked Sendable` 就往这里补一条并写清为什么安全；改完记得删。
 
 ---
 
 ## 3. 构建 / 测试 / 门禁
 
 ```bash
-swift build                 # 编译桌面端
+swift build                 # 编译桌面端（前提：xcode-select 指向 Xcode，见下）
 ./scripts/test.sh           # = swift test（显式指向 Xcode 工具链）
 make test                   # 上面那条的别名
 make version                # 打印版本 + 改哪里
@@ -147,7 +150,13 @@ swiftlint lint --strict --config .swiftlint.yml Sources
 # 本文提到的守卫（都可单独跑，退出码非 0 = 红）
 python3 scripts/check_service_layer_deps.py
 python3 scripts/check_dead_tokens.py
+python3 scripts/check_docs_consistency.py   # 文档断言 vs 代码事实
 ```
+
+> ⚠️ **`swift build` 的前提是 `xcode-select -p` 指向 Xcode**。指向 CommandLineTools 时
+> 连清单都解析不了，报的是 `Invalid manifest` 这种完全不指向真因的错——
+> 解法是 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`。
+> `scripts/test.sh` 已经内置了这一步，裸 `swift build` 没有。
 
 CI 里两个 main gate（其余见 `docs/engineering-practices.md` §1）：
 `Build & Test (macOS 26)` · `Build (iOS Simulator)`。
@@ -174,7 +183,7 @@ CI 里两个 main gate（其余见 `docs/engineering-practices.md` §1）：
 | iOS | `Mobile/MEditorMobile.xcodeproj` 的 `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | `Info.plist` 用 `$(MARKETING_VERSION)` 引用 |
 
 两端按设计**各自独立演进**，两个数字不必相等 —— 别「顺手对齐」。
-`release.yml` 只校验 macOS 侧（这条已知覆盖缺口记录在 review 报告 P1）。
+`release.yml` 只校验 macOS 侧（已知覆盖缺口：iOS 的 `MARKETING_VERSION` 目前没有自动校验）。
 
 ---
 
@@ -210,7 +219,7 @@ CI 里两个 main gate（其余见 `docs/engineering-practices.md` §1）：
 | 设计目标与演进 | `docs/design-spec-v3.md` · `docs/design-spec-v3-implementation-plan.md` |
 | 质量机制是什么 / 为什么 | `docs/engineering-practices.md` |
 | 版本变更 | [`CHANGELOG.md`](./CHANGELOG.md) |
-| 深度审计与整改记录 | 见 review 报告与对应 PR（本仓把结论连同**证伪过程**一起留档） |
+| 深度审计与整改记录 | 审计报告在仓外维护；**进仓的是结论与被证伪的断言** —— 见 `CHANGELOG.md` 与 `docs/engineering-practices.md` |
 
 改语义要同步 `CHANGELOG.md`；改现状要同步 `docs/design-as-built.md`。
 **报告里被证伪的断言要留着并标注**，不要悄悄改掉 —— 那是后来人最容易重犯的坑。
