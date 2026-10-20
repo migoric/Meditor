@@ -12,6 +12,16 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **AI 设置分层：首屏只留一个决策**（战略复核 P0：新用户不该先做十几个技术决策
+  才能看到第一个结果）。AI 设置页首屏现在是「快速开始」卡片——检测到本机
+  Claude CLI 时推荐一键零配置（复用本机 Claude Code 登录），否则选「使用自己的
+  API key」就地填 key；provider 细项、接口地址、模型选择、Agent 步数、个性化、
+  入门演示、端侧智能与 MCP 全部收进默认收起的「高级」区，展开状态持久化
+  （新增 `MEditor.aiAdvancedExpanded`，默认关）。所有既有配置项、绑定与
+  持久化键不变，功能无删减。
+
 ### Added
 
 - **Mermaid 语法错误回传给 Agent 自修**（「agent 画的图，错了自己修」）：Agent 写入的

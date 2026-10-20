@@ -44,6 +44,8 @@ final class AppSettings {
         static let aiAgentAutoApplyWrites = "MEditor.aiAgentAutoApplyWrites"
         // 端侧智能（Apple Foundation Models）
         static let aiOnDevicePasteCleanup = "MEditor.aiOnDevicePasteCleanup"
+        // 设置页 AI tab「高级」区展开状态（默认收起，首屏只留一个决策）
+        static let aiAdvancedExpanded = "MEditor.aiAdvancedExpanded"
         static let userDocPathBookmark = "MEditor.userDocPathBookmark"
         static let appDocPathBookmark  = "MEditor.appDocPathBookmark"
         // Claude Code 监听
@@ -212,6 +214,11 @@ final class AppSettings {
     /// 端侧不可用或清理失败时静默回退原始转换结果，不联网。
     var aiOnDevicePasteCleanup: Bool {
         didSet { defaults.set(aiOnDevicePasteCleanup, forKey: Key.aiOnDevicePasteCleanup) }
+    }
+
+    /// 设置页 AI tab「高级」区是否展开（默认收起：首屏只保留「CLI 还是 API key」一个决策）。
+    var aiAdvancedExpanded: Bool {
+        didSet { defaults.set(aiAdvancedExpanded, forKey: Key.aiAdvancedExpanded) }
     }
 
     // MARK: - Claude Code 监听
@@ -446,6 +453,8 @@ final class AppSettings {
         aiAgentAutoApplyWrites = d.bool(forKey: Key.aiAgentAutoApplyWrites)  // 默认关 = 预览优先
         // 端侧智能（默认关：用户显式开启后才过端侧模型）
         aiOnDevicePasteCleanup = d.bool(forKey: Key.aiOnDevicePasteCleanup)
+        // AI 设置「高级」区（默认收起）
+        aiAdvancedExpanded = d.bool(forKey: Key.aiAdvancedExpanded)
         // Claude Code 监听
         claudeMonitorEnabled    = d.object(forKey: Key.claudeMonitorEnabled) != nil ? d.bool(forKey: Key.claudeMonitorEnabled) : false
         claudeMonitorCustomPath = d.string(forKey: Key.claudeMonitorCustomPath) ?? ""
