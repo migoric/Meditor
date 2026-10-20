@@ -5,8 +5,10 @@ import Observation
 // MARK: - AgentSchedulerService（cron 定时触发的后台 Agent 任务，macOS-only）
 //
 // 每分钟 tick 一次，命中 cron 的启用条目即复用 BackgroundAgentTaskService
-// 发起后台 run——写文件仍走标准确认条 / diff 审阅链路，scheduler 不绕过任何安全边界；
-// AI 未配置时触发优雅失败（toast 提示，不崩溃不静默）。
+// 发起后台 run——写文件默认仍走标准确认条 / diff 审阅链路，scheduler 不绕过任何安全边界；
+// 条目显式声明 autoApprove 时按 writeAutoApproval 策略免确认（只跳确认条，工作区边界
+// 与 run 级快照回滚不变，见 ScheduledTaskConfig）；AI 未配置时触发优雅失败
+// （toast 提示，不崩溃不静默）。
 //
 // 宿主依赖收在 `AgentHostPort` 端口上（P0-10）：本文件不直接命名 ViewModel 类型。
 // 端口同时被 BackgroundAgentTaskService 使用，两个服务共用同一份宿主能力白名单
@@ -134,7 +136,8 @@ final class AgentSchedulerService {
             // system prompt 复用聊天/手动后台任务同一份 grounding（不附带当前文档全文）
             systemPrompt: host.agentGroundingPrompt(settings: settings, includeFullDoc: false),
             config: config,
-            maxSteps: settings.aiAgentMaxSteps
+            maxSteps: settings.aiAgentMaxSteps,
+            writeAutoApproval: entry.writeAutoApproval
         )
     }
 }

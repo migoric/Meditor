@@ -215,6 +215,34 @@
         </div>
       </div>
 
+      <div class="bento-card bc-1">
+        <div class="card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v3l2 2"/></svg></div>
+        <div class="card-title">Scheduled &amp; Background Agent</div>
+        <div class="card-desc">
+          Cron-scheduled tasks fire background Agent runs — weekly reports, changelogs, digests
+          on a timer. Background runs get their own session, a concurrency cap, and a completion
+          notification; writes still pass the same confirmation chain.
+        </div>
+      </div>
+
+      <div class="bento-card bc-2">
+        <div class="card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></div>
+        <div class="card-title">On-Device Option</div>
+        <div class="card-desc">
+          An on-device model option powered by Apple Foundation Models (macOS 26+) — no API key,
+          no network, nothing leaves your Mac.
+        </div>
+      </div>
+
+      <div class="bento-card bc-3">
+        <div class="card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div>
+        <div class="card-title">Lives inside macOS</div>
+        <div class="card-desc">
+          Quick Look renders Markdown right in Finder with the spacebar. Spotlight search jumps
+          straight into your documents. App Intents wire MEditor into Siri and Shortcuts.
+        </div>
+      </div>
+
       <div class="bento-card bc-full">
         <div class="card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9zM12 1v3M12 20v3M1 12h3M20 12h3"/></svg></div>
         <div class="card-title">MCP Server — your workspace, drivable from outside</div>
@@ -222,6 +250,8 @@
           MEditor ships a built-in <code>MCP</code> server over stdio, so Claude Desktop, Cursor, or any
           MCP client can read, write, patch and search your workspace through the same 11 tools the
           in-app Agent uses — no editor window required. Shell commands stay off by default.
+          And it goes both ways: MEditor is also an MCP <em>client</em> — point it at your other
+          MCP servers and their tools join the Agent's toolbox.
           One line in your client config:
         </div>
         <div class="card-media" style="margin-top:18px">
@@ -256,6 +286,8 @@
           <li>Current document auto-attaches as context, smartly trimmed around your cursor when budgets get tight</li>
           <li>Diagnostics with one-click "Let Agent fix it" — the model repairs, then re-scans so you can compare</li>
           <li>OpenAI &amp; Anthropic SSE streaming, plus Claude CLI backend</li>
+          <li>Scheduled tasks (cron) &amp; background runs — the Agent keeps working while you do something else</li>
+          <li>On-device model option via Apple Foundation Models (macOS 26+) — no key, no upload</li>
           <li>Skill system — built-in + an extensible gallery</li>
         </ul>
       </div>

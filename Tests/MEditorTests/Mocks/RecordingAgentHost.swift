@@ -22,6 +22,8 @@ final class RecordingAgentHost: AgentHostPort {
     var mcpCalls: [URL?] = []
     /// `makeAgentContext` 调用次数
     var contextsMade = 0
+    /// 最近一次 `makeAgentContext` 收到的免确认策略（autoApprove 接线断言用）
+    var lastWriteAutoApproval: WriteAutoApproval?
     /// `agentGroundingPrompt` 调用次数
     var groundingCalls = 0
 
@@ -40,8 +42,10 @@ final class RecordingAgentHost: AgentHostPort {
         return []
     }
 
-    func makeAgentContext(checkpoint: AgentRunCheckpoint) -> any AgentContextProtocol {
+    func makeAgentContext(checkpoint: AgentRunCheckpoint,
+                          writeAutoApproval: WriteAutoApproval) -> any AgentContextProtocol {
         contextsMade += 1
+        lastWriteAutoApproval = writeAutoApproval
         return context ?? MockAgentContext()
     }
 

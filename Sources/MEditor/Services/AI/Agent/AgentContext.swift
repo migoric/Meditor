@@ -37,26 +37,31 @@ final class AgentContext: AgentContextProtocol {
     /// run 级文件快照（一键回滚用）。由 run 发起方按 run 创建注入；
     /// nil = 不记录（测试 / 非 run 场景）。
     let checkpoint: AgentRunCheckpoint?
+    /// 写入免确认策略（定时任务 autoApprove；交互 run 恒 .none）。
+    let writeAutoApproval: WriteAutoApproval
 
     init(files: any AgentFileRepository, doc: any AgentDocumentAdapter,
          approvals: CommandApprovalStore = CommandApprovalStore(),
-         checkpoint: AgentRunCheckpoint? = nil) {
+         checkpoint: AgentRunCheckpoint? = nil,
+         writeAutoApproval: WriteAutoApproval = .none) {
         self.files = files
         self.doc   = doc
         self.approvals = approvals
         self.checkpoint = checkpoint
+        self.writeAutoApproval = writeAutoApproval
     }
 
     /// 工厂方法：从 AppState 创建标准 AgentContext（App 侧调用）
     /// 审批缓存共享 AppState 的会话级实例，safe 命令批准一次全 session 有效。
-    static func make(appState: AppState, checkpoint: AgentRunCheckpoint? = nil) -> AgentContext {
+    static func make(appState: AppState, checkpoint: AgentRunCheckpoint? = nil,
+                     writeAutoApproval: WriteAutoApproval = .none) -> AgentContext {
         let repo    = DefaultAgentFileRepository(
             { [weak appState] in appState?.rootURL },
             indexProvider: { [weak appState] in appState?.workspaceIndex }
         )
         let adapter = AppStateDocumentAdapter(appState: appState, fileRepo: repo)
         return AgentContext(files: repo, doc: adapter, approvals: appState.commandApprovals,
-                            checkpoint: checkpoint)
+                            checkpoint: checkpoint, writeAutoApproval: writeAutoApproval)
     }
 
     // MARK: - Current document → doc
@@ -284,6 +289,13 @@ final class AgentContext: AgentContextProtocol {
 
     /// run 级「全部允许」开关存于 doc adapter（实例随 run 新建，天然 run 级作用域）。
     var isFileWriteAllowedForRun: Bool { doc.isFileWriteAllowedForRun }
+
+    /// 「全部允许」优先；否则按定时任务 autoApprove 策略（白名单目录）判定。
+    /// 白名单外 / 策略为 .none 时返回 false，工具层照常走确认条 / 审阅态。
+    func isFileWritePreApproved(path: String) -> Bool {
+        if doc.isFileWriteAllowedForRun { return true }
+        return writeAutoApproval.allows(path: path, workspaceRoot: doc.workspaceURL)
+    }
 
     func isCommandApproved(_ key: String) -> Bool {
         approvals.contains(key)

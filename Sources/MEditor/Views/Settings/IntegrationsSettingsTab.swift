@@ -327,6 +327,15 @@ extension SettingsView {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
                         .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    // autoApprove 徽标：写入免确认必须一眼可见（无人值守写入是信任敏感能力）
+                    if entry.autoApprove {
+                        Text(L("settings.ai.scheduledTasksAutoApprove"))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
                 }
                 HStack(spacing: 6) {
                     Text(entry.cron)

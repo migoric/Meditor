@@ -5,6 +5,9 @@
 >
 > 改这个仓库时**不要把 Agent 的写入路径当普通功能**：写前 diff 审阅、写确认、命令沙箱、
 > run 级快照回滚，这四件是本仓的对外承诺。新增工具 / 新增写入入口若绕开它们，就是倒退。
+> 唯一例外是 `schedules.json` 条目**显式声明**的 `autoApprove`（定时任务无人值守写入，
+> 见 `ScheduledTaskConfig.writeAutoApproval`）：它只跳过确认条 / 审阅态，工作区边界与
+> run 级快照回滚不变，且缺省关闭——交互 run 的确认链路不受影响。
 
 本文档是**代码约定的唯一入口**（人和 AI coding agent 共用一份）。
 面向**人**的流程（开分支、提 PR、发版）见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)；

@@ -34,6 +34,9 @@ final class AgentWriteSelfCheck {
     /// 合并窗口内各文件的最新内容（key = 标准化路径）。同文档连写只留最新一份。
     @ObservationIgnored private var pendingWrites: [String: (url: URL, content: String)] = [:]
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    /// 上一轮未完成的 mermaid 异步校验；新一轮自检开始 / 用户忽略报告时取消，
+    /// 迟到的结果不得合并进新报告。
+    @ObservationIgnored private var mermaidValidationTask: Task<Void, Never>?
 
     /// 静默窗口时长（默认 1.5s；测试注入短间隔）。
     let debounceInterval: TimeInterval
@@ -44,6 +47,14 @@ final class AgentWriteSelfCheck {
     @ObservationIgnored var fileExists: (URL) -> Bool = {
         FileManager.default.fileExists(atPath: $0.path)
     }
+    /// Mermaid 语法校验器：同步诊断之后异步跑真 mermaid.parse（隐藏 WKWebView）。
+    /// 默认是懒初始化的 WebKit 实现（不建引擎直到真的有 mermaid 块）；测试注入 mock。
+    /// 置 nil 可整体关闭异步校验。
+    #if os(macOS)
+    @ObservationIgnored var mermaidValidator: (any MermaidSyntaxChecking)? = MermaidWebKitValidator()
+    #else
+    @ObservationIgnored var mermaidValidator: (any MermaidSyntaxChecking)?
+    #endif
     /// 每次实际执行检查后回调（参数为本次检查的文件数）——防抖合并的测试观测点；
     /// 发现新问题时也会回调 onReport。
     @ObservationIgnored var onDidRunChecks: ((Int) -> Void)?
@@ -54,7 +65,10 @@ final class AgentWriteSelfCheck {
         self.debounceInterval = debounceInterval
     }
 
-    deinit { debounceTask?.cancel() }
+    deinit {
+        debounceTask?.cancel()
+        mermaidValidationTask?.cancel()
+    }
 
     /// Agent 写入生效后调用（可多次；同文件只保留最新内容）。
     func notifyAgentWrite(url: URL, content: String) {
@@ -62,8 +76,13 @@ final class AgentWriteSelfCheck {
         schedule()
     }
 
-    /// 用户关掉报告条（「忽略」）。
-    func dismissReport() { pendingReport = nil }
+    /// 用户关掉报告条（「忽略」）。进行中的 mermaid 校验一并取消，
+    /// 否则迟到的合并会让刚被忽略的报告条复活。
+    func dismissReport() {
+        mermaidValidationTask?.cancel()
+        mermaidValidationTask = nil
+        pendingReport = nil
+    }
 
     // MARK: - 内部
 
@@ -84,6 +103,11 @@ final class AgentWriteSelfCheck {
         let batch = pendingWrites
         pendingWrites.removeAll()
         guard !batch.isEmpty else { return }
+
+        // 新一轮自检开始：取消上一轮未完成的 mermaid 校验，
+        // 它若迟到合并会把上一批内容的结果混进新报告
+        mermaidValidationTask?.cancel()
+        mermaidValidationTask = nil
 
         var fixable: [DocumentIssue] = []
         var reportOnly: [DocumentIssue] = []
@@ -109,14 +133,71 @@ final class AgentWriteSelfCheck {
         fixable.sort(by: order)
         reportOnly.sort(by: order)
 
-        guard fixable.count + reportOnly.count > 0 else {
+        if fixable.count + reportOnly.count > 0 {
+            let report = Report(
+                fileURLs: batch.values.map(\.url).sorted { $0.path < $1.path },
+                fixable: fixable,
+                reportOnly: reportOnly)
+            pendingReport = report
+            onReport?(report)
+        } else {
             pendingReport = nil   // 复查干净：静默，不打扰
-            return
         }
-        let report = Report(
-            fileURLs: batch.values.map(\.url).sorted { $0.path < $1.path },
-            fixable: fixable,
-            reportOnly: reportOnly)
+
+        // 同步诊断不含 mermaid 语法（本地规则猜不了语法）：
+        // 含 ```mermaid 块的文件再起一轮异步真校验（mermaid.parse），
+        // 错误以 reportOnly 合并进报告——修复要靠模型，不是确定性文本修复。
+        startMermaidValidation(batch: batch)
+    }
+
+    /// 一个待校验的 mermaid 块（SwiftLint large_tuple：三元组换成具名结构）。
+    private struct MermaidJob {
+        let url: URL
+        let line: Int
+        let code: String
+    }
+
+    /// 对本批写入内容里的 ```mermaid 块逐个跑真语法校验（串行）。
+    /// 校验器为 nil（测试关闭）或没有 mermaid 块时直接返回，不付 webview 成本。
+    private func startMermaidValidation(batch: [String: (url: URL, content: String)]) {
+        guard let validator = mermaidValidator else { return }
+        let jobs: [MermaidJob] = batch.values.flatMap { entry in
+            MermaidBlocks.extract(from: entry.content).map {
+                MermaidJob(url: entry.url, line: $0.startLine, code: $0.code)
+            }
+        }
+        guard !jobs.isEmpty else { return }
+        mermaidValidationTask = Task { [weak self] in
+            var issues: [DocumentIssue] = []
+            for job in jobs {
+                if Task.isCancelled { return }
+                if let message = await validator.validate(code: job.code) {
+                    issues.append(DocumentIssue(
+                        kind: .mermaidSyntax(message), fileURL: job.url, line: job.line))
+                }
+            }
+            // 已被新一轮取消 / 校验干净：不合并（干净不动既有报告，静默）
+            guard !Task.isCancelled, let self, !issues.isEmpty else { return }
+            self.mergeMermaidIssues(issues)
+        }
+    }
+
+    /// 校验完成：把 mermaid 语法错误合并进当前报告（同步部分可能已有报告，
+    /// 也可能是干净的——此时新建一份）。合并后重新排序并通知（toast 口径
+    /// 与同步检查一致：发现新问题时回调）。
+    private func mergeMermaidIssues(_ issues: [DocumentIssue]) {
+        var report = pendingReport ?? Report(fileURLs: [], fixable: [], reportOnly: [])
+        report.reportOnly.append(contentsOf: issues)
+        report.reportOnly.sort {
+            $0.fileURL.path != $1.fileURL.path
+                ? $0.fileURL.path < $1.fileURL.path
+                : $0.line < $1.line
+        }
+        let known = Set(report.fileURLs.map { $0.standardizedFileURL.path })
+        for url in issues.map(\.fileURL) where !known.contains(url.standardizedFileURL.path) {
+            report.fileURLs.append(url)
+        }
+        report.fileURLs.sort { $0.path < $1.path }
         pendingReport = report
         onReport?(report)
     }

@@ -36,7 +36,7 @@ final class BackgroundAgentTaskServiceTests: XCTestCase {
                              host: (any AgentHostPort)? = nil) -> BackgroundAgentTaskService {
         // host: nil —— 不触碰真实宿主；context / 系统通知走注入
         let service = BackgroundAgentTaskService(host: host, backendFactory: { _ in backend })
-        service.contextFactory = { [weak self] _ in self?.ctx }
+        service.contextFactory = { [weak self] _, _ in self?.ctx }
         service.systemNotify = { [weak self] title, body in
             self?.notifications.append((title, body))
         }
@@ -248,6 +248,31 @@ final class BackgroundAgentTaskServiceTests: XCTestCase {
         let finished = await waitUntil { task?.termination == .completed }
         XCTAssertTrue(finished)
         XCTAssertEqual(host.contextsMade, 1, "默认工厂应调用宿主的 makeAgentContext")
+        XCTAssertEqual(host.lastWriteAutoApproval, WriteAutoApproval.none,
+                       "未声明 autoApprove 的发起默认每步写入都确认")
+    }
+
+    /// autoApprove 接线：start 的免确认策略必须原样到达 context 工厂
+    /// （定时任务无人值守写入的关键链路；断在这里 = 策略被静默吞掉，写仍卡确认条）。
+    func test_start_threadsWriteAutoApproval_intoContextFactory() async {
+        let service = BackgroundAgentTaskService(host: nil, backendFactory: { _ in
+            BGScriptedBackend(script: [
+                .respond(AgentCompletionResponse(text: "done", toolCalls: [], finishReason: "stop")),
+            ])
+        })
+        var received: WriteAutoApproval?
+        service.contextFactory = { [weak self] _, approval in
+            received = approval
+            return self?.ctx
+        }
+        service.systemNotify = { _, _ in }
+
+        let task = service.start(prompt: "p", systemPrompt: "sys", config: cfg, maxSteps: 5,
+                                 writeAutoApproval: .dirs(["weekly/"]))
+        XCTAssertNotNil(task)
+        XCTAssertEqual(received, .dirs(["weekly/"]))
+
+        if let task { service.cancel(task) }
     }
 }
 

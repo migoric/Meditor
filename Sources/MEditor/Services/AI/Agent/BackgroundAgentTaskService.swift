@@ -45,10 +45,12 @@ final class BackgroundAgentTask: Identifiable {
 /// 后台 Agent 任务管理：新建独立 AgentRunner + 独立 AgentContext，
 /// 与聊天会话的流式渲染完全解耦，用户发起后可继续编辑/聊天。
 ///
-/// 安全边界：写入仍走现有确认条 / diff 审阅链路（contextFactory 默认经
+/// 安全边界：写入默认仍走现有确认条 / diff 审阅链路（contextFactory 默认经
 /// `AgentHostPort.makeAgentContext` 产出标准 context，reviewFileWrite /
 /// confirmFileWrite 一套不变）。后台任务没人盯着时确认条挂着不响应是预期行为，
-/// 超时路径由 AgentRunner 兜底。
+/// 超时路径由 AgentRunner 兜底。**唯一例外**：定时任务在 schedules.json 里显式
+/// 声明 `autoApprove` 的条目（见 ScheduledTaskConfig.writeAutoApproval）——
+/// 它只跳过确认条，不放宽工作区边界，run 级快照回滚照常记录。
 ///
 /// 宿主依赖收在 `AgentHostPort` 端口上（P0-10）：本文件不直接命名 ViewModel 类型，
 /// 「Service 能对宿主做什么」由协议成员白名单限定（护栏见
@@ -70,7 +72,7 @@ final class BackgroundAgentTaskService {
     private let backendFactory: @Sendable (AIConfig) -> any AgentBackend
     /// context 工厂（测试注入 MockAgentContext；默认经宿主的 `makeAgentContext` 创建标准
     /// context，写确认/审阅链路与聊天 run 完全一致）。返回 nil = 无法创建（宿主已释放）。
-    var contextFactory: @MainActor (AgentRunCheckpoint) -> (any AgentContextProtocol)?
+    var contextFactory: @MainActor (AgentRunCheckpoint, WriteAutoApproval) -> (any AgentContextProtocol)?
     /// 系统通知发送（测试注入 spy；默认 UNUserNotificationCenter，
     /// 权限被拒 / 未签名 / 非 .app 环境一律静默降级为仅 toast，不崩溃）。
     var systemNotify: @MainActor (String, String) -> Void
@@ -79,8 +81,8 @@ final class BackgroundAgentTaskService {
          backendFactory: @escaping @Sendable (AIConfig) -> any AgentBackend = { AgentBackendFactory.make(config: $0) }) {
         self.host = host
         self.backendFactory = backendFactory
-        self.contextFactory = { [weak host] checkpoint in
-            host?.makeAgentContext(checkpoint: checkpoint)
+        self.contextFactory = { [weak host] checkpoint, writeAutoApproval in
+            host?.makeAgentContext(checkpoint: checkpoint, writeAutoApproval: writeAutoApproval)
         }
         self.systemNotify = { title, body in
             BackgroundTaskNotifier.post(title: title, body: body)
@@ -90,15 +92,17 @@ final class BackgroundAgentTaskService {
     // MARK: - 发起
 
     /// 发起后台任务。达到并发上限或无法创建 context 时返回 nil（已 toast 提示）。
+    /// `writeAutoApproval`：定时任务 autoApprove 的免确认策略（默认 .none = 每步都确认）。
     @discardableResult
-    func start(prompt: String, systemPrompt: String, config: AIConfig, maxSteps: Int) -> BackgroundAgentTask? {
+    func start(prompt: String, systemPrompt: String, config: AIConfig, maxSteps: Int,
+               writeAutoApproval: WriteAutoApproval = .none) -> BackgroundAgentTask? {
         let running = tasks.filter(\.isRunning).count
         guard running < Self.maxConcurrent else {
             host?.showToast(L("ai.background.limitReached", Self.maxConcurrent), icon: "hourglass")
             return nil
         }
         let checkpoint = AgentRunCheckpoint()
-        guard let context = contextFactory(checkpoint) else { return nil }
+        guard let context = contextFactory(checkpoint, writeAutoApproval) else { return nil }
 
         let runner = AgentRunner(maxSteps: maxSteps, backendFactory: backendFactory)
         let task = BackgroundAgentTask(title: Self.title(from: prompt), runner: runner, checkpoint: checkpoint)

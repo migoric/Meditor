@@ -46,9 +46,11 @@ protocol AgentHostPort: AnyObject {
 
     // MARK: - 组合根
 
-    /// 创建一次 run 的标准 AgentContext（写确认 / diff 审阅链路与聊天 run 完全一致）。
+    /// 创建一次 run 的标准 AgentContext（写确认 / diff 审阅链路与聊天 run 完全一致；
+    /// `writeAutoApproval` 为定时任务 autoApprove 的免确认策略，交互 run 恒 `.none`）。
     /// 收进端口的理由：Service 不必自己命名 AppState 去调 `AgentContext.make`。
-    func makeAgentContext(checkpoint: AgentRunCheckpoint) -> any AgentContextProtocol
+    func makeAgentContext(checkpoint: AgentRunCheckpoint,
+                          writeAutoApproval: WriteAutoApproval) -> any AgentContextProtocol
 
     /// 为后台 / 定时 run 生成 agent system prompt：复用聊天运行的 grounding
     /// （工作区路径 / 预览主题 / 用户自定义技能），不另写一套。
@@ -65,8 +67,9 @@ extension AppState: AgentHostPort {
         await mcpClientManager.refreshForAgentRun(workspaceURL: workspaceURL)
     }
 
-    func makeAgentContext(checkpoint: AgentRunCheckpoint) -> any AgentContextProtocol {
-        AgentContext.make(appState: self, checkpoint: checkpoint)
+    func makeAgentContext(checkpoint: AgentRunCheckpoint,
+                          writeAutoApproval: WriteAutoApproval) -> any AgentContextProtocol {
+        AgentContext.make(appState: self, checkpoint: checkpoint, writeAutoApproval: writeAutoApproval)
     }
 
     func agentGroundingPrompt(settings: AppSettings, includeFullDoc: Bool) -> String {

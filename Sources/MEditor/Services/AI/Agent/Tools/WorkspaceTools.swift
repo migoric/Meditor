@@ -82,8 +82,9 @@ struct CreateFileTool: AgentTool {
             throw AgentError.executionError("缺少 filename 参数")
         }
         let content = arguments["content"]?.stringValue ?? ""
-        // 写入前确认：本 run 已「全部允许」则直接放行，否则挂起等用户在确认条上决定
-        if !(await context.isFileWriteAllowedForRun) {
+        // 写入前确认：本 run 已免确认（全部允许 / autoApprove 白名单命中）则直接放行，
+        // 否则挂起等用户在确认条上决定
+        if !(await context.isFileWritePreApproved(path: filename)) {
             let lines = content.components(separatedBy: "\n").count
             // 新建文件：diff = 纯新增（写前内容为空）
             let preview = WriteDiffPreviewBuilder.make(
@@ -120,8 +121,9 @@ struct WriteFileTool: AgentTool {
         guard let filename = arguments["filename"]?.stringValue,
               let content  = arguments["content"]?.stringValue
         else { throw AgentError.executionError("缺少 filename 或 content 参数") }
-        // 写入前确认：本 run 已「全部允许」则直接放行，否则挂起等用户在确认条上决定
-        if !(await context.isFileWriteAllowedForRun) {
+        // 写入前确认：本 run 已免确认（全部允许 / autoApprove 白名单命中）则直接放行，
+        // 否则挂起等用户在确认条上决定
+        if !(await context.isFileWritePreApproved(path: filename)) {
             let lines = content.components(separatedBy: "\n").count
             // diff 预览：已存在文件取写前内容（fileContentFull = tab 内存优先），新文件按纯新增
             let base: WriteBaseContent
