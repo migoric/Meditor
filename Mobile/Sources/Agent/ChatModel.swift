@@ -28,6 +28,9 @@ final class ChatModel {
 
     /// 运行中的 Runner（只读暴露给视图，驱动工具步骤面板）。
     private(set) var runner: AgentRunner?
+    /// 写文件的确认闸门：视图层据此渲染确认条。
+    /// 由 ChatModel 持有并注入 `MobileAgentContext`，保证两边看到同一份挂起状态。
+    let writeGate: WriteConfirmationGate
     /// 工具步骤快照：sessionID → messageID → steps。只活在本进程内，不随会话入盘。
     private var stepSnapshots: [UUID: [UUID: [AgentRunnerStep]]] = [:]
     private let store: DocumentStore
@@ -47,7 +50,11 @@ final class ChatModel {
         backendFactory: @escaping @Sendable (AIConfig) -> any AgentBackend = AgentBackendFactory.make
     ) {
         self.store          = store
-        self.context        = MobileAgentContext(store: store)
+        // 先建闸门再建 context：context 必须拿到同一个实例，否则视图看到的是
+        // 一份挂起状态、工具等待的是另一份，确认条点下去也不会有反应。
+        let gate = WriteConfirmationGate()
+        self.writeGate      = gate
+        self.context        = MobileAgentContext(store: store, gate: gate)
         self.settings       = settings
         self.skillStore     = skillStore ?? .shared
         self.convo          = convo ?? AIConversation()
@@ -95,6 +102,8 @@ final class ChatModel {
         guard !text.isEmpty, !isResponding else { return }
         input = ""
         store.beginAIRun()
+        // 「本次全部允许」是 run 级作用域：新 run 一开始就复位，并拒掉可能残留的挂起。
+        writeGate.resetRun()
 
         // 对话过长时先做滑动窗口截断（复用 AIConversation 的实现，与 macOS 同源）。
         if convo.truncateIfOverLimit() {
@@ -141,6 +150,9 @@ final class ChatModel {
     }
 
     func cancel() {
+        // 先拒掉挂起的写入确认：否则那条 continuation 永不恢复，run 会卡在写工具里
+        // 等一个已经没人能点的确认条。
+        writeGate.cancelPending()
         runner?.cancel()
         runner = nil
         isResponding = false

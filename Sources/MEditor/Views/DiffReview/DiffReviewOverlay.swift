@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import WebKit
 
@@ -441,9 +442,12 @@ struct DiffWebView: NSViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
         webView.setAccessibilityLabel(isRight ? L("diff.aiGeneratedHTML") : L("diff.original"))
+        // 审阅面此前没有 navigationDelegate：文档里一个链接就能把这块 WebView 导航走
+        // （用户点「AI 产物」里的链接，整块 diff 变成网页，且停在外部页面上）。
+        webView.navigationDelegate = context.coordinator
         context.coordinator.webView  = webView
         context.coordinator.lastContentSignature = contentSignature
-        loadContent(into: webView)
+        loadContent(into: webView, coordinator: context.coordinator)
         return webView
     }
 
@@ -460,7 +464,7 @@ struct DiffWebView: NSViewRepresentable {
             applyStatusUpdates(webView: webView)
         } else {
             context.coordinator.lastContentSignature = contentSignature
-            loadContent(into: webView)
+            loadContent(into: webView, coordinator: context.coordinator)
         }
     }
 
@@ -474,9 +478,12 @@ struct DiffWebView: NSViewRepresentable {
         paragraphs.map(\.text).joined(separator: "||") + String(rawHTML.prefix(64))
     }
 
-    private func loadContent(into webView: WKWebView) {
+    private func loadContent(into webView: WKWebView, coordinator: Coordinator) {
         let html = buildHTML()
         let base = PreviewResourceLocator.resourcesRoot()
+        // 每次 loadHTMLString 都会产生一次新的导航，放行标记必须跟着复位，
+        // 否则「内容变化 → 重新加载」会被自己的 navigationDelegate 取消掉。
+        coordinator.allowsNextLoad = true
         webView.loadHTMLString(html, baseURL: base)
     }
 
@@ -495,12 +502,59 @@ struct DiffWebView: NSViewRepresentable {
 
     // MARK: HTML
 
-    private func buildHTML() -> String {
-        if isHTMLMode && isRight { return rawHTML }
-        return buildMarkdownHTML()
+    /// 生成送进 WebView 的完整 HTML。
+    /// 非 private：安全属性（CSP / nonce / DOMPurify）必须能被单测钉住，
+    /// 否则下次有人「顺手改成裸 innerHTML」时没有任何东西会变红。
+    func buildHTML() -> String {
+        let nonce = Self.makeNonce()
+        if isHTMLMode && isRight { return htmlShell(around: rawHTML, nonce: nonce) }
+        return buildMarkdownHTML(nonce: nonce)
     }
 
-    private func buildMarkdownHTML() -> String {
+    /// 每页一次性的 CSP nonce。文档内容里注入的 `<script>` 与 `on*` 处理器
+    /// 都不带这个 nonce，因此一行都执行不了。
+    private static func makeNonce() -> String {
+        UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    }
+
+    /// 与 `Resources/Preview/template.html` 的 CSP 同源（那边是主预览的第二道防线）。
+    ///
+    /// 唯一差异：主预览的脚本是外链 `<script src>`，所以用 `'self' file:`；
+    /// 这里是**内联注入**的 marked / purify（`loadHTMLString` 配 file baseURL 加载
+    /// 外链脚本在 WebKit 里并不可靠），所以改用 `'nonce-…'`。效果等价且更严：
+    /// 内联事件处理器（`<img onerror>`）需要 `'unsafe-inline'` 才能跑，这里没给。
+    private static func csp(nonce: String) -> String {
+        "default-src 'none'; "
+        + "script-src 'nonce-\(nonce)'; "
+        + "style-src 'unsafe-inline'; "
+        + "img-src 'self' data: file: meditor-asset: https: http:; "
+        + "media-src 'self' data: file: meditor-asset: https: http:; "
+        + "font-src 'self' data: file:; "
+        + "connect-src 'none'; object-src 'none'; frame-src 'none'; "
+        + "form-action 'none'; base-uri 'none'"
+    }
+
+    /// 给「原样 HTML」套一层带 CSP 的文档壳（`markdownVsHTML` 模式的右栏）。
+    ///
+    /// 这一栏展示的是 AI 生成的 HTML 本体，**不能消毒**——消毒后用户看到的产物
+    /// 与实际写入的不一致，审阅就失去意义。折中：只禁脚本（不给 nonce），
+    /// 视觉呈现保持不变，但文档里的 `<script>` / `on*` 处理器都跑不起来。
+    private func htmlShell(around raw: String, nonce: String) -> String {
+        let meta = "<meta http-equiv=\"Content-Security-Policy\" content=\"\(Self.csp(nonce: nonce))\">"
+        if let headTag = raw.range(of: "<head", options: .caseInsensitive),
+           let close   = raw.range(of: ">", range: headTag.upperBound..<raw.endIndex) {
+            var out = raw
+            out.insert(contentsOf: meta, at: close.upperBound)
+            return out
+        }
+        return """
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8">\(meta)</head>
+        <body>\(raw)</body></html>
+        """
+    }
+
+    private func buildMarkdownHTML(nonce: String) -> String {
         let paraJSON = paragraphs
             .map { p in
                 #"{"text":\#(jsonEscape(p.text)),"diffId":"\#(p.diffId)","status":"\#(p.status)"}"#
@@ -512,6 +566,7 @@ struct DiffWebView: NSViewRepresentable {
 <html>
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="\(Self.csp(nonce: nonce))">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#1a1a1a;padding:16px 20px;word-break:break-word}
@@ -546,11 +601,12 @@ th,td{border:1px solid #e5e7eb;padding:6px 12px;text-align:left}
 th{background:rgba(0,0,0,.04);font-weight:600}
 img{max-width:100%}
 </style>
-<script>\(Self.loadMarkedJS())</script>
+<script nonce="\(nonce)">\(Self.loadMarkedJS())</script>
+<script nonce="\(nonce)">\(Self.loadPurifyJS())</script>
 </head>
 <body>
 <div id="content"></div>
-<script>
+<script nonce="\(nonce)">
 (function(){
   var paragraphs=[\(paraJSON)];
   var isRight=\(isRight ? "true" : "false");
@@ -590,7 +646,18 @@ img{max-width:100%}
       block.className='para-block'+cls(p.status);
       if(p.diffId)block.setAttribute('data-diffid',p.diffId);
       var mc=document.createElement('div');
-      mc.innerHTML=typeof marked!=='undefined'?marked.parse(p.text):'<pre>'+p.text+'</pre>';
+      // 与主预览同一条规矩：marked 的产物在进 DOM 之前必须过 DOMPurify。
+      // 此前这里是裸 innerHTML=marked.parse(...)，同一份文档走主预览被消毒、
+      // 走审阅面原样执行——审阅面恰恰是用户「看 AI 产物」的地方。
+      if(typeof marked!=='undefined'){
+        var html=marked.parse(p.text);
+        mc.innerHTML=(typeof DOMPurify!=='undefined')?DOMPurify.sanitize(html):'';
+      }else{
+        // 兜底也要转义：直接拼 '<pre>'+p.text 等于把原文当 HTML 插进 DOM。
+        var pre=document.createElement('pre');
+        pre.textContent=p.text;
+        mc.appendChild(pre);
+      }
       block.appendChild(mc);
       if(isRight&&p.status==='pending'&&p.diffId){
         var acts=document.createElement('div');
@@ -653,7 +720,7 @@ img{max-width:100%}
         return str
     }
 
-    // MARK: marked.js (cached)
+    // MARK: marked.js / DOMPurify (cached)
 
     private static var _markedJS: String?
 
@@ -666,13 +733,29 @@ img{max-width:100%}
         return js
     }
 
+    private static var _purifyJS: String?
+
+    /// 与主预览共用同一份 `purify.min.js`（`Resources/Preview/`）。
+    /// 读不到时返回空串——渲染脚本会退化成「不渲染」，而**不是**退化成裸 innerHTML。
+    static func loadPurifyJS() -> String {
+        if let cached = _purifyJS { return cached }
+        guard let root = PreviewResourceLocator.resourcesRoot(),
+              let js   = try? String(contentsOf: root.appendingPathComponent("purify.min.js"), encoding: .utf8)
+        else { return "" }
+        _purifyJS = js
+        return js
+    }
+
     // MARK: Coordinator
 
-    final class Coordinator: NSObject, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         weak var webView: WKWebView?
         var lastRevision         = ""
         var lastContentSignature = ""
         var onAction: ((String, String) -> Void)?
+        /// 只放行「我们自己发起的那次 loadHTMLString」。
+        /// 此后任何导航——包括文档里 `location.href` 或用户点链接——一律取消。
+        var allowsNextLoad = true
 
         init(onAction: ((String, String) -> Void)?) { self.onAction = onAction }
 
@@ -681,6 +764,29 @@ img{max-width:100%}
                   let action = body["action"] as? String,
                   let diffId = body["diffId"] as? String else { return }
             DispatchQueue.main.async { [weak self] in self?.onAction?(action, diffId) }
+        }
+
+        // MARK: WKNavigationDelegate
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            if allowsNextLoad {
+                allowsNextLoad = false
+                decisionHandler(.allow)
+                return
+            }
+            // 用户主动点的链接：交给系统浏览器，审阅面本身不离开原地——
+            // 否则整块 diff 会被导航成网页，用户就看不到自己要审的段落了。
+            if navigationAction.navigationType == .linkActivated,
+               let url = navigationAction.request.url,
+               let scheme = url.scheme?.lowercased(),
+               ["http", "https", "mailto"].contains(scheme) {
+                NSWorkspace.shared.open(url)
+            }
+            decisionHandler(.cancel)
         }
     }
 }
