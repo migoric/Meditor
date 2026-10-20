@@ -38,7 +38,6 @@ MEMBER_RE = re.compile(r"^        static (?:let|var|func) (\w+)")
 
 # Tokens allowed to be unreferenced, with the reason.
 ALLOW_UNUSED = {
-    "Radius.xs": "radius ladder is a menu; unused step is not rot",
     "Radius.lg": "radius ladder is a menu; unused step is not rot",
     "Radius.full": "radius ladder is a menu; unused step is not rot",
 }

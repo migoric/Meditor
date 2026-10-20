@@ -3,6 +3,7 @@
 //   GET  /d/:id               读取已发布文档（KV；免费档 30 天过期 → 410 友好页）
 //   GET  /update/appcast.xml  Sparkle 更新 feed（KV）
 //   GET  /update/pkg          最新安装包 zip（KV）
+//   GET  /api/pro/verify      Pro key 校验（Bearer $PRO_TOKENS 之一 → {valid:true}；只回 true/false，不回显 token 列表）
 //   POST /api/update/*        发布更新（需 Bearer $UPDATE_TOKEN，CI 打 tag 时调用）
 //   其余路径                  → 官网静态资源（[assets] = ./website）
 //
@@ -240,6 +241,17 @@ export async function enforceRateLimit(request, env, now = new Date()) {
   return null;
 }
 
+// ── Pro key 校验 ──
+// 客户端（macOS ProEntitlementService）用此端点验证用户填入的 Pro key。
+// 响应恒为 {valid: bool}——无论 token 对错都不回显 PRO_TOKENS 的任何内容，
+// 也不区分「未配置 PRO_TOKENS」与「token 不在列表」（两者都回 valid:false，
+// 避免通过差异探测服务端配置）。配合每 IP 限流挡暴力枚举。
+function handleProVerify(request, env) {
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  return json({ valid: isProToken(token, env.PRO_TOKENS) });
+}
+
 function notFound() {
   const page = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -397,6 +409,13 @@ export default {
       const limited = await enforceRateLimit(request, env);
       if (limited) return limited;
       return handleShare(request, env);
+    }
+
+    if (url.pathname === "/api/pro/verify") {
+      if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
+      const limited = await enforceRateLimit(request, env);
+      if (limited) return limited;
+      return handleProVerify(request, env);
     }
 
     if (url.pathname === "/api/update/appcast" || url.pathname === "/api/update/pkg") {

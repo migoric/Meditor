@@ -338,3 +338,69 @@ test("worker.fetch: 同一 IP 超过 30 次/分钟 → 429 + Retry-After", async
   assert.equal(res.status, 429);
   assert.ok(res.headers.get("Retry-After"));
 });
+
+// ── Pro key 校验端点 ──
+
+test("GET /api/pro/verify: Pro token → valid:true，免费/错误 token → valid:false", async () => {
+  const env = makeEnv();
+  const verify = (token) =>
+    worker.fetch(
+      new Request("https://share.example.com/api/pro/verify", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
+      env
+    );
+
+  assert.deepEqual(await (await verify("pro-alpha")).json(), { valid: true });
+  assert.deepEqual(await (await verify("pro-beta")).json(), { valid: true });
+  assert.deepEqual(await (await verify("free-token")).json(), { valid: false });
+  assert.deepEqual(await (await verify("wrong")).json(), { valid: false });
+  assert.deepEqual(await (await verify(null)).json(), { valid: false });
+});
+
+test("GET /api/pro/verify: 未配置 PRO_TOKENS 也回 200 {valid:false}（不暴露配置差异）", async () => {
+  const env = makeEnv();
+  delete env.PRO_TOKENS;
+  const res = await worker.fetch(
+    new Request("https://share.example.com/api/pro/verify", {
+      headers: { Authorization: "Bearer pro-alpha" },
+    }),
+    env
+  );
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { valid: false });
+});
+
+test("GET /api/pro/verify: 响应不回显任何 PRO_TOKENS 内容；POST 一律 405", async () => {
+  const env = makeEnv();
+  const res = await worker.fetch(
+    new Request("https://share.example.com/api/pro/verify", {
+      headers: { Authorization: "Bearer pro-alpha" },
+    }),
+    env
+  );
+  const text = await res.text();
+  assert.ok(!text.includes("pro-alpha"));
+  assert.ok(!text.includes("pro-beta"));
+
+  const post = await worker.fetch(
+    new Request("https://share.example.com/api/pro/verify", { method: "POST" }),
+    env
+  );
+  assert.equal(post.status, 405);
+});
+
+test("GET /api/pro/verify: 走每 IP 限流，挡暴力枚举 token", async () => {
+  const env = makeEnv();
+  const verify = () =>
+    worker.fetch(
+      new Request("https://share.example.com/api/pro/verify", {
+        headers: { "CF-Connecting-IP": "192.0.2.55" },
+      }),
+      env
+    );
+  for (let i = 0; i < RATE_LIMIT_PER_MINUTE; i++) {
+    assert.equal((await verify()).status, 200, `第 ${i + 1} 次应放行`);
+  }
+  assert.equal((await verify()).status, 429);
+});
