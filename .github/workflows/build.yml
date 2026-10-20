@@ -184,6 +184,23 @@ jobs:
       - name: Dead design tokens
         run: python3 scripts/check_dead_tokens.py
 
+  docs-guard:
+    name: Docs Guard
+    # 纯静态：文档里的断言必须与代码事实一致（版本号 / 仓内路径引用 / CI 检查名 /
+    # swiftlint 声明）。ubuntu runner + 秒级。
+    # 为什么要它：这套文档里反复出现「权威文档写着与事实相反的东西」（版本号落后 5 个
+    # 小版本、引用了不存在的报告、声称 warning 不阻塞而 CI 跑 --strict、声称分支已保护
+    # 而 API 返回 false）。人读防不住——写完就没人再读第二遍。
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Docs consistency
+        run: python3 scripts/check_docs_consistency.py
+
 # ── 为什么 PR CI 里不再跑 scripts/bundle.sh ────────────────────────────────
 # 1. 那个 artifact 从来没有消费方（全仓 grep `download-artifact` 命中 0），
 #    上传的 MEditor.zip 只为占存储：计费按 GB-hour 算，10 月仅 storage 一项就

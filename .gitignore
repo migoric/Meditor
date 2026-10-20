@@ -25,6 +25,9 @@ Mobile/.derivedData-*
 # Xcode user state
 xcuserdata/
 *.xcuserstate
+# project.xcworkspace/ 里只有 contents.xcworkspacedata 是 Xcode 自动生成的，
+# 每次开工程都会重写；此前漏在这里，`git status` 里一直裸着。
+Mobile/MEditorMobile.xcodeproj/project.xcworkspace/
 
 # wrangler 本地缓存
 .wrangler/
