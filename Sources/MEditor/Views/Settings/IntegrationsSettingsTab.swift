@@ -273,6 +273,15 @@ extension SettingsView {
 
     var scheduledTasksSection: some View {
         settingsGroup(title: L("settings.ai.scheduledTasks")) {
+            // Pro key（定价线 §6：定时自动化是 Pro 功能）——key 输入与验证状态收在定时任务区；
+            // 托管侧（无限发布）的 Pro 用的是同一把 key（worker PRO_TOKENS）
+            settingsStackedRow(label: L("settings.pro.keyLabel"),
+                               subtitle: L("settings.pro.keyHint")) {
+                proKeyControls
+            }
+
+            rowDivider
+
             settingsStackedRow(label: L("settings.ai.scheduledTasksLabel"),
                                subtitle: L("settings.ai.scheduledTasksHint")) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -284,6 +293,16 @@ extension SettingsView {
                     } else {
                         ForEach(scheduler.entries) { entry in
                             scheduledTaskRow(entry)
+                        }
+                    }
+                    // 非 Pro 时标注：配置无罪（可见可编辑），但触发会被门控拦下
+                    if !state.proEntitlement.isProActive {
+                        HStack(spacing: 6) {
+                            proBadge
+                            Text(L("settings.pro.scheduledHint"))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     // 配置解析容错记录（坏条目说明），有则展示
@@ -302,6 +321,86 @@ extension SettingsView {
         }
         // 打开设置页时重载配置摘要（用户可能在外部编辑过 schedules.json）
         .onAppear { state.agentScheduler.reload(workspaceURL: state.rootURL) }
+    }
+
+    // MARK: - Pro key
+
+    /// Pro 购买入口（官网同款 GitHub Sponsors 链接；key 线下发放）
+    private static let proPurchaseURL = URL(string: "https://github.com/sponsors/retrychx")
+
+    /// Pro 徽标（橙底小字，与 autoApprove 徽标同族；非 Pro 状态下标注付费边界）
+    private var proBadge: some View {
+        Text(L("settings.pro.badge"))
+            .font(DS.Font.mono(10))
+            .foregroundStyle(.orange)
+            .padding(.horizontal, DS.Space.xs)
+            .padding(.vertical, DS.Space.xxs)
+            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: DS.Radius.xs, style: .continuous))
+    }
+
+    /// Pro key 输入行：SecureField + 验证按钮 + 获取入口 + 状态行
+    private var proKeyControls: some View {
+        VStack(alignment: .leading, spacing: DS.Space.sm) {
+            HStack(spacing: DS.Space.sm) {
+                SecureField(L("settings.pro.keyPlaceholder"), text: bindableSettings.proLicenseKey)
+                    .textFieldStyle(.plain)
+                    .settingsField()
+                Button(state.proEntitlement.status == .verifying
+                       ? L("settings.pro.verifying") : L("settings.pro.verify")) {
+                    Task { await state.proEntitlement.verifyNow() }
+                }
+                .controlSize(.small)
+                .disabled(state.proEntitlement.key.isEmpty
+                          || state.proEntitlement.status == .verifying)
+                if let url = Self.proPurchaseURL {
+                    Link(L("settings.pro.getKey"), destination: url)
+                        .font(.system(size: 11.5))
+                }
+            }
+            proStatusLine
+        }
+    }
+
+    /// Pro 验证状态行：未验证 / 有效（含离线缓存标注）/ 无效 + 上次验证时间
+    @ViewBuilder
+    private var proStatusLine: some View {
+        let pro = state.proEntitlement
+        switch pro.status {
+        case .noKey:
+            EmptyView()
+        case .unverified:
+            proStatusLabel(icon: "exclamationmark.circle", color: .orange,
+                           text: L("settings.pro.status.unverified"))
+        case .verifying:
+            proStatusLabel(icon: "arrow.triangle.2.circlepath", color: .secondary,
+                           text: L("settings.pro.verifying"))
+        case .active(let offlineCache):
+            VStack(alignment: .leading, spacing: DS.Space.xxs) {
+                proStatusLabel(icon: "checkmark.seal.fill", color: .green,
+                               text: offlineCache ? L("settings.pro.status.activeOffline")
+                                                  : L("settings.pro.status.active"))
+                if let verifiedAt = pro.lastVerifiedAt {
+                    Text(L("settings.pro.status.lastVerified",
+                           verifiedAt.formatted(date: .abbreviated, time: .shortened)))
+                        .font(DS.Font.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        case .invalid:
+            proStatusLabel(icon: "xmark.circle", color: .red,
+                           text: L("settings.pro.status.invalid"))
+        }
+    }
+
+    private func proStatusLabel(icon: String, color: Color, text: String) -> some View {
+        HStack(spacing: DS.Space.xs) {
+            Image(systemName: icon)
+                .font(DS.Font.caption)
+                .foregroundStyle(color)
+            Text(text)
+                .font(DS.Font.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     /// 单个定时任务行：启用开关 + 名称 + 来源徽标 + cron 与下次触发时间
@@ -335,6 +434,10 @@ extension SettingsView {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+                    // 非 Pro 状态下条目标注 Pro 徽标：配置仍可见可改，触发时才会被门控拦下
+                    if !state.proEntitlement.isProActive {
+                        proBadge
                     }
                 }
                 HStack(spacing: 6) {

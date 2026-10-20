@@ -14,6 +14,11 @@ import Observation
 // 端口同时被 BackgroundAgentTaskService 使用，两个服务共用同一份宿主能力白名单
 // （护栏见 scripts/check_service_layer_deps.py）。
 //
+// 定价线（战略复核 §6）：定时自动化是 Pro 功能——fire 前查 ProEntitlementService 的
+// 缓存判定（isProEntitled 注入点，门控本身不联网）；聊天侧手动发起的后台任务
+// （BackgroundAgentTaskService.start）不门控，免费档含「手动触发 agent」。
+// 本仓 MIT 开源，本地门控是「官方分发二进制的荣誉系统」——不试图拦自己编译的人。
+//
 // 已知取舍（有意从简）：
 // - App 睡眠 / 未运行期间错过的触发不补跑——定位是「App 在线时的定时触发」，不是精确闹钟
 // - 触发去重粒度为「分钟」：同一分钟内不会重复触发同一条目
@@ -35,6 +40,9 @@ final class AgentSchedulerService {
     var calendar: Calendar = .current
     /// 触发动作（测试注入记录器；默认在 init 末尾指向 fire → BackgroundAgentTaskService.start）
     var trigger: (ScheduledTaskConfig) -> Void = { _ in }
+    /// Pro 资格判定（测试注入；默认读 ProEntitlementService 的缓存判定——
+    /// 门控不联网，离线宽限语义由 ProEntitlementService 的 verdict 缓存保证）
+    var isProEntitled: () -> Bool = { ProEntitlementService.shared.isProActive }
     /// 全局配置路径（测试指向临时目录）
     var globalConfigURL: URL
     /// 最近一次 reload 时的工作区（启用开关写回工作区文件时用）
@@ -120,10 +128,18 @@ final class AgentSchedulerService {
 
     // MARK: - 触发
 
-    /// 默认触发动作：AI 未配置时 toast 优雅失败；否则复用宿主的 backgroundAgentTasks
-    /// 发起后台 run（写入确认/审阅链路、并发上限、完成通知全部沿用）。
+    /// 默认触发动作：无 Pro 资格时 toast 引导（不发起 run）；AI 未配置时 toast 优雅失败；
+    /// 否则复用宿主的 backgroundAgentTasks 发起后台 run（写入确认/审阅链路、并发上限、
+    /// 完成通知全部沿用）。
     private func fire(_ entry: ScheduledTaskConfig) {
         guard let host else { return }
+        // Pro 门控在 AI 配置检查之前：无资格时只需一条引导提示，
+        // 与 AI 是否配置无关。toast 走宿主端口，测试经 RecordingAgentHost 可断言。
+        guard isProEntitled() else {
+            host.showToast(L("ai.schedule.proRequired", entry.name),
+                           icon: "lock.fill")
+            return
+        }
         let settings = AppSettings.shared
         let config = AIConfig.current(settings, scene: .agent)
         guard config.isConfigured else {

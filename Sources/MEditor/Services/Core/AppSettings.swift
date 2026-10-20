@@ -63,6 +63,11 @@ final class AppSettings {
         static let trustedWorkspaceMCP = "MEditor.trustedWorkspaceMCP"
         // Spotlight 是否索引文档正文内容（默认关：只索引文件名/标题）
         static let spotlightIndexContent = "MEditor.spotlightIndexContent"
+        // Pro 资格（定价线：免费 = 编辑器 + 手动 agent + 单篇导出；Pro = 定时自动化 + 无限托管）
+        static let proLicenseKey = "MEditor.proLicenseKey"
+        static let proKeyVerdict = "MEditor.proKeyVerdict"
+        static let proKeyVerdictKey = "MEditor.proKeyVerdictKey"
+        static let proKeyVerifiedAt = "MEditor.proKeyVerifiedAt"
     }
 
     /// LAN share server port (default 8899).
@@ -364,6 +369,31 @@ final class AppSettings {
         }
     }
 
+    // MARK: - Pro 资格
+
+    /// Pro 密钥（官网赞助渠道发放，即 worker PRO_TOKENS 之一）。
+    /// 本仓 MIT 开源——本地门控本质是「官方分发二进制的荣誉系统」：
+    /// 自己编译的人拦不住，也不试图拦；这里只为官方构建提供付费边界。
+    var proLicenseKey: String {
+        didSet { defaults.set(proLicenseKey, forKey: Key.proLicenseKey) }
+    }
+
+    /// `proKeyVerdictKey` 对应 key 的最近一次在线验证判定（"" = 从未验证 / "valid" / "invalid"）。
+    /// 离线宽限的基础：门控只读这份缓存，不联网（见 ProEntitlementService）。
+    var proKeyVerdict: String {
+        didSet { defaults.set(proKeyVerdict, forKey: Key.proKeyVerdict) }
+    }
+
+    /// 缓存判定所属的 key——key 一改，旧判定自然失效（防止换 key 继承 valid）。
+    var proKeyVerdictKey: String {
+        didSet { defaults.set(proKeyVerdictKey, forKey: Key.proKeyVerdictKey) }
+    }
+
+    /// 最近一次在线验证成功到达服务端的时间（nil = 从未验证过；UI 展示 + 刷新节流用）。
+    var proKeyVerifiedAt: Date? {
+        didSet { defaults.set(proKeyVerifiedAt, forKey: Key.proKeyVerifiedAt) }
+    }
+
     // MARK: - Workspace MCP trust
     /// 工作区级 MCP 配置（`<workspace>/.meditor/mcp.json`）的信任记录。
     ///
@@ -468,6 +498,11 @@ final class AppSettings {
         pdfCoverPage  = d.bool(forKey: Key.pdfCoverPage)   // default false
         trustedWorkspaceMCP = (d.dictionary(forKey: Key.trustedWorkspaceMCP) as? [String: String]) ?? [:]
         spotlightIndexContent = d.bool(forKey: Key.spotlightIndexContent)   // default false（隐私优先）
+        // Pro 资格
+        proLicenseKey = d.string(forKey: Key.proLicenseKey) ?? ""
+        proKeyVerdict = d.string(forKey: Key.proKeyVerdict) ?? ""
+        proKeyVerdictKey = d.string(forKey: Key.proKeyVerdictKey) ?? ""
+        proKeyVerifiedAt = d.object(forKey: Key.proKeyVerifiedAt) as? Date
     }
 }
 

@@ -195,4 +195,49 @@ final class AgentSchedulerServiceTests: XCTestCase {
         XCTAssertEqual(host.toasts.first?.icon, "exclamationmark.triangle")
         XCTAssertTrue(host.toasts.first?.text.isEmpty == false)
     }
+
+    // MARK: - Pro 门控（定价线 §6：定时自动化是 Pro 功能）
+
+    /// 构造保留默认触发动作（fire 真实链路）、只注入 Pro 判定的服务。
+    /// host.rootURL 置 nil：只加载全局配置，避免触碰假宿主的伪工作区路径。
+    private func makeGatedService(host: RecordingAgentHost, entitled: Bool) throws -> AgentSchedulerService {
+        host.rootURL = nil
+        try write(#"{"schedules": [{"name": "morning", "cron": "0 9 * * *", "prompt": "p"}]}"#,
+                  to: globalConfigURL)
+        let service = AgentSchedulerService(host: host,
+                                            globalConfigURL: globalConfigURL,
+                                            startTimer: false)
+        service.calendar = calendar
+        service.now = { [unowned self] in self.now }
+        service.isProEntitled = { entitled }
+        return service
+    }
+
+    /// 无 Pro 资格：到期条目不发起后台 run，经端口 toast 引导（锁图标）。
+    /// 反向验证：门控放开（isProEntitled 恒 true / 删掉 fire 里的 guard）后本条变红——
+    /// toast 会退化成 AI 未配置的「exclamationmark.triangle」而非「lock.fill」。
+    func test_tick_notProEntitled_blockedWithToast() throws {
+        let host = RecordingAgentHost()
+        let service = try makeGatedService(host: host, entitled: false)
+        service.tick()
+        XCTAssertEqual(host.toasts.count, 1, "被门控拦下应 toast 一次")
+        XCTAssertEqual(host.toasts.first?.icon, "lock.fill")
+        XCTAssertTrue(host.backgroundAgentTasks.tasks.isEmpty, "无 Pro 资格不得发起后台 run")
+        XCTAssertEqual(host.groundingCalls, 0, "被拦下时不应走到 grounding/run 链路")
+    }
+
+    /// 有 Pro 资格：门控放行，走到后续的 AI 配置检查（测试环境未配置 AI → notConfigured toast）。
+    /// 断言图标区分两条 toast 分支：放行后是「exclamationmark.triangle」，不是门控的「lock.fill」。
+    func test_tick_proEntitled_passesGate() throws {
+        let host = RecordingAgentHost()
+        let service = try makeGatedService(host: host, entitled: true)
+        // 钉死 AI 未配置态：放行后应落在 notConfigured 分支，与宿主机的真实配置无关
+        let savedProvider = AppSettings.shared.aiProvider
+        defer { AppSettings.shared.aiProvider = savedProvider }
+        AppSettings.shared.aiProvider = "disabled"
+        service.tick()
+        XCTAssertEqual(host.toasts.count, 1)
+        XCTAssertEqual(host.toasts.first?.icon, "exclamationmark.triangle",
+                       "Pro 放行后应走到 AI 配置检查，而不是门控提示")
+    }
 }

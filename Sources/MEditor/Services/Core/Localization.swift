@@ -1282,6 +1282,25 @@ extension LocalizationManager {
         "settings.ai.scheduledTasksConfigIssue": ("Config issue: %@", "配置问题：%@"),
         "ai.schedule.notConfigured": ("AI is not configured — scheduled task \"%@\" skipped",
                                       "未配置 AI——定时任务「%@」已跳过"),
+        "ai.schedule.proRequired": ("Scheduled task \"%@\" is a Pro feature — add and verify your Pro key in Settings → Integrations",
+                                    "定时任务「%@」是 Pro 功能——请在 设置 → 集成 中填入并验证 Pro 密钥"),
+
+        // Pro 资格（定价线：免费 = 编辑器 + 手动 agent + 单篇导出；Pro = 定时自动化 + 无限托管）
+        "settings.pro.keyLabel": ("Pro key", "Pro 密钥"),
+        "settings.pro.keyHint": ("Pro unlocks scheduled automation and unlimited hosting. Get a key via GitHub Sponsors, paste it here and verify.",
+                                 "Pro 解锁定时自动化与无限托管。通过 GitHub Sponsors 获取密钥，粘贴到此处并验证。"),
+        "settings.pro.keyPlaceholder": ("Paste your Pro key", "粘贴 Pro 密钥"),
+        "settings.pro.verify": ("Verify", "验证"),
+        "settings.pro.verifying": ("Verifying…", "验证中…"),
+        "settings.pro.status.unverified": ("Not verified", "未验证"),
+        "settings.pro.status.active": ("Pro active", "Pro 已激活"),
+        "settings.pro.status.activeOffline": ("Pro active (offline, cached)", "Pro 已激活（离线，使用缓存判定）"),
+        "settings.pro.status.invalid": ("Invalid key", "密钥无效"),
+        "settings.pro.status.lastVerified": ("Last verified: %@", "上次验证：%@"),
+        "settings.pro.badge": ("Pro", "Pro"),
+        "settings.pro.getKey": ("Get a Pro key", "获取 Pro 密钥"),
+        "settings.pro.scheduledHint": ("Scheduled tasks are a Pro feature — runs won't start until a Pro key is active.",
+                                       "定时任务是 Pro 功能——未激活 Pro 密钥时不会发起运行。"),
     ]
 
     static let table: [String: (en: String, zh: String)] = {

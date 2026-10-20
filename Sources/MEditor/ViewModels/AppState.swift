@@ -59,6 +59,9 @@ final class AppState {
     private(set) lazy var aiConversation: AIConversation = AIConversation()
 
     #if os(macOS)
+    /// Pro 资格（macOS-only）：定时任务门控 + 设置页 Pro key 管理。
+    /// 门控只读缓存判定、不联网；联网验证由设置页按钮与此处的启动保守刷新触发。
+    let proEntitlement = ProEntitlementService.shared
     /// 后台 Agent 任务（macOS-only）：脱离聊天 UI 独立运行 agent run，
     /// 完成后 toast + 系统通知。lazy：首次发起后台任务时才创建。
     @ObservationIgnored
@@ -442,6 +445,8 @@ final class AppState {
         #if os(macOS)
         // 启动时即生效定时任务（无工作区时也会触发全局条目）
         _ = agentScheduler
+        // 有 Pro key 且缓存判定过期时后台联网复核（门控本身不联网，只读缓存）
+        proEntitlement.refreshIfNeeded()
         #endif
     }
 
