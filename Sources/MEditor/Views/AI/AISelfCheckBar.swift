@@ -13,12 +13,12 @@ extension AIAssistantPanel {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.appAccent)
                 Text(L("ai.selfcheck.title"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.craftPrimary)
             }
             Text(L("ai.selfcheck.summary",
                    report.totalCount, report.fixable.count, report.reportOnly.count))
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(theme.craftSecondary)
             // 逐条列出（截断到 5 条防撑爆面板）；报告条目可点击跳转到对应行
             ForEach(Array((report.fixable + report.reportOnly).prefix(5))) { issue in

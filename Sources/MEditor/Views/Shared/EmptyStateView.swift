@@ -31,7 +31,7 @@ struct EmptyStateView: View {
 
                     if let hint {
                         Text(hint)
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary.opacity(0.7))
                             .multilineTextAlignment(.center)
                     }

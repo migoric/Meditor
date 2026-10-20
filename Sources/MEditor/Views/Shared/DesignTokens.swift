@@ -51,7 +51,7 @@ enum DS {
         }
         /// Section headers, panel titles
         static var caption: SwiftUI.Font { .system(size: 11, weight: .medium) }
-        static var footnote: SwiftUI.Font { .system(size: 10.5, weight: .regular) }
+        static var footnote: SwiftUI.Font { .system(size: 10, weight: .regular) }
     }
 
     // MARK: - Animation

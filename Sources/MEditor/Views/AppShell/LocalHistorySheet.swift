@@ -105,7 +105,7 @@ struct LocalHistorySheet: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(theme.craftPrimary)
                 Text(ByteCountFormatter.string(fromByteCount: snapshot.size, countStyle: .file))
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 10))
                     .foregroundStyle(theme.craftSecondary)
             }
             Spacer()

@@ -105,7 +105,7 @@ extension AIAssistantPanel {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AIBrand.blue)
                 Text(L("ai.mention.cardTitle"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.craftPrimary)
                 Spacer()
                 Button {
@@ -120,7 +120,7 @@ extension AIAssistantPanel {
             }
 
             Text(L("ai.mention.cardBody"))
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(theme.craftSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -190,7 +190,7 @@ extension AIAssistantPanel {
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(theme.craftPrimary)
                 Text(L("ai.greetingSub"))
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(theme.craftSecondary)
             }
         }
@@ -226,7 +226,7 @@ extension AIAssistantPanel {
 
     private func sectionHeader(_ key: String) -> some View {
         Text(L(key).uppercased())
-            .font(.system(size: 10.5, weight: .semibold))
+            .font(.system(size: 10, weight: .semibold))
             .kerning(0.6)
             .foregroundStyle(theme.craftSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -252,7 +252,7 @@ private struct AISuggestionRow: View {
                     .frame(width: 28, height: 28)
                     .overlay(
                         Image(systemName: suggestion.icon)
-                            .font(.system(size: 12.5, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(suggestion.tint)
                     )
                 Text(L(suggestion.titleKey))

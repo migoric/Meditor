@@ -12,7 +12,7 @@ extension AIAssistantPanel {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.orange)
                 Text(L("ai.command.pendingTitle"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.craftPrimary)
             }
             Text(pending.command)
@@ -24,7 +24,7 @@ extension AIAssistantPanel {
                 .background(theme.editorBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
             if let cwd = pending.cwd {
                 Text(L("ai.command.cwd", cwd))
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(theme.craftSecondary)
                     .lineLimit(1)
             }
@@ -60,7 +60,7 @@ extension AIAssistantPanel {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.orange)
                 Text(L("ai.write.pendingTitle"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.craftPrimary)
             }
             Text(pending.path)
@@ -72,7 +72,7 @@ extension AIAssistantPanel {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.editorBackground.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
             Text(pending.summary)
-                .font(.system(size: 10.5))
+                .font(.system(size: 10))
                 .foregroundStyle(theme.craftSecondary)
                 .lineLimit(2)
             WriteDiffDisclosure(diff: pending.diff, theme: theme)
@@ -130,7 +130,7 @@ private struct WriteDiffDisclosure: View {
         case .tooLarge:
             // 超大文件退化：只给提示，不展示 diff（对齐 1MB 快照上限的取舍）
             Text(L("ai.write.diffTooLarge"))
-                .font(.system(size: 10.5))
+                .font(.system(size: 10))
                 .foregroundStyle(theme.craftSecondary)
         default:
             // .unavailable / 无实质改动：不占确认条空间
@@ -160,10 +160,10 @@ private struct WriteDiffDisclosure: View {
     private func hunkBlock(_ text: String, isRemoval: Bool) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Text(isRemoval ? "−" : "+")
-                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(isRemoval ? Color.red : Color.green)
             Text(text)
-                .font(.system(size: 10.5, design: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(theme.craftPrimary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)

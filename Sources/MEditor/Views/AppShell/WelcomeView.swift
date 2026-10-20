@@ -7,6 +7,9 @@ struct WelcomeView: View {
     var onOpenRecent: ((URL) -> Void)? = nil
 
     // MARK: - Animation state
+    /// 「减弱动态效果」系统开关。此前整个欢迎页对它零响应——而这里有**无限循环**的
+    /// 洗牌 + 打字机（每 4.5s 重来一轮），对前庭敏感用户是持续刺激，也没有省电收益。
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var displayedChars: [Character] = Array("MEDITOR")
     @State private var locked: [Bool]      = Array(repeating: false, count: 7)
     @State private var subtitleText        = ""
@@ -26,7 +29,11 @@ struct WelcomeView: View {
     // MARK: - Constants
     private static let title     = Array("MEDITOR")
     private static let charset   = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@&%!?")
-    private static let subtitle  = "A minimal Markdown editor for macOS"
+    /// 首屏这句是产品的第一句话，必须与 README / 官网讲同一个故事。
+    /// 此前写的是「A minimal Markdown editor for macOS」——而 README 说
+    /// 「给技术人写文档的 Agent 工作台」，官网说「A Markdown editor with a Brain」。
+    /// 差异化（Agent 改文档 → diff 审阅 → 可回滚）在旧文案里一个字都没有。
+    private static let subtitle  = "Let the agent write. You review, then keep."
     /// 欢迎卡片的底色：**刻意固定深色**（非疏漏）——这是一张深色玻璃拟态卡片
     /// （白色顶部高光 + 白色描边 + 黑色投影），在亮色主题下也保持深色以获得
     /// 「聚光」观感；改成跟随 appearance 的动态色会破坏该设计意图。
@@ -175,10 +182,10 @@ struct WelcomeView: View {
     private var subtitleRow: some View {
         HStack(spacing: 0) {
             Text(subtitleText)
-                .font(.system(size: 12.5, design: .monospaced))
+                .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(.secondary)
             Text("|")
-                .font(.system(size: 12.5, design: .monospaced))
+                .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(.secondary.opacity(0.7))
                 .opacity(cursorVisible ? 1 : 0)
                 .animation(.easeInOut(duration: 0.4), value: cursorVisible)
@@ -215,7 +222,7 @@ struct WelcomeView: View {
     private var recentPanel: some View {
         VStack(alignment: .leading, spacing: DS.Space.sm) {
             Text(L("welcome.recent"))
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .padding(.leading, DS.Space.md)
                 .padding(.bottom, DS.Space.xs)
@@ -310,6 +317,16 @@ struct WelcomeView: View {
     }
 
     private func startCycle() {
+        // 尊重「减弱动态效果」：不洗牌、不打字、不循环，直接给最终态。
+        // 这是无障碍最小集里最容易做对、收益也最大的一条。
+        if reduceMotion {
+            displayedChars = Self.title
+            locked = Array(repeating: true, count: 7)
+            subtitleText = Self.subtitle
+            showContent = true
+            return
+        }
+
         displayedChars = Self.title.map { _ in Self.charset.randomElement() ?? " " }
         locked = Array(repeating: false, count: 7)
 
@@ -328,6 +345,10 @@ struct WelcomeView: View {
                 displayedChars[i] = Self.title[i]
                 if i == 6 {
                     shuffleTimer.invalidate()
+                    // 内容不再等打字机跑完（原先要 ~1.9s：0.18+6×0.085 洗牌 + 35×0.033 打字）。
+                    // 标题一落定就露出 CTA，副标题的打字机在用户已经能看到按钮之后继续跑。
+                    // 对一个「点开就能用」的桌面工具，让主 CTA 等一段纯装饰动画收益是负的。
+                    withAnimation(DS.Motion.standard) { showContent = true }
                     if !firstCycleDone { startTyping() }
                     else               { scheduleNextCycle() }
                 }

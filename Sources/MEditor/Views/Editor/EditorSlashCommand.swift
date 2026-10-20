@@ -356,7 +356,7 @@ struct SlashCommandMenuView: View {
                     .textCase(.uppercase)
                 Spacer()
                 Text("↑↓ ↵")
-                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
@@ -411,7 +411,7 @@ struct SlashCommandMenuRow: View {
             Spacer(minLength: 0)
 
             Text(item.aliases.first ?? "")
-                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 8)

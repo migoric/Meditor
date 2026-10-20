@@ -202,7 +202,7 @@ struct PathRow: View {
                         .truncationMode(.middle)
                 } else {
                     Text(subtitle)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
             }

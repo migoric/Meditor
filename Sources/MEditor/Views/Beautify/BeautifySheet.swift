@@ -148,7 +148,7 @@ struct BeautifySheet: View {
             } label: {
                 HStack {
                     Text(L("beautify.customize"))
-                        .font(.system(size: 12.5, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                     if !tokenOverrides.isEmpty {
                         Text(L("beautify.tokensModified", tokenOverrides.count))
@@ -307,7 +307,7 @@ struct BeautifySheet: View {
                 Text(L("beautify.savedGeneric"))
             }
         }
-        .font(.system(size: 12.5, weight: .medium))
+        .font(.system(size: 12, weight: .medium))
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(.regularMaterial, in: Capsule())

@@ -107,13 +107,13 @@ struct StatsPopover: View {
                 .frame(width: 16)
 
             Text(label)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
             Spacer()
 
             Text(value)
-                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(.primary)
         }
         .padding(.horizontal, 14)

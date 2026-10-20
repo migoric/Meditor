@@ -129,7 +129,7 @@ extension SettingsView {
                     let manager = state.mcpClientManager
                     if manager.statuses.isEmpty {
                         Text(L("settings.ai.mcpClientEmpty"))
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(manager.statuses) { status in
@@ -171,7 +171,7 @@ extension SettingsView {
                 Image(systemName: info.trusted ? "checkmark.shield" : "exclamationmark.shield")
                     .foregroundStyle(info.trusted ? Color.green : Color.orange)
                 Text(L("settings.ai.mcpWorkspaceConfig"))
-                    .font(.system(size: 11.5, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                 Spacer(minLength: 8)
                 if info.trusted {
                     Button(L("settings.ai.mcpWorkspaceRevoke")) {
@@ -187,7 +187,7 @@ extension SettingsView {
             }
             if !info.serverNames.isEmpty {
                 Text(info.serverNames.joined(separator: ", "))
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .truncationMode(.middle)
@@ -288,7 +288,7 @@ extension SettingsView {
                     let scheduler = state.agentScheduler
                     if scheduler.entries.isEmpty {
                         Text(L("settings.ai.scheduledTasksEmpty"))
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(scheduler.entries) { entry in
@@ -354,7 +354,7 @@ extension SettingsView {
                           || state.proEntitlement.status == .verifying)
                 if let url = Self.proPurchaseURL {
                     Link(L("settings.pro.getKey"), destination: url)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                 }
             }
             proStatusLine
@@ -442,12 +442,12 @@ extension SettingsView {
                 }
                 HStack(spacing: 6) {
                     Text(entry.cron)
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                     if entry.enabled, let next = state.agentScheduler.nextFireDate(for: entry) {
                         Text(L("settings.ai.scheduledTasksNext",
                                next.formatted(date: .abbreviated, time: .shortened)))
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }

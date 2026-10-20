@@ -184,6 +184,12 @@ jobs:
       - name: Dead design tokens
         run: python3 scripts/check_dead_tokens.py
 
+      # 裸数值棘轮：字号档位 / 裸 .system(size:) / 圆角值个数只许降不许升。
+      # 不进这一步的话，「token 化」就只是文档里的一句话（实测字体 528 处裸值
+      # 对 39 处 DS.Font）。
+      - name: Bare number ratchet
+        run: python3 scripts/check_bare_numbers.py
+
 # ── 为什么 PR CI 里不再跑 scripts/bundle.sh ────────────────────────────────
 # 1. 那个 artifact 从来没有消费方（全仓 grep `download-artifact` 命中 0），
 #    上传的 MEditor.zip 只为占存储：计费按 GB-hour 算，10 月仅 storage 一项就

@@ -150,7 +150,7 @@ private struct TodoRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.text)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(item.isChecked ? theme.craftSecondary : theme.craftPrimary)
                     .strikethrough(item.isChecked, color: theme.craftSecondary)
                     .lineLimit(2)

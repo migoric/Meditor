@@ -40,7 +40,7 @@ struct TemplatePickerSheet: View {
                 .font(.system(size: 13, weight: .medium))
             TextField(L("template.search"), text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13.5))
+                .font(.system(size: 13))
                 .focused($searchFocused)
             if !query.isEmpty {
                 Button { query = "" } label: {
@@ -88,7 +88,7 @@ struct TemplatePickerSheet: View {
     private func sectionView(_ section: PickerSection) -> some View {
         VStack(alignment: .leading, spacing: DS.Space.sm) {
             Text(section.title.uppercased())
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .kerning(0.5)
 
@@ -117,7 +117,7 @@ struct TemplatePickerSheet: View {
                 .font(.system(size: 30, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(L("common.noMatches"))
-                .font(.system(size: 12.5))
+                .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -134,12 +134,12 @@ struct TemplatePickerSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.1)))
                     Text(template.name)
-                        .font(.system(size: 12.5, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
             } else {
                 Text(L("template.selectHint"))
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
             }
 

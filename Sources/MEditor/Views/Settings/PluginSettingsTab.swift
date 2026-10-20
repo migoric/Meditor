@@ -16,7 +16,7 @@ extension SettingsView {
                 if !plugins.loadErrors.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Label(L("plugin.loadFailed"), systemImage: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.orange)
                         ForEach(plugins.loadErrors, id: \.self) { err in
                             Text(err)
@@ -52,7 +52,7 @@ extension SettingsView {
                                 .font(.system(size: 24, weight: .light))
                                 .foregroundStyle(.tertiary)
                             Text(L("plugin.emptyTitle"))
-                                .font(.system(size: 12.5))
+                                .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                             Text(L("plugin.emptyHint"))
                                 .font(.system(size: 11))
@@ -109,7 +109,7 @@ extension SettingsView {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                         Text(msg)
-                            .font(.system(size: 11.5))
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
@@ -185,7 +185,7 @@ extension SettingsView {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(skill.name)
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                 }
@@ -203,7 +203,7 @@ extension SettingsView {
             HStack(spacing: 4) {
                 ForEach(skill.tags.prefix(2), id: \.self) { tag in
                     Text(tag)
-                        .font(.system(size: 9.5, weight: .medium))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -284,7 +284,7 @@ extension SettingsView {
                     .foregroundStyle(.primary)
                 if !skill.description.isEmpty {
                     Text(skill.description)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -319,13 +319,13 @@ extension SettingsView {
                     .foregroundStyle(.primary)
                 if !skill.description.isEmpty {
                     Text(skill.description)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 Text(skill.skillPath.deletingLastPathComponent().path
                         .replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }

@@ -19,7 +19,7 @@ struct EventRow: View {
 
             HStack(spacing: 6) {
                 Text(event.title)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)

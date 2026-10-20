@@ -284,12 +284,12 @@ private struct TimelineEventBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(event.title)
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(blockHeight > 32 ? 2 : 1)
             if blockHeight > 28 {
                 Text(timeRange)
-                    .font(.system(size: 9.5))
+                    .font(.system(size: 9))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
             }

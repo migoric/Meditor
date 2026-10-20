@@ -44,7 +44,7 @@ struct SettingsView: View {
     }
 
     // MARK: - Brand palette (shared with the welcome hero card)
-    private static let tagline      = "A minimal Markdown editor for macOS"
+    private static let tagline      = "Let the agent write. You review, then keep."
 
     enum SettingsTab: String, CaseIterable {
         case general, ai, integrations, sharing, plugins, about
@@ -140,7 +140,7 @@ struct SettingsView: View {
                         .font(.system(size: 21, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text(Self.tagline)
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.62))
                 }
 
