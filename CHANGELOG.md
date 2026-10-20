@@ -14,6 +14,26 @@
 
 ### Changed
 
+- **iOS 色板重做：GitHub 灰阶骨架 + shadcn 单色强调 + 朱砂降级为品牌印记**
+  （纯视觉变更，无行为差异）。此前 iOS 是一套与 macOS 完全无关的「纸墨」系统
+  （宣纸 `#F4F5F2` / 松烟墨 `#1B2434` / 朱砂 `#C0392B` = 全页唯一亮色且承担全部
+  交互语义），同一个产品在两个平台像两个产品。现在骨架取 GitHub 的
+  canvas / surface / border / fg 四级（浅色 `#F6F8FA` + `#FFFFFF`，深色
+  `#0D1117` + `#161B22`），强调色取 shadcn 的 primary 单色
+  （`#18181B` / 深色反转 `#FAFAFA`），**朱砂只保留在印章与 AI 标识点上**——
+  骨架中性化之后，唯一的彩色反而比改版前更显眼。
+  **配套改动**：① 新增 `onAccent`（深色下 accent 是近白，原来写死的 `.white`
+  前景会白字白底）与 `accentSoft`（选中胶囊，`accent.opacity(0.14)` 在深色下
+  几乎不可见）两个派生 token；② 链接色与图表描边从 `accent` 拆成独立
+  `link`（GitHub 蓝 `#0969DA` / `#4493F8`）与 `diagramAccent`——沿用 accent
+  会让链接失去「可点」信号、Mermaid 图变黑白且每节点描黑框；③ 移除
+  「宣纸纤维」噪点纹理（600 点 Canvas + `drawingGroup()`，为米白纸面调的
+  opacity 压在中性底上显脏）；④ 启动图 `LaunchMark` / `LaunchPaper` 换新色板
+  并补深色变体（此前墨蓝横条在深色启动屏上其实看不清）；⑤ 修掉
+  `PlatformShims.PreviewTheme.isDark` 恒 `false` 的假替身——共享的
+  `AIAccentStyle` 在 iOS 深色下会据此选出近黑 fill + 近白 onFill。
+  `PaperTheme` 的 API 名一个未动，30 处调用点零改动。
+
 - **定价线重划：定时任务转入 Pro**（语义变更）。免费档 = 编辑器 + 手动触发 agent
   （含聊天侧手动发起的后台任务）+ 单篇导出；Pro = **定时自动化**（cron 触发的后台
   Agent 任务）+ **无限托管**（分享发布免配额、不过期、无品牌页脚，worker 侧既有

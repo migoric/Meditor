@@ -12,7 +12,17 @@ enum PreviewTheme: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var displayName: String { "GitHub" }
-    var isDark: Bool { false }
+
+    /// 必须跟随真实外观。此前恒返回 `false` 是个坑：`AIAccentStyle` 在深色下
+    /// 会据此选出 fill `#18181B` + onFill `#FAFAFA`，近黑按钮压近黑底。
+    ///
+    /// 注意：iOS **不使用** `AIAccentStyle`（那是 macOS 的「系统蓝 / shadcn 单色」二选一），
+    /// 移动端的强调色由 `PaperTheme.accent` 单一决定。本类型存在只为让共享的
+    /// `AIModels.swift` 能编译；`UITraitCollection.current` 在 SwiftUI body 求值期
+    /// （主线程）是正确的，其他上下文按系统默认返回，不会崩。
+    var isDark: Bool {
+        UITraitCollection.current.userInterfaceStyle == .dark
+    }
 }
 
 extension Color {

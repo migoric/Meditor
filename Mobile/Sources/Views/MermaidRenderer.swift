@@ -147,7 +147,7 @@ final class MermaidRenderer: NSObject {
             "background": hex.card,
             "primaryColor": hex.paper,
             "primaryTextColor": hex.ink,
-            "primaryBorderColor": hex.accent,
+            "primaryBorderColor": hex.diagramAccent,
             "lineColor": hex.inkSecondary,
             "secondaryColor": hex.codeBackground,
             "tertiaryColor": hex.codeBackground,

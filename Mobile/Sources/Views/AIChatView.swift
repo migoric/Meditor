@@ -123,7 +123,7 @@ struct AIChatView: View {
                 } else if isUser {
                     Text(msg.text)
                         .font(.body)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(PaperTheme.onAccent)
                         .textSelection(.enabled)
                         .lineSpacing(4)
                         .padding(.horizontal, 14)

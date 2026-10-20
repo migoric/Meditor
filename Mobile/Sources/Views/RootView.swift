@@ -200,7 +200,7 @@ private struct BottomBarView: View {
                 .background {
                     if selected {
                         Capsule(style: .continuous)
-                            .fill(PaperTheme.accent.opacity(0.14))
+                            .fill(PaperTheme.accentSoft)
                             .matchedGeometryEffect(id: "page-indicator", in: pageIndicator)
                     }
                 }
