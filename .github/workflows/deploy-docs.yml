@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - 'website/**'
+      - 'worker/**'
       - 'wrangler.toml'
+      - 'pages/**'
       - 'scripts/deploy-docs.sh'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
