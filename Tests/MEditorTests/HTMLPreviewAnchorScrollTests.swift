@@ -51,7 +51,7 @@ final class HTMLPreviewAnchorScrollTests: XCTestCase {
         let webView = try await Self.load(injected, installAnchorGuard: false)
         defer { Self.tearDown(webView) }
 
-        let href = await Self.eval("document.getElementById('tocLink').href", webView)
+        let href = try await Self.eval("document.getElementById('tocLink').href", webView)
         let scheme = URL(string: href ?? "")?.scheme
         XCTAssertEqual(scheme, MeditorAssetSchemeHandler.scheme,
                        "注入 <base> 后 #target 应当被改写成 asset URL（这正是点击失效的来源）")
@@ -66,16 +66,16 @@ final class HTMLPreviewAnchorScrollTests: XCTestCase {
         let webView = try await Self.load(injected, installAnchorGuard: true)
         defer { Self.tearDown(webView) }
 
-        let beforeY = await Self.number("window.scrollY", webView)
+        let beforeY = try await Self.number("window.scrollY", webView)
         XCTAssertEqual(beforeY, 0, "初始应当停在顶部")
 
-        _ = await Self.eval("document.getElementById('tocLink').click(); 'x'", webView)
+        _ = try await Self.eval("document.getElementById('tocLink').click(); 'x'", webView)
         try await Task.sleep(nanoseconds: 900_000_000)
 
-        let afterY = await Self.number("window.scrollY", webView)
+        let afterY = try await Self.number("window.scrollY", webView)
         XCTAssertGreaterThan(afterY, 400, "点目录锚点后预览没有滚动（scrollY=\(afterY)）")
 
-        let hash = await Self.eval("location.hash", webView)
+        let hash = try await Self.eval("location.hash", webView)
         XCTAssertEqual(hash, "#target", "fragment 应写回地址栏，:target 样式才有依据")
     }
 
@@ -93,14 +93,14 @@ final class HTMLPreviewAnchorScrollTests: XCTestCase {
         let webView = try await Self.load(injected, installAnchorGuard: true)
         defer { Self.tearDown(webView) }
 
-        let href = await Self.eval("document.getElementById('tocLink').href", webView)
+        let href = try await Self.eval("document.getElementById('tocLink').href", webView)
         XCTAssertTrue(href?.contains("meditor-asset://") == true,
                       "带文件名的相对链接也应被 <base> 改写（\(href ?? "nil")）")
 
-        _ = await Self.eval("document.getElementById('tocLink').click(); 'x'", webView)
+        _ = try await Self.eval("document.getElementById('tocLink').click(); 'x'", webView)
         try await Task.sleep(nanoseconds: 900_000_000)
 
-        let afterY = await Self.number("window.scrollY", webView)
+        let afterY = try await Self.number("window.scrollY", webView)
         XCTAssertGreaterThan(afterY, 400, "report.html#小节 这种写法没能跳转（scrollY=\(afterY)）")
     }
 
@@ -133,6 +133,13 @@ final class HTMLPreviewAnchorScrollTests: XCTestCase {
     }
 
     /// 按 `WebPreviewView.Coordinator.applyLoad` 的方式渲染：注入 base + 合成 https baseURL。
+    ///
+    /// ⚠️ 就绪判据不能用 `document.readyState == "complete"`。对 `loadHTMLString` 来说它
+    /// **在解析刚开头就会报 complete**：实测那一刻 `outerHTML` 只有
+    /// `<html><head><meta charset="utf-8"><title>…</title></head>`（148 字符，`<body>`
+    /// 一个字都没解析），`getElementById('tocLink')` 还是 null，于是断言拿到 nil。
+    /// CI runner 解析慢，更容易踩进这个窗口（#65/#66 两次红都是这一条）。
+    /// 所以等的是**夹具自己的元素**出现，而不是 readyState。
     private static func load(_ html: String, installAnchorGuard: Bool) async throws -> WKWebView {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(MeditorAssetSchemeHandler(), forURLScheme: MeditorAssetSchemeHandler.scheme)
@@ -151,13 +158,15 @@ final class HTMLPreviewAnchorScrollTests: XCTestCase {
 
         webView.loadHTMLString(html, baseURL: URL(string: "https://localhost/"))
 
-        for _ in 0..<40 {
+        for _ in 0..<60 {
             try await Task.sleep(nanoseconds: 200_000_000)
-            let readyState = await eval("document.readyState", webView)
-            if readyState == "complete" { return webView }
+            let ready = try await eval(
+                "document.getElementById('tocLink') ? 'ready' : 'pending'", webView)
+            if ready == "ready" { return webView }
         }
+        tearDown(webView)
         throw NSError(domain: "HTMLPreviewAnchorScrollTests", code: 1,
-                      userInfo: [NSLocalizedDescriptionKey: "HTML 没加载完"])
+                      userInfo: [NSLocalizedDescriptionKey: "夹具里的 #tocLink 始终没进 DOM"])
     }
 
     private static var windows: [WKWebView: NSWindow] = [:]
@@ -167,16 +176,22 @@ final class HTMLPreviewAnchorScrollTests: XCTestCase {
         windows[webView] = nil
     }
 
-    private static func eval(_ js: String, _ webView: WKWebView) async -> String? {
-        await withCheckedContinuation { continuation in
-            webView.evaluateJavaScript(js) { value, _ in
-                continuation.resume(returning: value.map { "\($0)" })
+    /// 错误不再被吞掉：此前 `value` 为 nil 一律呈现成「（nil）」，
+    /// 分不清是「JS 抛异常」还是「结果就是 undefined」。
+    private static func eval(_ js: String, _ webView: WKWebView) async throws -> String? {
+        try await withCheckedThrowingContinuation { continuation in
+            webView.evaluateJavaScript(js) { value, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: value.map { "\($0)" })
+                }
             }
         }
     }
 
-    private static func number(_ js: String, _ webView: WKWebView) async -> Double {
-        let raw = await eval("String(Math.round(\(js)))", webView) ?? "0"
+    private static func number(_ js: String, _ webView: WKWebView) async throws -> Double {
+        let raw = try await eval("String(Math.round(\(js)))", webView) ?? "0"
         return Double(raw) ?? 0
     }
 }
