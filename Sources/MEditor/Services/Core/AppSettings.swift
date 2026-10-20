@@ -374,8 +374,47 @@ final class AppSettings {
     /// Pro 密钥（官网赞助渠道发放，即 worker PRO_TOKENS 之一）。
     /// 本仓 MIT 开源——本地门控本质是「官方分发二进制的荣誉系统」：
     /// 自己编译的人拦不住，也不试图拦；这里只为官方构建提供付费边界。
+    ///
+    /// **存 Keychain，不存 UserDefaults。** 该值同时是**发布凭证**
+    /// （worker 把 `PRO_TOKENS` 既用于 `/api/share` 的 Pro 判定，也用于
+    /// `/api/pro/verify`），明文躺在 `~/Library/Preferences/com.meditor.app.plist`
+    /// 里等于任何能读该文件的进程都能白嫖无限发布。此前 GitHub token、
+    /// 发布 token 都走 Keychain，唯独这一条走 UserDefaults —— 与 Keychain.swift
+    /// 自己写的「密钥只存 Keychain」策略自相矛盾。
     var proLicenseKey: String {
-        didSet { defaults.set(proLicenseKey, forKey: Key.proLicenseKey) }
+        didSet {
+            // 老版本可能已经把明文写进过 defaults：每次改动顺手清掉。
+            defaults.removeObject(forKey: Key.proLicenseKey)
+            scheduleProKeyPersist()
+        }
+    }
+
+    /// Pro key 落 Keychain 的防抖任务（见 `scheduleProKeyPersist`）。
+    @ObservationIgnored private var proKeyPersistTask: Task<Void, Never>?
+
+    private static let proKeychain = Keychain(service: "com.meditor.app.pro", account: "license")
+
+    /// 设置页的 SecureField 每敲一个字符就会写一次 `proLicenseKey`；
+    /// 直接同步落 Keychain 等于每键一次 `SecItemAdd`（几十毫秒，会卡输入框）。
+    /// 合并到 400ms 空闲后再写，语义不变（key 生效不靠这一毫秒）。
+    private func scheduleProKeyPersist() {
+        proKeyPersistTask?.cancel()
+        let value = proLicenseKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        proKeyPersistTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            Self.proKeychain.save(value)   // 空串 = 清除（Keychain.save 的既有语义）
+        }
+    }
+
+    /// 读 Pro key：Keychain 优先，其次把老版本的 UserDefaults 明文迁过去。
+    private static func loadProLicenseKey(from defaults: UserDefaults) -> String {
+        if let stored = proKeychain.load(), !stored.isEmpty { return stored }
+        guard let legacy = defaults.string(forKey: Key.proLicenseKey),
+              !legacy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        proKeychain.save(legacy)
+        defaults.removeObject(forKey: Key.proLicenseKey)
+        return legacy
     }
 
     /// `proKeyVerdictKey` 对应 key 的最近一次在线验证判定（"" = 从未验证 / "valid" / "invalid"）。
@@ -498,8 +537,8 @@ final class AppSettings {
         pdfCoverPage  = d.bool(forKey: Key.pdfCoverPage)   // default false
         trustedWorkspaceMCP = (d.dictionary(forKey: Key.trustedWorkspaceMCP) as? [String: String]) ?? [:]
         spotlightIndexContent = d.bool(forKey: Key.spotlightIndexContent)   // default false（隐私优先）
-        // Pro 资格
-        proLicenseKey = d.string(forKey: Key.proLicenseKey) ?? ""
+        // Pro 资格（key 存 Keychain；老版本的 UserDefaults 明文在这里一次性迁移）
+        proLicenseKey = Self.loadProLicenseKey(from: d)
         proKeyVerdict = d.string(forKey: Key.proKeyVerdict) ?? ""
         proKeyVerdictKey = d.string(forKey: Key.proKeyVerdictKey) ?? ""
         proKeyVerifiedAt = d.object(forKey: Key.proKeyVerifiedAt) as? Date
