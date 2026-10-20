@@ -221,7 +221,7 @@ struct DocumentHomeView: View {
                                 .foregroundStyle(PaperTheme.accent)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
-                                .background(PaperTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                                .background(PaperTheme.accentSoft, in: RoundedRectangle(cornerRadius: 4))
                         }
                         // 沙盒外原地打开的文档（iCloud Drive 等）标注云朵
                         if doc.isExternal {

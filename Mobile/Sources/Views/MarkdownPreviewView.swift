@@ -290,7 +290,7 @@ struct MarkdownPreviewView: View {
                 a[run.range].backgroundColor = PaperTheme.codeBackground
             }
             if run.link != nil {
-                a[run.range].foregroundColor = PaperTheme.accent
+                a[run.range].foregroundColor = PaperTheme.link
             }
         }
         if strikethrough {
