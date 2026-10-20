@@ -49,8 +49,9 @@
       </h1>
 
       <p class="hero-sub hero-anim hero-anim-3">
-        Pure SwiftUI + AppKit. An AI Agent that actually reads, writes and refactors
-        your documents — with real tool calls.
+        Point it at a workspace and the recurring writing takes care of itself —
+        weekly reports, changelogs, design docs, drafted on a schedule.
+        Review every change, roll back any run. Pure SwiftUI + AppKit, no Electron.
       </p>
 
       <div class="hero-actions hero-anim hero-anim-4">
@@ -174,8 +175,8 @@
         <div class="card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0-12-4 4m4-4 4 4"/><path d="M4 15v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3"/></svg></div>
         <div class="card-title">Export &amp; Beautify</div>
         <div class="card-desc">
-          Export to HTML, PDF, or 2× PNG in one click — themed PDFs with clickable links, and a
-          pre-flight check that catches dead links and missing images first.
+          Export to HTML, PDF, 2× PNG, or .pptx in one click — themed PDFs with clickable
+          links, and a pre-flight check that catches dead links and missing images first.
         </div>
       </div>
 
@@ -217,11 +218,11 @@
 
       <div class="bento-card bc-1">
         <div class="card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v3l2 2"/></svg></div>
-        <div class="card-title">Scheduled &amp; Background Agent</div>
+        <div class="card-title">Scheduled &amp; Background Agent <span style="font-size:10px;letter-spacing:.08em;vertical-align:2px;padding:2px 6px;border:1px solid currentColor;border-radius:4px;opacity:.75">PRO</span></div>
         <div class="card-desc">
           Cron-scheduled tasks fire background Agent runs — weekly reports, changelogs, digests
-          on a timer. Background runs get their own session, a concurrency cap, and a completion
-          notification; writes still pass the same confirmation chain.
+          on a timer. Pre-approve a trusted task per directory and it runs fully unattended;
+          everything else still passes the same confirmation chain.
         </div>
       </div>
 
@@ -398,7 +399,7 @@
         </p>
         <ul class="feature-list">
           <li>Live Markdown preview with Mermaid diagrams and LaTeX math rendering</li>
-          <li>Presentation mode — turn any document into slides</li>
+          <li>Presentation mode — turn any document into slides, export HTML / PDF / .pptx</li>
           <li>Focus mode for distraction-free writing</li>
           <li>Global search across the workspace (⌘⇧F)</li>
           <li>Copy as rich text (⌥⌘C) — paste into email or Feishu with formatting intact</li>
@@ -423,10 +424,10 @@
   <div class="wrap">
     <div class="section-head reveal" style="text-align:center">
       <div class="eyebrow" style="justify-content:center">Pricing</div>
-      <h2 class="section-title">Free to write.<br /><em>Pro to publish.</em></h2>
+      <h2 class="section-title">Free to write.<br /><em>Pro to automate.</em></h2>
       <p class="section-sub" style="margin:0 auto">
         MEditor itself is free and open source — every local feature included.
-        Pro unlocks unlimited hosted publishing.
+        Pro adds automation that works while you're away, plus unlimited hosted publishing.
       </p>
     </div>
 
@@ -436,10 +437,10 @@
         <div class="price-amount">$0<span> / forever</span></div>
         <div class="price-tagline">The full editor, yours to keep.</div>
         <ul class="price-list">
-          <li>Every local feature — editor, AI Agent (BYOK), LAN share, Gist, exports</li>
+          <li>Every local feature — editor, AI Agent (BYOK), exports, LAN share, Gist</li>
+          <li>Manual agent runs with full review &amp; rollback</li>
           <li>Hosted publishing: 20 documents / month</li>
-          <li>Links kept for 30 days</li>
-          <li>"Published with MEditor" footer on published pages</li>
+          <li>Links kept for 30 days · "Published with MEditor" footer</li>
         </ul>
         <a href="#download" class="btn btn-ghost">Download Free</a>
       </div>
@@ -447,12 +448,12 @@
       <div class="price-card pro">
         <div class="price-plan">Pro <span class="price-badge">Early access</span></div>
         <div class="price-amount">$4<span> / month</span></div>
-        <div class="price-tagline">For writers who publish every day.</div>
+        <div class="price-tagline">For documents that write themselves on a schedule.</div>
         <ul class="price-list">
           <li>Everything in Free</li>
+          <li>Scheduled &amp; background agent — cron tasks with per-task write pre-approval, fully unattended</li>
           <li>Unlimited hosted publishing</li>
-          <li>Links never expire</li>
-          <li>No branding footer</li>
+          <li>Links never expire · No branding footer</li>
           <li class="soon">Custom domain <em>coming soon</em></li>
         </ul>
         <a href="https://github.com/sponsors/retrychx" class="btn btn-primary">Get Pro — Early Access</a>
@@ -467,7 +468,7 @@
 <div class="wrap" style="padding-bottom:40px">
   <div class="cta-banner reveal" id="download">
     <h2>Start writing smarter today.</h2>
-    <p>The editor is free and open source — no Electron, no cloud lock-in. Pro is optional, for unlimited hosted publishing.</p>
+    <p>The editor is free and open source — no Electron, no cloud lock-in. Pro is optional, for scheduled automation and unlimited hosted publishing.</p>
     <div class="hero-actions" style="margin-bottom:0">
       <a href="/update/pkg" class="btn btn-primary">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M8 10l-3-3M8 10l3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
