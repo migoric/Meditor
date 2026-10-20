@@ -152,8 +152,8 @@ python3 scripts/check_dead_tokens.py
 CI 里两个 main gate（其余见 `docs/engineering-practices.md` §1）：
 `Build & Test (macOS 26)` · `Build (iOS Simulator)`。
 `SwiftLint` 与 `Coverage Gate` 已并入 `Build & Test`（同一台 macOS runner 里顺序执行）。
-⚠️ 分支保护目前**没生效** —— 仓库是 private + 免费计划，`branches/main` 报 `protected: false`，
-保护 API 直接 403。想让 check 名变回强制，转 public / 升级 Pro 后把上面两个名字加回必需检查。
+这两个名字同时是分支保护里的必需检查（`protected: true`）—— 改名或给 `pull_request` 加
+`paths-ignore` 都会让 PR 卡在一个永不出现的检查上。
 
 **本地跑不动的两处，如实说明**：
 

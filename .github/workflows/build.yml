@@ -10,9 +10,10 @@ on:
       - 'website/**'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'website/**'
+    # ⚠️ 这里**故意不写** paths-ignore：workflow 一旦被 paths 过滤掉，就不会产生任何
+    # check run，而分支保护里的必需检查（`Build & Test (macOS 26)` /
+    # `Build (iOS Simulator)`）会一直等下去 ⇒ 纯文档 PR 永远合不了。
+    # 仓库已转 public，Actions 分钟数免费；为省这一次运行换来一个「PR 卡死」的坑不划算。
 
 # 同一 ref 的新 push/PR 取消旧构建，省 runner 且让结果只看最新
 concurrency:
