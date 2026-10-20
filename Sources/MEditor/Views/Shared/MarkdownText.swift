@@ -77,7 +77,7 @@ struct MarkdownText: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("\(idx + 1).")
-                            .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
                             .foregroundStyle(accent.opacity(0.85))
                         inline(item).font(.system(size: Self.bodySize)).foregroundStyle(textColor)
                             .lineSpacing(3)
@@ -127,7 +127,7 @@ struct MarkdownText: View {
         if let task = taskPrefix(item) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: task.done ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(task.done ? accent : secondaryColor)
                 inline(task.text).font(.system(size: Self.bodySize))
                     .foregroundStyle(task.done ? secondaryColor : textColor)
@@ -484,7 +484,7 @@ private struct CodeBlockView: View {
                         Button(action: copy) {
                             HStack(spacing: 3) {
                                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 9.5, weight: .medium))
+                                    .font(.system(size: 9, weight: .medium))
                                 Text(copied ? L("ai.copied") : L("ai.copy"))
                                     .font(.system(size: 10, weight: .medium))
                             }

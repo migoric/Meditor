@@ -130,7 +130,7 @@ private struct AIMessageAction: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 10.5, weight: .medium))
+                Image(systemName: icon).font(.system(size: 10, weight: .medium))
                 Text(title).font(.system(size: 11, weight: .medium))
             }
             .foregroundStyle(hovered ? theme.craftPrimary : theme.craftSecondary)

@@ -116,7 +116,7 @@ struct AIOnboardingView: View {
                         .background(AIBrand.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(L("onboarding.otherProvider"))
-                            .font(.system(size: 12.5, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(theme.craftPrimary)
                         Text(L("onboarding.otherProviderSub"))
                             .font(.system(size: 11))
@@ -138,7 +138,7 @@ struct AIOnboardingView: View {
 
             Button(L("onboarding.skip"), action: onDismiss)
                 .buttonStyle(.plain)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(theme.craftSecondary)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 2)
@@ -156,10 +156,10 @@ struct AIOnboardingView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(L("onboarding.useClaudeCode"))
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(theme.craftPrimary)
                         Text(L("onboarding.recommended"))
-                            .font(.system(size: 9.5, weight: .semibold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1.5)
@@ -230,7 +230,7 @@ struct AIOnboardingView: View {
                         }
                     }
                 }
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(theme.craftSecondary)
                 .lineLimit(2)
             }
@@ -239,7 +239,7 @@ struct AIOnboardingView: View {
 
             Button(L("onboarding.startChat"), action: onDismiss)
                 .buttonStyle(.plain)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(theme.craftSecondary)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.top, 2)
@@ -259,7 +259,7 @@ struct AIOnboardingView: View {
                     .background(AIBrand.violet, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(L("onboarding.demoTitle"))
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(theme.craftPrimary)
                     Text(L(offline ? "onboarding.demoSubOffline" : "onboarding.demoSub"))
                         .font(.system(size: 11))

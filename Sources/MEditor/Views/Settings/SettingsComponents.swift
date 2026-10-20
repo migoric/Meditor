@@ -25,7 +25,7 @@ extension SettingsView {
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(title)
-                .font(.system(size: 13.5, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(.primary)
                 .padding(.leading, 3)
 
@@ -58,7 +58,7 @@ extension SettingsView {
                     .fixedSize(horizontal: true, vertical: false)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -85,7 +85,7 @@ extension SettingsView {
                     .foregroundStyle(.primary)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -182,7 +182,7 @@ struct SettingsNavItem: View {
                 .frame(width: 20, alignment: .center)
 
             Text(label)
-                .font(.system(size: 12.5, weight: isSelected ? .medium : .regular))
+                .font(.system(size: 12, weight: isSelected ? .medium : .regular))
                 .foregroundStyle(isSelected ? Color.primary : Color.secondary)
 
             Spacer()

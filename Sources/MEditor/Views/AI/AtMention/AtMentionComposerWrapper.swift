@@ -26,7 +26,7 @@ struct AtMentionComposerWrapper<Picker: View>: View {
         ZStack(alignment: .topLeading) {
             if plainText.isEmpty {
                 Text(L("ai.inputPlaceholder"))
-                    .font(.system(size: 13.5))
+                    .font(.system(size: 13))
                     .foregroundStyle(theme.craftSecondary.opacity(0.5))
                     .padding(.horizontal, 4)
                     .padding(.top, 2)

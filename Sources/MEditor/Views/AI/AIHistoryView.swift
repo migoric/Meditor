@@ -80,7 +80,7 @@ private struct AIHistoryRow: View {
                 .foregroundStyle(isActive ? Color.appAccent : theme.craftSecondary)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(theme.craftPrimary)
                     .lineLimit(1)
                 if let usageSummary {
@@ -94,7 +94,7 @@ private struct AIHistoryRow: View {
             if hovered {
                 Button(action: onDelete) {
                     Image(systemName: "trash")
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 10))
                         .foregroundStyle(theme.craftSecondary)
                 }
                 .buttonStyle(.plain)

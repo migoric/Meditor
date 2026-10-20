@@ -30,7 +30,7 @@ struct StatusBarHost: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                         Text(stats.chipLabel)
-                            .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+                            .font(.system(size: 10, weight: .regular, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 10)
@@ -57,7 +57,7 @@ struct StatusBarHost: View {
                     HStack(spacing: 3) {
                         Circle().fill(Color.orange).frame(width: 5, height: 5)
                         Text(L("statusBar.modified"))
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 8)
@@ -74,7 +74,7 @@ struct StatusBarHost: View {
                         .foregroundStyle(Color.green.opacity(0.8))
                         .accessibilityHidden(true)
                     Text(L("statusBar.saved"))
-                        .font(.system(size: 10.5))
+                        .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 8)
@@ -120,7 +120,7 @@ struct StatusBarHost: View {
                     .foregroundStyle(.tertiary)
             }
             Text(text)
-                .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+                .font(.system(size: 10, weight: .regular, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 10)

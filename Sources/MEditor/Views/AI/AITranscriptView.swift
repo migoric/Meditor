@@ -51,7 +51,7 @@ extension AIAssistantPanel {
                             HStack(spacing: 8) {
                                 AIAssistantOrb(size: 18, glow: true)
                                 Text(L("ai.thinking"))
-                                    .font(.system(size: 12.5))
+                                    .font(.system(size: 12))
                                     .foregroundStyle(theme.craftSecondary)
                                 TypingDots(color: theme.craftSecondary)
                             }
@@ -73,9 +73,9 @@ extension AIAssistantPanel {
                         Button(action: resumeInterruptedRun) {
                             HStack(spacing: 5) {
                                 Image(systemName: "play.circle")
-                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .font(.system(size: 10, weight: .semibold))
                                 Text(L("ai.resume.continue"))
-                                    .font(.system(size: 11.5, weight: .medium))
+                                    .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundStyle(Color.appAccent)
                             .padding(.horizontal, 10)
@@ -92,9 +92,9 @@ extension AIAssistantPanel {
                         Button(action: regenerate) {
                             HStack(spacing: 5) {
                                 Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .font(.system(size: 10, weight: .semibold))
                                 Text(L("ai.regenerate"))
-                                    .font(.system(size: 11.5, weight: .medium))
+                                    .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundStyle(theme.craftSecondary)
                             .padding(.horizontal, 10)
@@ -242,17 +242,17 @@ extension AIAssistantPanel {
                         .font(.system(size: 10, weight: .medium))
                     Text(summary)
                 }
-                .font(.system(size: 10.5))
+                .font(.system(size: 10))
                 .foregroundStyle(theme.craftSecondary)
                 .padding(.top, 2)
             } else {
                 Button(action: { Task { await state.rollbackAgentRun(checkpoint) } }) {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 10.5, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                         Text(L("ai.rollback.undoRun")
                              + String(format: L("ai.rollback.fileCountSuffix"), checkpoint.rollbackableCount))
-                            .font(.system(size: 11.5, weight: .medium))
+                            .font(.system(size: 11, weight: .medium))
                     }
                     .foregroundStyle(theme.craftSecondary)
                     .padding(.horizontal, 10)

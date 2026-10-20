@@ -78,7 +78,7 @@ struct AIAssistantButton: View {
             HStack(spacing: 7) {
                 AIAssistantOrb(size: 16, glow: true)
                 Text(L("ai.assistant"))
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.craftPrimary)
             }
             .padding(.horizontal, 14)

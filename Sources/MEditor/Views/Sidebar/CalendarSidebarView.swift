@@ -186,12 +186,12 @@ private struct CalendarEventRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title ?? L("event.untitled"))
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Text(timeLabel)
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
 

@@ -131,7 +131,7 @@ struct AIAssistantPanel: View {
                         Image(systemName: "plus.bubble")
                             .font(.system(size: 11, weight: .semibold))
                         Text(L("ai.newChat"))
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(theme.craftPrimary)
                     .padding(.horizontal, 14)

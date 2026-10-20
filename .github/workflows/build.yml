@@ -184,6 +184,12 @@ jobs:
       - name: Dead design tokens
         run: python3 scripts/check_dead_tokens.py
 
+      # 裸数值棘轮：字号档位 / 裸 .system(size:) / 圆角值个数只许降不许升。
+      # 不进这一步的话，「token 化」就只是文档里的一句话（实测字体 528 处裸值
+      # 对 39 处 DS.Font）。
+      - name: Bare number ratchet
+        run: python3 scripts/check_bare_numbers.py
+
   docs-guard:
     name: Docs Guard
     # 纯静态：文档里的断言必须与代码事实一致（版本号 / 仓内路径引用 / CI 检查名 /

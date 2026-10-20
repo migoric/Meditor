@@ -66,7 +66,7 @@ struct TOCOutlineView: View {
                     .frame(width: 0, height: 0)
 
                     Text("OUTLINE")
-                        .font(.system(size: 9.5, weight: .semibold))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 10)
                         .padding(.top, 2)

@@ -20,7 +20,7 @@ struct AIBackgroundTasksSection: View {
                     Image(systemName: "moon.circle.fill")
                         .font(.system(size: 10, weight: .semibold))
                     Text(L("ai.background.section"))
-                        .font(.system(size: 10.5, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(theme.craftSecondary)
                 .padding(.horizontal, 14)

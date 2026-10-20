@@ -80,7 +80,7 @@ struct ShareStatusChip: View {
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(Color.appAccent)
             Text(text)
-                .font(.system(size: 10.5))
+                .font(.system(size: 10))
                 .foregroundStyle(Color.appAccent.opacity(0.85))
         }
         .padding(.horizontal, 8)

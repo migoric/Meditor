@@ -71,7 +71,7 @@ struct AgentStepView: View {
                 ProgressView().controlSize(.mini).scaleEffect(0.8)
                     .frame(width: 13, height: 13)
                 Text(label)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -93,13 +93,13 @@ struct AgentStepView: View {
                     ProgressView().controlSize(.mini).scaleEffect(0.8)
                 } else {
                     Image(systemName: isError ? "xmark.circle.fill" : "checkmark.circle.fill")
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 11))
                         .foregroundStyle(isError ? Color.red : Color.green)
                 }
             }
             .frame(width: 13, height: 13)
             Text(text)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(.primary.opacity(0.85))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -186,7 +186,7 @@ struct AgentStepView: View {
                 Image(systemName: done
                       ? (isError ? "xmark.circle.fill" : "checkmark.circle.fill")
                       : label.icon)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(accent)
                     .animation(DS.Motion.standard, value: done)
 
@@ -341,7 +341,7 @@ struct AgentResultPanel: View {
                                     Image(systemName: stepsExpanded ? "chevron.down" : "chevron.right")
                                         .font(.system(size: 10))
                                     Text(stepsExpanded ? L("ai.agent.collapseSteps") : L("ai.agent.collapsedSteps", hiddenCount))
-                                        .font(.system(size: 11.5))
+                                        .font(.system(size: 11))
                                     Spacer(minLength: 0)
                                 }
                                 .foregroundStyle(.secondary)
@@ -418,7 +418,7 @@ struct AgentResultPanel: View {
                         .buttonStyle(.plain)
                     }
                     Text(runner.finalText)
-                        .font(.system(size: 12.5))
+                        .font(.system(size: 12))
                         .lineLimit(finalTextExpanded ? nil : 4)
                         .fixedSize(horizontal: false, vertical: true)
                     let needsExpand = runner.finalText.components(separatedBy: "\n").count > 4

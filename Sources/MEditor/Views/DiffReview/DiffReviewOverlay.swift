@@ -92,6 +92,21 @@ struct DiffReviewOverlay: View {
                         isHTMLMode: false,
                         rawHTML: "",
                         onAction: { action, diffIdStr in
+                            // 两个「全局」动作没有具体 diffId，必须先处理掉再解析 UUID。
+                            switch action {
+                            case "acceptAll":
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    state.diffReview.acceptAll()
+                                }
+                                return
+                            case "skipAll":
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    state.diffReview.skipAll()
+                                }
+                                return
+                            default:
+                                break
+                            }
                             guard let uuid = UUID(uuidString: diffIdStr) else { return }
                             if action == "accept" {
                                 withAnimation(.easeInOut(duration: 0.15)) {
@@ -562,6 +577,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,san
 .diff-right-pending{background:rgba(34,197,94,.12);border-left:3px solid #22C55E}
 .diff-accepted{background:rgba(34,197,94,.05);opacity:.65}
 .diff-skipped{opacity:.4}
+.diff-focused{outline:2px solid #22C55E;outline-offset:2px}
 .diff-actions{margin-top:8px;display:flex;gap:8px}
 .btn-accept{background:#22C55E;color:#fff;border:none;padding:4px 14px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600}
 .btn-skip{background:transparent;color:#9ca3af;border:1px solid #d1d5db;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px}
@@ -656,6 +672,41 @@ img{max-width:100%}
     });
   }
   render();
+
+  // ── 键盘审阅 ────────────────────────────────────────────────────────────
+  // 此前这块 diff 只能用鼠标：30 段改动要一路点「接受 / 跳过」，而这是整条
+  // 核心链路里最贵的一段交互。快捷键只在 WebView 内有焦点时生效（用户点了
+  // 任一 diff 栏之后），不抢窗口其它地方的按键。
+  var pendingIdx=-1;
+  function pendingIds(){
+    return paragraphs.filter(function(p){return p.status==='pending'&&p.diffId;})
+                     .map(function(p){return p.diffId;});
+  }
+  function focusAt(i){
+    var ids=pendingIds(); if(!ids.length)return;
+    if(i<0)i=0; if(i>=ids.length)i=ids.length-1;
+    pendingIdx=i;
+    document.querySelectorAll('.diff-focused').forEach(function(b){b.classList.remove('diff-focused');});
+    var el=document.querySelector('[data-diffid="'+ids[i]+'"]');
+    if(el){el.classList.add('diff-focused');el.scrollIntoView({block:'center'});}
+  }
+  function focusedId(){
+    var ids=pendingIds();
+    return (pendingIdx>=0&&pendingIdx<ids.length)?ids[pendingIdx]:null;
+  }
+  document.addEventListener('keydown',function(e){
+    if(!isRight)return;
+    var tag=(document.activeElement&&document.activeElement.tagName)||'';
+    if(tag==='INPUT'||tag==='TEXTAREA')return;
+    var k=e.key;
+    // 按钮自己已有焦点时把 Enter/空格让给它，否则一次回车会「按钮点击 + 快捷键」各走一遍
+    if(tag==='BUTTON'&&(k==='Enter'||k===' '))return;
+    if((e.metaKey||e.ctrlKey)&&k==='Enter'){e.preventDefault();postAction('acceptAll','');return;}
+    if(k==='j'||k==='ArrowDown'){e.preventDefault();focusAt(pendingIdx+1);return;}
+    if(k==='k'||k==='ArrowUp'){e.preventDefault();focusAt(pendingIdx-1);return;}
+    if(k==='Enter'){var id=focusedId();if(id){e.preventDefault();postAction('accept',id);focusAt(pendingIdx);}return;}
+    if(k==='s'){var id2=focusedId();if(id2){e.preventDefault();postAction('skip',id2);focusAt(pendingIdx);}return;}
+  });
 })();
 </script>
 </body>

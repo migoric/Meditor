@@ -116,7 +116,7 @@ private struct DocumentHeader: View {
                 }
 
                 Text(relativePath)
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 10))
                     .foregroundStyle(theme.craftSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -125,7 +125,7 @@ private struct DocumentHeader: View {
             Spacer()
 
             Text(languageLabel)
-                .font(.system(size: 10.5, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(theme.craftSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)

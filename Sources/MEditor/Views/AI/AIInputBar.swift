@@ -64,7 +64,7 @@ extension AIAssistantPanel {
                     let removed = autoContextRemovedForTab == tab.id
                     HStack(spacing: 5) {
                         Image(systemName: removed ? "doc.text" : "doc.text.fill")
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 10))
                             .foregroundStyle(theme.craftSecondary)
                             .accessibilityHidden(true)
                         Text(L("ai.autoAttach", tab.name))
@@ -95,7 +95,7 @@ extension AIAssistantPanel {
                     // 总开关关闭或已过首轮：chip 退化为纯「当前文档」指示器（不涉及附带）
                     HStack(spacing: 5) {
                         Image(systemName: "doc.text.fill")
-                            .font(.system(size: 10.5))
+                            .font(.system(size: 10))
                             .foregroundStyle(theme.craftSecondary)
                             .accessibilityHidden(true)
                         Text(documentName)
@@ -142,15 +142,15 @@ extension AIAssistantPanel {
                             Image(systemName: "hourglass")
                                 .font(.system(size: 11, weight: .bold))
                             Text(L("ai.respondingElsewhere"))
-                                .font(.system(size: 12.5, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                         } else if convo.isResponding {
                             Image(systemName: "stop.fill")
                                 .font(.system(size: 11, weight: .bold))
                             Text(L("ai.stop"))
-                                .font(.system(size: 12.5, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                         } else {
                             Text(L("ai.execute"))
-                                .font(.system(size: 12.5, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 11, weight: .bold))
                         }
@@ -245,7 +245,7 @@ extension AIAssistantPanel {
                 }
                 .foregroundStyle(theme.craftSecondary)
                 Text(Self.previewText(text))
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(theme.craftPrimary)
                     .lineLimit(2)
                     .truncationMode(.tail)

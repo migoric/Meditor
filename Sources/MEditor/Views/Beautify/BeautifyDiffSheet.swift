@@ -45,7 +45,7 @@ struct BeautifyDiffSheet: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(existingURL.lastPathComponent)
-                .font(.system(size: 12.5, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 0) {
