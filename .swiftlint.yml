@@ -2,7 +2,11 @@
 #
 # 策略：安全相关规则（force_cast / force_try / force_unwrapping）作为硬性 error，
 # 风格噪音规则整体禁用（历史代码风格与默认规则冲突，不强行重构）。
-# CI 中 swiftlint lint 只对 error 级违规失败；warning 可见但不阻塞。
+# CI 中 swiftlint lint 跑的是 `--strict`：**任何 warning 都会让 job 变红**
+# （--strict 把 warning 当失败）。所以本文件里所有 `warning:` 档位实质都是硬闸门，
+# 不是提示——想放宽就只能把数值调大，不能指望它「只是提醒」。
+# 这条此前写反了（原文声称只有 error 级违规才让 CI 失败、warning 只是提示），
+# 与 build.yml 的 --strict 直接矛盾，已由 scripts/check_docs_consistency.py 看住。
 
 # 禁用规则：与项目既有风格冲突的纯样式噪音
 disabled_rules:
@@ -44,8 +48,8 @@ force_unwrapping:
 empty_count:
   severity: error
 
-# file_length 软闸门：warning 不阻塞 CI，仅提示文件过大。
-# 阈值设在当前最大文件（Localization.swift 1117 行）之上。
+# file_length：CI 用 --strict，所以下面这两档都是硬闸门（1500 行起就红）。
+# 阈值设在当前最大文件（Localization.swift）之上。
 file_length:
   warning: 1500
   error: 2000
