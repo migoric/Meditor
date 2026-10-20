@@ -7,23 +7,28 @@
 > 人的流程（开分支、提 PR、发版）见 [`CONTRIBUTING.md`](../CONTRIBUTING.md)。
 > 本文只讲**机制**，不重复那两处。
 
-## 1. CI 硬性闸门（约定：禁止直接推 main）
+## 1. CI 硬性闸门（禁止直接推 main）
 
-- ⚠️ **事实校正（2026-10-20 实测）**：仓库转 private 后在免费计划上 branch protection / rulesets
-  都不可用 —— `gh api repos/migoric/Meditor/branches/main` 返回 `protected: false`，
-  `.../protection` 返回 403「Upgrade to GitHub Pro or make this repository public to enable this
-  feature」。**所以现在没有任何强制执行**，直接推 main 不会被拒。
-- 想让闸门真的生效：把仓库转回 public（顺带 Actions 分钟数 100% 折扣）或升级 Pro，
-  然后**第一件事**是把这两个 check 名加回必需检查：
+- branch protection 已开启（main，`enforce_admins` 也开着）：直接 push 会被拒绝，改动必须走 PR。
+  核查命令：`gh api repos/migoric/Meditor/branches/main --jq .protected` → `true`。
+  > 历史注记：仓库 2026-10-20 短暂转 private 期间，免费计划的保护接口直接 403、`protected` 变
+  > `false`，那段时间**没有任何强制执行**。同日转回 public 后重建了规则。别拿旧结论当现状，
+  > 判断这类事一律查 API。
+- **必需检查**（分支保护里写死的名字）：
   `Build & Test (macOS 26)` · `Build (iOS Simulator)`。
-  （`SwiftLint` / `Coverage Gate` 两个 job 已并入 `Build & Test`，不再独立存在。）
+  （`SwiftLint` / `Coverage Gate` 两个 job 已在 2026-10-20 的流水线瘦身里并入 `Build & Test`，
+  不再是独立 check。）
 - 另有若干**同样要绿**的守卫 job（`iOS Shared Source Guard` / `Layer Guard` / `UI Guard`
   / `Worker Tests`），见 §5 与 `AGENTS.md` §3。
-- 任何检查变红时 main 不应合入 —— 红测试永远进不了 main。**保护关闭期间这条只能靠自觉**。
+- 任何检查变红时 main 不可合入 —— 红测试永远进不了 main。
 - 紧急修复 main 时：Settings → Branches → 临时关闭 enforceAdmins，修完立即恢复。
 
-> ⚠️ 一旦保护重新开启，改 job 的 `name:` 就等于改必需检查的名字 —— 会让所有 PR 卡在一个
-> 永不出现的检查上，而保护规则不会提示你。改名前先读这一节。
+> ⚠️ 改 job 的 `name:` 等于改必需检查的名字 —— 会让所有 PR 卡在一个永不出现的检查上，
+> 而保护规则不会提示你。改名前先读这一节。
+>
+> ⚠️ 同理，**`on.pull_request` 绝不能加 `paths-ignore`**：被路径过滤掉的 workflow 不产生
+> check run，必需检查会一直等 ⇒ 纯文档 PR 永远合不了。`paths-ignore` 只加在 `push` 上
+> （省 main 上的无谓运行），PR 一律全跑。
 
 ## 2. SwiftLint（`.swiftlint.yml`）
 
