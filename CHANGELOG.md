@@ -14,6 +14,15 @@
 
 ### Added
 
+- **iOS 端 Mermaid 矢量输出与分享**：`MermaidRenderer` 的渲染结果除 PNG 位图外同步携带
+  自包含 SVG（同一次 `mermaid.render` 顺带产出，同一缓存条目，key 口径不变：
+  外观 | 缩放 | 代码）。预览块内展示仍是位图（SwiftUI `Image` 不支持 SVG，
+  iOS 无原生 SVG 栅格器），但补了两处矢量质量：长按图表可分享**矢量 SVG**
+  （经 `Transferable` 以 .svg 类型进系统分享表单）或 PNG；小图被容器拉宽超过
+  已渲染像素时，按实际显示宽度向引擎重渲一档更密的位图（缓存键含缩放，同档位只渲一次），
+  不再放大发虚。iOS 端无 PDF 导出、macOS 端 PDF 本就走 `webView.createPDF` 矢量，
+  均不在本项范围。
+
 - **Mermaid 语法错误回传给 Agent 自修**（「agent 画的图，错了自己修」）：Agent 写入的
   文档含 ```mermaid 块时，写后自检在同步诊断之后用隐藏 WKWebView 跑真 `mermaid.parse`
   （复用预览的按需拷贝机制，懒初始化 + 串行 + 15s 超时重建），语法错误以

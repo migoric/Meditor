@@ -3,7 +3,7 @@ import WebKit
 
 /// 共享 Mermaid 渲染引擎：单个离线 WKWebView 常驻，mermaid.min.js（约 3MB）只加载解析一次。
 /// 渲染请求串行排队（mermaid.render 非线程安全，且共用同一个 JS 上下文），
-/// 结果 PNG 按「缩放 + 代码串」做内存缓存——滚动复用、重开文档均即时出图。
+/// 结果（PNG 位图 + SVG 矢量，同一次渲染产出）按「外观 + 缩放 + 代码串」做内存缓存——滚动复用、重开文档均即时出图。
 ///
 /// 健壮性设计：
 /// - 每次 JS 调用带 30s 超时 + 取消竞争，continuation 由 OnceContinuation 保证恰好 resume 一次；
@@ -15,6 +15,10 @@ final class MermaidRenderer: NSObject {
 
     struct Rendered {
         let image: UIImage
+        /// 自包含 SVG（主题色已注入，width/height 已写成逻辑尺寸），供矢量消费点（分享等）。
+        /// 与 PNG 同一次 mermaid.render 产出、同一条缓存——iOS 没有原生 SVG 栅格器，
+        /// 块内展示仍只能用位图，但矢量串本身顺带返回是零成本的。
+        let svg: String
         /// SVG viewBox 的逻辑尺寸（pt），供布局参考。
         let size: CGSize
     }
@@ -117,6 +121,7 @@ final class MermaidRenderer: NSObject {
         guard let dict = raw as? [String: Any] else { throw RenderError.badImage }
         if let error = dict["error"] as? String { throw RenderError.jsFailed(error) }
         guard let dataURL = dict["png"] as? String,
+              let svg = dict["svg"] as? String, !svg.isEmpty,
               let comma = dataURL.firstIndex(of: ","),
               let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
               let image = UIImage(data: data, scale: scale),
@@ -124,8 +129,8 @@ final class MermaidRenderer: NSObject {
               let height = (dict["height"] as? NSNumber)?.doubleValue,
               width > 0, height > 0 else { throw RenderError.badImage }
 
-        let rendered = Rendered(image: image, size: CGSize(width: width, height: height))
-        cache.setObject(RenderedBox(rendered), forKey: key, cost: data.count)
+        let rendered = Rendered(image: image, svg: svg, size: CGSize(width: width, height: height))
+        cache.setObject(RenderedBox(rendered), forKey: key, cost: data.count + svg.utf8.count)
         return rendered
     }
 
@@ -161,7 +166,7 @@ final class MermaidRenderer: NSObject {
                     self?.destroyEngine()
                 }
                 webView.callAsyncJavaScript(
-                    "return await renderMermaidPNG(code, scale, themeVariables, canvasFill);",
+                    "return await renderMermaid(code, scale, themeVariables, canvasFill);",
                     arguments: [
                         "code": code,
                         "scale": scale,
@@ -313,7 +318,7 @@ final class MermaidRenderer: NSObject {
     <script src="mermaid.min.js"></script>
     <script>
     var renderSeq = 0;
-    async function renderMermaidPNG(code, scale, themeVariables, canvasFill) {
+    async function renderMermaid(code, scale, themeVariables, canvasFill) {
       try {
         // 主题随每次渲染注入：引擎常驻，浅色 / 墨夜共用同一 JS 上下文。
         mermaid.initialize({
@@ -357,7 +362,7 @@ final class MermaidRenderer: NSObject {
         ctx.fillStyle = canvasFill;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        return { png: canvas.toDataURL('image/png'), width: w, height: h };
+        return { png: canvas.toDataURL('image/png'), svg: xml, width: w, height: h };
       } catch (e) {
         return { error: String(e && e.message ? e.message : e) };
       }
