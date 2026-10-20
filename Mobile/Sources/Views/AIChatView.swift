@@ -28,6 +28,7 @@ struct AIChatView: View {
                 messageList
             }
             undoBanner
+            writeConfirmBar
             skillChips
             ChatInputBar()
         }
@@ -243,6 +244,68 @@ struct AIChatView: View {
             }
         }
         .animation(PaperTheme.Motion.standard, value: store.canUndoAI && !model.isResponding)
+    }
+
+    /// 写入确认条：AI 请求落盘时出现在输入栏上方。
+    ///
+    /// 没有它，iOS 上只有两种坏结局——协议默认值放行的年代是「静默改掉用户文档」，
+    /// fail-closed 之后是「AI 一律写不了」。移动端没有桌面端的段落级 diff 审阅面，
+    /// 这里退化为「路径 + 一句话摘要 + 允许/拒绝」，并保留 run 级「全部允许」。
+    private var writeConfirmBar: some View {
+        Group {
+            if let pending = model.writeGate.pending {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.down.on.square")
+                            .font(.caption)
+                        Text("AI 请求写入文件")
+                            .font(.caption.weight(.semibold))
+                        Spacer()
+                    }
+                    .foregroundStyle(PaperTheme.inkSecondary)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pending.path)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(PaperTheme.ink)
+                            .lineLimit(2)
+                        Text(pending.summary)
+                            .font(.caption)
+                            .foregroundStyle(PaperTheme.inkSecondary)
+                            .lineLimit(2)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("拒绝") { model.writeGate.resolve(false) }
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(PaperTheme.inkSecondary)
+                            .buttonStyle(.pressable)
+                        Spacer()
+                        Button("本次全部允许") { model.writeGate.resolveAllowingRun() }
+                            .font(.footnote)
+                            .foregroundStyle(PaperTheme.inkSecondary)
+                            .buttonStyle(.pressable)
+                        Button("允许") { model.writeGate.resolve(true) }
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(PaperTheme.onAccent)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(PaperTheme.accent, in: Capsule())
+                            .buttonStyle(.pressable)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(PaperTheme.accentSoft)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(PaperTheme.hairline).frame(height: 0.5)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("AI 请求写入 \(pending.path)，需确认")
+            }
+        }
+        .animation(PaperTheme.Motion.standard, value: model.writeGate.pending?.id)
     }
 
     /// 用户气泡右对齐、右下角收紧到 4；助手气泡左对齐、左下角收紧。
