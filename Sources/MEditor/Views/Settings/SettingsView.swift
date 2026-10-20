@@ -24,6 +24,10 @@ struct SettingsView: View {
     @State var connectionTestResult: String? = nil
     @State var connectionTestOK: Bool = false
     @State var connectionTesting: Bool = false
+    // AI 设置首屏：本机 Claude CLI 探测（驱动「快速开始」的推荐项）。
+    // 初始 true：AI tab 的 .task 才开始探测，避免「未检测到」文案闪现。
+    @State var aiCLIProbing = true
+    @State var aiCLIDetectedPath: String? = nil
 
         /// When true, the view is presented as an in-app hero overlay (not a window),
         /// so it must not mutate any NSWindow chrome.

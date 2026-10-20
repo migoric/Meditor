@@ -26,4 +26,12 @@ final class AppSettingsTests: XCTestCase {
     func testSharePortIsNonZero() {
         XCTAssertGreaterThan(AppSettings.shared.sharePort, 0)
     }
+
+    func testAIAdvancedExpandedRoundtrip() {
+        let s = AppSettings.shared
+        let original = s.aiAdvancedExpanded
+        s.aiAdvancedExpanded = !original
+        XCTAssertEqual(s.aiAdvancedExpanded, !original)
+        s.aiAdvancedExpanded = original
+    }
 }

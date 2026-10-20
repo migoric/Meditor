@@ -1130,6 +1130,22 @@ extension LocalizationManager {
         "settings.ai.clearCustom": ("Clear", "清除"),
         "settings.ai.pickPresetModel": ("Pick from preset models", "从预设模型中选择"),
 
+        // AI 设置分层（首屏只留一个决策：本机 CLI 还是自己的 key；其余收进「高级」）
+        "settings.ai.quickStart": ("Quick Start", "快速开始"),
+        "settings.ai.quickCLITitle": ("Local Claude CLI (zero-config)", "本机 Claude CLI（零配置）"),
+        "settings.ai.recommended": ("Recommended", "推荐"),
+        "settings.ai.cliDetecting": ("Checking for a local Claude CLI…", "正在检测本机 Claude CLI…"),
+        "settings.ai.cliDetected": ("Found at %@ — reuses your local Claude Code login",
+                                    "已检测到：%@（复用本机 Claude Code 登录）"),
+        "settings.ai.cliNotDetected": ("No local Claude CLI found — set the path manually in Advanced",
+                                       "未检测到本机 Claude CLI——可在「高级」里手动指定路径"),
+        "settings.ai.quickAPIKeyTitle": ("Use your own API key", "使用自己的 API key"),
+        "settings.ai.quickAPIKeyHint": ("Any OpenAI-compatible endpoint (OpenAI, DeepSeek, Ollama…)",
+                                        "任意 OpenAI 兼容接口（OpenAI、DeepSeek、Ollama…）"),
+        "settings.ai.advanced": ("Advanced", "高级"),
+        "settings.ai.advancedHint": ("Provider, endpoint, models, personalization & integrations",
+                                     "提供方、接口地址、模型、个性化与集成"),
+
         // AI onboarding 演示（无 key 离线预演 + 设置页重看入口）
         "onboarding.demoSubOffline": ("No setup needed — a scripted offline preview: the agent tidies a messy meeting note",
                                       "无需配置——离线预演：Agent 把凌乱会议记录整理成结构化纪要"),
