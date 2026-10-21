@@ -14,12 +14,13 @@
   > 历史注记：仓库 2026-10-20 短暂转 private 期间，免费计划的保护接口直接 403、`protected` 变
   > `false`，那段时间**没有任何强制执行**。同日转回 public 后重建了规则。别拿旧结论当现状，
   > 判断这类事一律查 API。
-- **必需检查**（分支保护里写死的名字）：
-  `Build & Test (macOS 26)` · `Build (iOS Simulator)`。
+- **必需检查**（分支保护里写死的名字，2026-10-22 起共 7 个）：
+  `Build & Test (macOS 26)` · `Build (iOS Simulator)` · `Layer Guard` · `UI Guard` ·
+  `Docs Guard` · `Worker Tests` · `iOS Shared Source Guard`。
   （`SwiftLint` / `Coverage Gate` 两个 job 已在 2026-10-20 的流水线瘦身里并入 `Build & Test`，
-  不再是独立 check。）
-- 另有若干**同样要绿**的守卫 job（`iOS Shared Source Guard` / `Layer Guard` / `UI Guard`
-  / `Worker Tests`），见 §5 与 `AGENTS.md` §3。
+  不再是独立 check；五个守卫 job 此前只是「跑了但不阻塞」，2026-10-22 才纳入必需——
+  那之前任何一个守卫红了 PR 照样能合。）
+- 守卫 job 的覆盖面与跑法见 §5 与 `AGENTS.md` §3。
 - 任何检查变红时 main 不可合入 —— 红测试永远进不了 main。
 - 紧急修复 main 时：Settings → Branches → 临时关闭 enforceAdmins，修完立即恢复。
 
@@ -93,7 +94,7 @@
 
 | 脚本 | 守什么 | CI job |
 |---|---|---|
-| `check_ios_shared_sources.py` | iOS `Shared` 组的引用完整（配置在 pbxproj 里的手工清单，当前 49 条） | `iOS Shared Source Guard` |
+| `check_ios_shared_sources.py` | iOS `Shared` 组的引用完整（配置在 pbxproj 里的手工清单，当前 50 条） | `iOS Shared Source Guard` |
 | `check_service_layer_deps.py` | Service 层不得命名 ViewModel 类型（`AppState`） | `Layer Guard` |
 | `check_dead_tokens.py` | `DS.*` 设计 token 必须有人引用 | `UI Guard` |
 

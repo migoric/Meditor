@@ -180,12 +180,16 @@ extension LocalizationManager {
 
         // 待确认执行命令确认条
         "ai.command.pendingTitle": ("Command awaiting confirmation", "待确认执行命令"),
+        "ai.command.a11y.pending": ("AI requests to run a command, confirmation needed",
+                                    "AI 请求执行命令，需确认"),
         "ai.command.cwd": ("Directory: %@", "目录：%@"),
         "ai.command.reject": ("Reject", "拒绝"),
         "ai.command.rememberHint": ("Won't ask again for this session", "确认后本次会话不再询问"),
 
         // 待确认文件写入确认条（与命令确认条同一范式）
         "ai.write.pendingTitle": ("File write awaiting confirmation", "待确认文件写入"),
+        "ai.write.a11y.pending": ("AI requests to write %@, confirmation needed",
+                                  "AI 请求写入 %@，需确认"),
         "ai.write.allow": ("Allow", "允许"),
         "ai.write.allowAll": ("Allow all for this run", "本次运行全部允许"),
         "ai.write.allowAllHint": ("\"Allow all\" only applies to the current run", "「全部允许」仅对本次运行有效"),

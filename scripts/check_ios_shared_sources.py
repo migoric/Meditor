@@ -7,9 +7,9 @@ iOS 工程（Mobile/MEditorMobile.xcodeproj）里有两类源码：
 
   1. Mobile/Sources/**  —— 用 PBXFileSystemSynchronizedRootGroup 自动同步，
      往目录里丢文件就自动进 target，不需要改工程文件。
-  2. ../Sources/MEditor/** —— 手工枚举的 49 条（39 个 .swift + 10 个预览资源；
+  2. ../Sources/MEditor/** —— 手工枚举的 50 条（40 个 .swift + 10 个预览资源；
      Shared 组 + PBXFileReference + PBXBuildFile）。macOS 桌面端新增文件后，
-     **必须手工把这 49 条清单同步**，否则 iOS target 要么编不过、要么静默少编译一个文件。
+     **必须手工把这 50 条清单同步**，否则 iOS target 要么编不过、要么静默少编译一个文件。
 
 第 2 条是历史上"iOS 编译兜底"提交的来源，也是这个脚本要守的东西。
 它不追求自动发现"某个新文件应该被共享"（那需要业务判断），而是保证
