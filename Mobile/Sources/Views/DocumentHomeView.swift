@@ -273,16 +273,12 @@ struct DocumentHomeView: View {
                 }
             }
             .padding(14)
-            .background(PaperTheme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(alignment: .leading) {
-                if isCurrentDoc(doc) {
-                    Rectangle()
-                        .fill(PaperTheme.accent)
-                        .frame(width: 3, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 2))
-                        .padding(.leading, -1)
-                }
-            }
+            // 当前文档：整卡铺 accentSoft 选中底色（与底部页面胶囊的选中态同一 token、
+            // 同一语言），不再用左侧 accent 竖条——那是模板化的「AI 味」装饰。
+            .background(
+                isCurrentDoc(doc) ? PaperTheme.accentSoft : PaperTheme.card,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
             .shadow(color: PaperTheme.cardShadow, radius: 8, y: 3)
             .contentShape(Rectangle())
         }
