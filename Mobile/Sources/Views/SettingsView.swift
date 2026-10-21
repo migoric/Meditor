@@ -45,7 +45,7 @@ struct SettingsView: View {
                         HStack {
                             Label("在线分享", systemImage: "globe")
                             Spacer()
-                            Text(ShareLinkPublisher.shared.isConfigured ? "已配置" : "未配置")
+                            Text(shareSummary)
                                 .font(.subheadline)
                                 .foregroundStyle(PaperTheme.inkSecondary)
                                 .lineLimit(1)
@@ -66,11 +66,26 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    LabeledContent("版本") {
+                        Text(Self.appVersion)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(PaperTheme.inkSecondary)
+                    }
+                    Link(destination: URL(string: "https://meditorapp.pages.dev")!) {
+                        HStack {
+                            Label("官网", systemImage: "globe")
+                            Spacer()
+                            Text("meditorapp.pages.dev")
+                                .font(.subheadline)
+                                .foregroundStyle(PaperTheme.inkSecondary)
+                        }
+                    }
+                } header: {
+                    sectionHeader("关于")
+                } footer: {
                     Text("配置仅保存在本机，更改即刻生效。移动端暂不支持本地 Claude CLI。")
                         .font(.footnote)
                         .foregroundStyle(PaperTheme.inkSecondary)
-                } header: {
-                    sectionHeader("关于")
                 }
             }
             .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
@@ -80,6 +95,12 @@ struct SettingsView: View {
             .foregroundStyle(PaperTheme.ink)
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
+            // 两处「已配置」摘要都读 Keychain 的缓存态：进入列表时刷一次，
+            // 否则从分享页配好 Token 返回后，这里仍显示「未配置」。
+            .onAppear {
+                ShareLinkPublisher.shared.refreshTokenStatus()
+                GistPublisher.shared.refreshTokenStatus()
+            }
         }
     }
 
@@ -92,6 +113,24 @@ struct SettingsView: View {
 
     private var skillSummary: String {
         "\(MobileSkillStore.shared.enabledSkills.count)/\(MobileSkills.all.count) 启用"
+    }
+
+    /// 分享状态摘要：两条通道各自独立，任一条配好都算「能用」，
+    /// 只配了 Gist 时明确写「仅 Gist」——不然用户会以为在线分享也通了。
+    private var shareSummary: String {
+        if ShareLinkPublisher.shared.isConfigured { return "已配置" }
+        return GistPublisher.shared.isConfigured ? "仅 Gist" : "未配置"
+    }
+
+    /// 版本号：短版本（+ 构建号）。设置页里唯一能确认「装的是哪一版」的地方——
+    /// iOS 没有 Sparkle 更新通道，升级只能靠重装，报障时这串字符是唯一的对齐依据。
+    private static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "—"
+        guard let build = info?["CFBundleVersion"] as? String, !build.isEmpty else {
+            return short
+        }
+        return "\(short) (\(build))"
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -184,6 +223,49 @@ private struct AIServiceSettingsView: View {
                 }
             } header: {
                 header("模型")
+            } footer: {
+                Text("AI 对话使用的模型；Agent 没单独指定时也用它。")
+                    .font(.footnote)
+                    .foregroundStyle(PaperTheme.inkSecondary)
+            }
+
+            Section {
+                TextField("跟随主模型", text: $settings.agentModel)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                if let preset = settings.matchedPreset, !preset.models.isEmpty {
+                    Picker("常用模型", selection: $settings.agentModel) {
+                        Text("跟随主模型").tag("")
+                        ForEach(preset.models, id: \.self) { Text($0).tag($0) }
+                    }
+                }
+            } header: {
+                header("Agent 模型")
+            } footer: {
+                Text("带工具调用的任务（改文档、查目录）用这个模型；留空则跟随上面的模型。"
+                     + "把重活交给更强的模型、把聊天留给便宜的模型时用得上。")
+                    .font(.footnote)
+                    .foregroundStyle(PaperTheme.inkSecondary)
+            }
+
+            Section {
+                Stepper(value: $settings.agentMaxSteps,
+                        in: MobileAISettings.agentMaxStepsRange) {
+                    HStack {
+                        Text("最大步数")
+                        Spacer()
+                        Text("\(settings.agentMaxSteps)")
+                            .monospacedDigit()
+                            .foregroundStyle(PaperTheme.inkSecondary)
+                    }
+                }
+            } header: {
+                header("Agent 上限")
+            } footer: {
+                Text("单次任务最多执行多少步工具调用（5–100）。超时时间随步数一起放大："
+                     + "每步十秒，最少五分钟。")
+                    .font(.footnote)
+                    .foregroundStyle(PaperTheme.inkSecondary)
             }
         }
         .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
@@ -251,6 +333,9 @@ private struct AIServiceSettingsView: View {
 private struct ShareSettingsView: View {
     @State private var tokenInput = ""
     @State private var publisher = ShareLinkPublisher.shared
+    @State private var gistTokenInput = ""
+    @State private var gist = GistPublisher.shared
+    @State private var gistSaveFailed = false
 
     var body: some View {
         Form {
@@ -298,6 +383,49 @@ private struct ShareSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(PaperTheme.inkSecondary)
             }
+
+            Section {
+                if gist.hasToken {
+                    HStack {
+                        Text("•••••••• 已配置")
+                            .foregroundStyle(PaperTheme.inkSecondary)
+                        Spacer()
+                        Button("清除") { gist.clearToken() }
+                            .foregroundStyle(PaperTheme.seal)
+                    }
+                } else {
+                    HStack {
+                        SecureField("ghp_…", text: $gistTokenInput)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Button("保存") {
+                            // 钥匙串写入可能被拒（设备无密码等），必须当场告知，
+                            // 否则用户会以为配好了、点发布才看到「未配置」。
+                            if gist.saveToken(gistTokenInput) {
+                                gistTokenInput = ""
+                            } else {
+                                gistSaveFailed = true
+                            }
+                        }
+                        .disabled(gistTokenInput.isEmpty)
+                    }
+                }
+                Picker("可见性", selection: Binding(
+                    get: { gist.isPublic },
+                    set: { gist.isPublic = $0 }
+                )) {
+                    Text("私密").tag(false)
+                    Text("公开").tag(true)
+                }
+            } header: {
+                header("GitHub Gist")
+            } footer: {
+                Text("发布文档原文到 Gist，需在 GitHub 生成带 gist 权限的 Token。"
+                     + "与上面的在线分享是两条独立通道：那边发布渲染后的网页，这边发布 Markdown 源文件。"
+                     + "私密 Gist 不出现在列表与搜索里，但拿到链接的人仍可访问。")
+                    .font(.footnote)
+                    .foregroundStyle(PaperTheme.inkSecondary)
+            }
         }
         .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         .scrollContentBackground(.hidden)
@@ -306,7 +434,15 @@ private struct ShareSettingsView: View {
         .foregroundStyle(PaperTheme.ink)
         .navigationTitle("在线分享")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { publisher.refreshTokenStatus() }
+        .onAppear {
+            publisher.refreshTokenStatus()
+            gist.refreshTokenStatus()
+        }
+        .alert("无法保存 Token", isPresented: $gistSaveFailed) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(gist.lastError ?? "钥匙串写入失败。")
+        }
     }
 
     private func header(_ title: String) -> some View {

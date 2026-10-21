@@ -126,7 +126,10 @@ final class ChatModel {
         }
         msgs.append(AgentMessage(role: .user, content: text))
 
-        let r = AgentRunner(backendFactory: backendFactory)
+        // 步数预算与模型都按「agent 场景」取：iOS 的对话面板本质就是带工具的 agent，
+        // 与桌面端 AIAssistant 同类。此前两处都吃默认值（30 步 / 通用模型），
+        // 用户换了聊天模型会把 agent 一起换掉。
+        let r = AgentRunner(maxSteps: settings.agentMaxSteps, backendFactory: backendFactory)
         runner = r
         // 会话切换/删除会先 cancel()，但 runner 的收尾（onComplete）与在途的
         // chunk 仍可能异步落到回调里——用发送时的会话 id 把关，跨会话一律丢弃，
@@ -144,7 +147,7 @@ final class ChatModel {
         r.run(
             messages: msgs,
             tools: BuiltinAgentTools.all,
-            config: settings.makeConfig(),
+            config: settings.makeConfig(scene: .agent),
             context: context
         )
     }

@@ -47,6 +47,7 @@
 		2600000000000000000002FA /* ../Sources/MEditor/Extensions/FileManager+Directories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000001FA /* ../Sources/MEditor/Extensions/FileManager+Directories.swift */; };
 		2600000000000000000002FB /* ../Sources/MEditor/Skills/AgentSkillStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000001FB /* ../Sources/MEditor/Skills/AgentSkillStore.swift */; };
 		2600000000000000000002FC /* ../Sources/MEditor/Services/AI/Agent/Tools/SkillTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000001FC /* ../Sources/MEditor/Services/AI/Agent/Tools/SkillTools.swift */; };
+		2600000000000000000002FD /* ../Sources/MEditor/Services/Storage/GitHubGistService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000001FD /* ../Sources/MEditor/Services/Storage/GitHubGistService.swift */; };
 		2600000000000000000003F0 /* ../Sources/MEditor/Resources/Preview/template.html in Resources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000004F0 /* ../Sources/MEditor/Resources/Preview/template.html */; };
 		2600000000000000000003F1 /* ../Sources/MEditor/Resources/Preview/css/themes.css in Resources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000004F1 /* ../Sources/MEditor/Resources/Preview/css/themes.css */; };
 		2600000000000000000003F2 /* ../Sources/MEditor/Resources/Preview/css/base.css in Resources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000004F2 /* ../Sources/MEditor/Resources/Preview/css/base.css */; };
@@ -101,6 +102,7 @@
 		2600000000000000000001FA /* ../Sources/MEditor/Extensions/FileManager+Directories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Sources/MEditor/Extensions/FileManager+Directories.swift"; sourceTree = "<group>"; };
 		2600000000000000000001FB /* ../Sources/MEditor/Skills/AgentSkillStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Skills/AgentSkillStore.swift; sourceTree = "<group>"; };
 		2600000000000000000001FC /* ../Sources/MEditor/Services/AI/Agent/Tools/SkillTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/Agent/Tools/SkillTools.swift; sourceTree = "<group>"; };
+		2600000000000000000001FD /* ../Sources/MEditor/Services/Storage/GitHubGistService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/Storage/GitHubGistService.swift; sourceTree = "<group>"; };
 		2600000000000000000004F0 /* ../Sources/MEditor/Resources/Preview/template.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = ../Sources/MEditor/Resources/Preview/template.html; sourceTree = "<group>"; };
 		2600000000000000000004F1 /* ../Sources/MEditor/Resources/Preview/css/themes.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = ../Sources/MEditor/Resources/Preview/css/themes.css; sourceTree = "<group>"; };
 		2600000000000000000004F2 /* ../Sources/MEditor/Resources/Preview/css/base.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = ../Sources/MEditor/Resources/Preview/css/base.css; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 				2600000000000000000004F8 /* ../Sources/MEditor/Resources/Preview/scripts/boot.js */,
 				2600000000000000000001FA /* ../Sources/MEditor/Extensions/FileManager+Directories.swift */,
 				2600000000000000000001FB /* ../Sources/MEditor/Skills/AgentSkillStore.swift */,
+				2600000000000000000001FD /* ../Sources/MEditor/Services/Storage/GitHubGistService.swift */,
 				2600000000000000000001FC /* ../Sources/MEditor/Services/AI/Agent/Tools/SkillTools.swift */,
 			);
 			name = Shared;
@@ -334,6 +337,7 @@
 				2600000000000000000002F9 /* ../Sources/MEditor/Utils/UbiquitousFileHelper.swift in Sources */,
 				2600000000000000000002FA /* ../Sources/MEditor/Extensions/FileManager+Directories.swift in Sources */,
 				2600000000000000000002FB /* ../Sources/MEditor/Skills/AgentSkillStore.swift in Sources */,
+				2600000000000000000002FD /* ../Sources/MEditor/Services/Storage/GitHubGistService.swift in Sources */,
 				2600000000000000000002FC /* ../Sources/MEditor/Services/AI/Agent/Tools/SkillTools.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -465,13 +469,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 6Z56UQ4ZJN;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST = NO;
 				INFOPLIST_FILE = MEditorMobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.meditor.mobile;
 				PRODUCT_NAME = MEditorMobile;
 				SDKROOT = iphoneos;
@@ -487,13 +491,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 6Z56UQ4ZJN;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST = NO;
 				INFOPLIST_FILE = MEditorMobile/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.meditor.mobile;
 				PRODUCT_NAME = MEditorMobile;
 				SDKROOT = iphoneos;
