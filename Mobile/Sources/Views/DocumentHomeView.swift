@@ -62,8 +62,7 @@ struct DocumentHomeView: View {
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
-                store.openIncoming(url)
-                if store.lastError == nil {
+                if store.openIncoming(url) {
                     onOpenDocument()
                 } else {
                     // 失败必须有回声。此前只把原因留在 store 里，用户看到的是

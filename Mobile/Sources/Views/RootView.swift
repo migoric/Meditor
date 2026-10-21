@@ -70,14 +70,22 @@ struct RootView: View {
                 allowsMultipleSelection: false
             ) { result in
                 if case .success(let urls) = result, let url = urls.first {
-                    store.openIncoming(url)
-                    if store.lastError == nil {
+                    if store.openIncoming(url) {
                         showDocument = true
                     } else {
                         // 同 DocumentHomeView：底栏这个入口失败也必须说清原因，
                         // 否则选完文件什么都不会发生。
                         importError = store.lastError
                     }
+                }
+            }
+            // 从「文件」App / 其他 App 分享进入（原先挂在 App 层，失败时停在首页完全静默——
+            // 只有 DocumentView 观察 lastError，而那时它不在视图树里）。
+            .onOpenURL { url in
+                if store.openIncoming(url) {
+                    showDocument = true
+                } else {
+                    importError = store.lastError
                 }
             }
             // AI 面板：原生 sheet（可拖拽抓手 / 多档高度 / 交互式下滑关闭），
@@ -114,6 +122,10 @@ struct RootView: View {
                         if store.loadFromSandbox(url) {
                             page = .home
                             showDocument = true
+                        } else {
+                            // 快捷动作失败同样要回声（文件被移走 / 超限），
+                            // 否则长按图标选文档后毫无反应。
+                            importError = store.lastError ?? "无法打开该文档，文件可能已被移除。"
                         }
                     }
                 }
