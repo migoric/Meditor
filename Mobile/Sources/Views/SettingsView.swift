@@ -73,6 +73,7 @@ struct SettingsView: View {
                     sectionHeader("关于")
                 }
             }
+            .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(PaperTheme.paperBackground)
             .listRowBackground(PaperTheme.card)
@@ -185,6 +186,7 @@ private struct AIServiceSettingsView: View {
                 header("模型")
             }
         }
+        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(PaperTheme.paper)
         .listRowBackground(PaperTheme.card)
@@ -297,6 +299,7 @@ private struct ShareSettingsView: View {
                     .foregroundStyle(PaperTheme.inkSecondary)
             }
         }
+        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(PaperTheme.paper)
         .listRowBackground(PaperTheme.card)
@@ -335,6 +338,7 @@ private struct AISkillsSettingsView: View {
                     .foregroundStyle(PaperTheme.inkSecondary)
             }
         }
+        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(PaperTheme.paper)
         .listRowBackground(PaperTheme.card)

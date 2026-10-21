@@ -77,12 +77,29 @@ private struct HTMLPreviewWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView()
         webView.navigationDelegate = context.coordinator
+        applyBottomInset(to: webView)
         load(in: webView, coordinator: context.coordinator)
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        // 每次都校正：WebKit 在导航结束后会按自己的规则调 `adjustedContentInset`，
+        // makeUIView 那一次设的值可能被覆盖掉。
+        applyBottomInset(to: webView)
         load(in: webView, coordinator: context.coordinator)
+    }
+
+    /// 底部动作栏是 `.overlay`，不参与布局，WKWebView 并不知道自己会被盖住 ⇒
+    /// 必须显式给它的滚动视图补底部 inset。漏了这步时滚到底，最后一块内容
+    /// 会被两条胶囊压住（实测：80 段 HTML 的红底尾块只剩上半截可见）。
+    ///
+    /// 用 `contentInset` 而不是缩 frame：阅读场景下不该改变 HTML 的视口大小，
+    /// `position: fixed` 的页脚也不该被推上去。
+    private func applyBottomInset(to webView: WKWebView) {
+        let inset = PaperTheme.Spacing.bottomBarInset
+        guard webView.scrollView.contentInset.bottom != inset else { return }
+        webView.scrollView.contentInset.bottom = inset
+        webView.scrollView.verticalScrollIndicatorInsets.bottom = inset
     }
 
     private func load(in webView: WKWebView, coordinator: Coordinator) {

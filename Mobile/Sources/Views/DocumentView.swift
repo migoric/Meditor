@@ -253,6 +253,8 @@ struct DocumentView: View {
                         .padding(.horizontal, PaperTheme.Spacing.page)
                         .padding(.vertical, 18)
                 }
+                // 纯文本预览同样贴着底部动作栏滚：不补留白时最后约 34pt 被压住。
+                .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
             }
         } else {
             // 手动编辑经 applyManualEdit 进 store：触发防抖自动保存，进程退出不丢内容。
