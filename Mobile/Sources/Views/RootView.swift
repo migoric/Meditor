@@ -16,6 +16,8 @@ struct RootView: View {
     @State private var aiHero = AIHeroState()
     @State private var plusHero = PlusHeroState()
     @State private var showingFilePicker = false
+    /// 打开文件失败的提示（体积超限 / 二进制 / 无权限）。没有它时选完文件毫无反应。
+    @State private var importError: String?
     /// hero 连续变形命名空间：＋ 钮放大成整页纸底（`PlusZoomOverlay`）。
     @Namespace private var heroNS
     /// 页面切换胶囊的选中 pill 滑动命名空间（matchedGeometryEffect）。
@@ -69,7 +71,13 @@ struct RootView: View {
             ) { result in
                 if case .success(let urls) = result, let url = urls.first {
                     store.openIncoming(url)
-                    if store.lastError == nil { showDocument = true }
+                    if store.lastError == nil {
+                        showDocument = true
+                    } else {
+                        // 同 DocumentHomeView：底栏这个入口失败也必须说清原因，
+                        // 否则选完文件什么都不会发生。
+                        importError = store.lastError
+                    }
                 }
             }
             // AI 面板：原生 sheet（可拖拽抓手 / 多档高度 / 交互式下滑关闭），
@@ -78,6 +86,14 @@ struct RootView: View {
                 AIChatSheet()
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+            }
+            .alert("无法打开文件", isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )) {
+                Button("好", role: .cancel) { importError = nil }
+            } message: {
+                Text(importError ?? "")
             }
             .task(priority: .low) {
                 // 首帧后预热 WKWebView 进程（无 JS），mermaid 文档打开时省去进程创建

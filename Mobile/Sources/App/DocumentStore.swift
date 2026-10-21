@@ -46,7 +46,9 @@ final class DocumentStore {
             // 已通过 bookmark 恢复
         } else if let rel = UserDefaults.standard.string(forKey: Self.lastDocKey) {
             let url = workspace.appendingPathComponent(rel)
-            if let content = try? String(contentsOf: url, encoding: .utf8) {
+            // 同 loadFromSandbox：恢复路径也必须过体积/编码判定，不能因为是
+            // 「上次打开过的」就绕过 — 否则同一份文件在重启前后的行为不一致。
+            if let content = readFileContent(url) {
                 sandboxURL = url
                 fileName   = url.lastPathComponent
                 text       = content
@@ -70,12 +72,31 @@ final class DocumentStore {
 
     // MARK: - 打开文件
 
-    private static let maxFileBytes = 10 * 1024 * 1024
+    /// 可编辑纯文本的上限。Markdown 是给人手敲的，10MB 已远超正常篇幅。
+    private static let maxTextBytes = 10 * 1024 * 1024
+
+    /// HTML 单独放宽：base64 内嵌图片是「自包含单页」的常见形态（导出工具默认这么干），
+    /// 一张 3MB 的图经 base64 膨胀成 4MB 文本，整页轻易越过 10MB —— 用同一个阈值等于
+    /// 把所有带图的单页 HTML 挡在门外。实测 11MB 的 base64 图片页在 WKWebView 里
+    /// 1.5s 内正常渲染 ⇒ 32MB 既放行正常长图文，也仍能挡住把视频塞进属性的输入。
+    private static let maxHTMLBytes = 32 * 1024 * 1024
+
+    /// 按扩展名决定体积上限。所有打开路径都必须经过同一个判定，
+    /// 否则会出现「从『打开文件』进被拒、点最近列表却能开」这种自相矛盾。
+    private static func byteLimit(for url: URL) -> (bytes: Int, label: String) {
+        switch url.pathExtension.lowercased() {
+        case "html", "htm": return (maxHTMLBytes, "32 MB")
+        default:            return (maxTextBytes, "10 MB")
+        }
+    }
 
     /// 处理 fileImporter / .onOpenURL 传入的文件。
     /// 工作区内文件直接打开；沙盒外文件（iCloud Drive 等）原地打开并持久化 bookmark，
     /// 编辑直接写回原位置，不再复制进沙盒。
     func openIncoming(_ url: URL) {
+        // 入口清空上次的错误：调用方靠 `lastError == nil` 判断是否推进导航，
+        // 残留的旧错误会让「上一次失败、这一次成功」被误判成又失败了。
+        lastError = nil
         let scoped = url.startAccessingSecurityScopedResource()
         // 沙盒外原地打开时要继续持有 scope，成功后不 stop（由 scopedURL 管理生命周期）。
         var keepScope = false
@@ -111,6 +132,7 @@ final class DocumentStore {
     /// 通过 bookmark 打开沙盒外文档；stale 时重建书签并更新记录。
     /// knownRel：最近记录中的标识（用于 stale 时回写），无则不回写。
     private func openExternal(bookmark: Data, knownRel: String? = nil) -> Bool {
+        lastError = nil
         var stale = false
         guard let url = try? URL(resolvingBookmarkData: bookmark, bookmarkDataIsStale: &stale) else {
             if let knownRel { recents.remove(knownRel) }
@@ -156,21 +178,21 @@ final class DocumentStore {
         return url.standardizedFileURL.path.hasPrefix(base + "/")
     }
 
-    /// 读取文件内容（10MB 上限 + 编码 fallback），失败时设置 lastError 并返回 nil。
+    /// 读取文件内容（按类型限体积 + 编码 fallback），失败时设置 lastError 并返回 nil。
     ///
     /// 上限必须**在执行读取时**生效：早期实现是 `Data(contentsOf:)` 全量读入后再判
     /// `data.count`，上限形同虚设——一个 2GB 文件会先把 2GB 全部搬进内存才被拒绝，
     /// 足以直接 OOM（且 iOS 上无从恢复）。这里改为有硬上限的分块读取：任何文件最多
-    /// 只分配 `maxFileBytes + 1` 字节，超限即拒绝。
+    /// 只分配 `limit + 1` 字节，超限即拒绝。
     private func readFileContent(_ url: URL) -> String? {
-        let limit = Self.maxFileBytes
+        let (limit, limitLabel) = Self.byteLimit(for: url)
         let data: Data
         do {
             // 预检磁盘大小：命中上限时连读都不读（iCloud 占位文件的 fileSize 不可信，
             // 所以这层只是快路径，真正的保证仍由下面的分块读取兜底）。
             if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
                size > limit {
-                lastError = "文件过大（超过 10 MB），暂不支持打开：\(url.lastPathComponent)"
+                lastError = "文件过大（超过 \(limitLabel)），暂不支持打开：\(url.lastPathComponent)"
                 return nil
             }
             // 分块读到上限 +1 字节：只要多出 1 字节即可判定超限，无需读完整文件。
@@ -183,7 +205,7 @@ final class DocumentStore {
                 buffer.append(chunk)
             }
             guard buffer.count <= limit else {
-                lastError = "文件过大（超过 10 MB），暂不支持打开：\(url.lastPathComponent)"
+                lastError = "文件过大（超过 \(limitLabel)），暂不支持打开：\(url.lastPathComponent)"
                 return nil
             }
             data = buffer
@@ -270,8 +292,12 @@ final class DocumentStore {
         }
         // 先 flush 再读新文件——顺序反了会把用户刚敲的字读回旧版本
         let saveError = flushPendingAutosave()
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-            lastError = saveError
+        // 走 readFileContent 而不是 `String(contentsOf:)`：后者没有体积上限，
+        // 曾导致「从『打开文件』进被拒、点最近列表却能开」的自相矛盾，
+        // 且大文件全量读入没有任何保护。失败原因已由 readFileContent 写进 lastError，
+        // 有保存错误时优先报它（用户的编辑比读失败更该被看见）。
+        guard let content = readFileContent(url) else {
+            if let saveError { lastError = saveError }
             return false
         }
         releaseScope()
