@@ -41,10 +41,17 @@ final class DocumentStore {
     init(recents: RecentHistory) {
         self.recents = recents
         // 优先恢复沙盒外文档（bookmark），失败再退回工作区相对路径。
-        if let bookmark = UserDefaults.standard.data(forKey: Self.lastDocBookmarkKey),
-           restoreExternal(bookmark: bookmark) {
-            // 已通过 bookmark 恢复
-        } else if let rel = UserDefaults.standard.string(forKey: Self.lastDocKey) {
+        var restored = false
+        if let bookmark = UserDefaults.standard.data(forKey: Self.lastDocBookmarkKey) {
+            restored = restoreExternal(bookmark: bookmark)
+            if !restored {
+                // 恢复失败：清掉记录，避免每次启动都重试同一个失效 bookmark；
+                // lastError 一并清掉——启动阶段没有 UI 承接它，残留只会污染后续判定。
+                UserDefaults.standard.removeObject(forKey: Self.lastDocBookmarkKey)
+                lastError = nil
+            }
+        }
+        if !restored, let rel = UserDefaults.standard.string(forKey: Self.lastDocKey) {
             let url = workspace.appendingPathComponent(rel)
             // 同 loadFromSandbox：恢复路径也必须过体积/编码判定，不能因为是
             // 「上次打开过的」就绕过 — 否则同一份文件在重启前后的行为不一致。
@@ -53,6 +60,10 @@ final class DocumentStore {
                 fileName   = url.lastPathComponent
                 text       = content
                 recents.touchRecent(url)
+            } else {
+                // 同上：清记录 + 清错误，不带着一个打不开的文件反复启动失败。
+                UserDefaults.standard.removeObject(forKey: Self.lastDocKey)
+                lastError = nil
             }
         }
         recents.refreshWorkspaceDocuments()
@@ -93,8 +104,14 @@ final class DocumentStore {
     /// 处理 fileImporter / .onOpenURL 传入的文件。
     /// 工作区内文件直接打开；沙盒外文件（iCloud Drive 等）原地打开并持久化 bookmark，
     /// 编辑直接写回原位置，不再复制进沙盒。
-    func openIncoming(_ url: URL) {
-        // 入口清空上次的错误：调用方靠 `lastError == nil` 判断是否推进导航，
+    ///
+    /// 返回本次打开的成败；失败原因在 `lastError`。
+    /// **导航判据用返回值，不要用 `lastError == nil`**：打开成功后 `lastError`
+    /// 仍可能携带上一篇文档的落盘失败回声（`setCurrentDocument` 有意不吞保存错误），
+    /// 拿它当判据会把「打开成功但保存有回声」误判成打开失败，错误地阻断导航。
+    @discardableResult
+    func openIncoming(_ url: URL) -> Bool {
+        // 入口清空上次的错误：失败回声以本次为准，
         // 残留的旧错误会让「上一次失败、这一次成功」被误判成又失败了。
         lastError = nil
         let scoped = url.startAccessingSecurityScopedResource()
@@ -102,22 +119,23 @@ final class DocumentStore {
         var keepScope = false
         defer { if scoped && !keepScope { url.stopAccessingSecurityScopedResource() } }
         startDownloadingIfUbiquitous(url)
-        guard let content = readFileContent(url) else { return }
+        guard let content = readFileContent(url) else { return false }
 
         if isInsideWorkspace(url) {
             setCurrentDocument(url: url, content: content, bookmark: nil)
-            return
+            return true
         }
         // 沙盒外：创建 security-scoped bookmark 以便跨启动恢复访问。
         guard let bookmark = try? url.bookmarkData() else {
             lastError = "无法保存文件访问权限：\(url.lastPathComponent)"
-            return
+            return false
         }
         setCurrentDocument(url: url, content: content, bookmark: bookmark)
         if scoped {
             scopedURL = url
             keepScope = true
         }
+        return true
     }
 
     /// 打开一条最近记录（列表点击 / 快捷动作）。沙盒外记录走 bookmark 解析。
@@ -295,9 +313,13 @@ final class DocumentStore {
         // 走 readFileContent 而不是 `String(contentsOf:)`：后者没有体积上限，
         // 曾导致「从『打开文件』进被拒、点最近列表却能开」的自相矛盾，
         // 且大文件全量读入没有任何保护。失败原因已由 readFileContent 写进 lastError，
-        // 有保存错误时优先报它（用户的编辑比读失败更该被看见）。
+        // 若同时还有旧文档的落盘失败，两条拼在一起报（见下）。
         guard let content = readFileContent(url) else {
-            if let saveError { lastError = saveError }
+            // 双失败（旧文档落盘失败 + 新文件读取失败）时两条都报：
+            // 只留保存错误会让用户不知道新文件为什么没打开。
+            if let saveError {
+                lastError = [saveError, lastError].compactMap { $0 }.joined(separator: "\n")
+            }
             return false
         }
         releaseScope()
@@ -478,8 +500,11 @@ final class DocumentStore {
     }
 
     func reloadIfCurrent(_ url: URL) {
-        guard url.standardizedFileURL == sandboxURL?.standardizedFileURL,
-              let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+        guard url.standardizedFileURL == sandboxURL?.standardizedFileURL else { return }
+        // 同所有打开路径：过体积/编码判定。这里是 Agent 写入（patchFile/writeFile）
+        // 后的回读，写入内容同样可能超限（如大段 base64），全量读入没有任何保护。
+        // 失败时保留内存现状，原因由 readFileContent 写进 lastError 交给 UI 回声。
+        guard let content = readFileContent(url) else { return }
         text = content
     }
 

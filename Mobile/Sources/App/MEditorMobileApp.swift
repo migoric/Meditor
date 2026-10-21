@@ -105,9 +105,6 @@ struct MEditorMobileApp: App {
                 .environment(reader)
                 .tint(PaperTheme.accent)
                 .preferredColorScheme(appearance.mode.colorScheme)
-                .onOpenURL { url in
-                    store.openIncoming(url)
-                }
         }
         .onChange(of: store.recents.documents.count) { _ in
             updateQuickActions()
