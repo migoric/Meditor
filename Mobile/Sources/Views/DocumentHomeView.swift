@@ -161,8 +161,8 @@ struct DocumentHomeView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .refreshable { recents.refreshWorkspaceDocuments() }
-        // 底部悬浮栏不挡卡片：滚动内容底部留白
-        .contentMargins(.bottom, 84, for: .scrollContent)
+        // 底部悬浮栏不挡卡片：滚动内容底部留白（数值推导见 PaperTheme.Spacing.bottomBarInset）
+        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
     }
 
     /// 空态：原生 ContentUnavailableView（iOS 16+）承载标题/说明/动作三件套。

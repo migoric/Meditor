@@ -204,6 +204,18 @@ enum PaperTheme {
     enum Spacing {
         /// 页面边距（20-24 之间的宽松留白）。
         static let page: CGFloat = 22
+
+        /// 贴底滚动内容的底部留白：让最后一屏躲开悬浮动作栏。
+        ///
+        /// 推导（iPhone 17 实测 402×874，safeBottom 34）：栏体高 48pt、底边距安全区
+        /// 4pt ⇒ 栏占「距屏幕底 38–86pt」，栏顶在 y=788，而滚动内容区底边默认在
+        /// 安全区底 y=840 —— 所以**最少要留 52pt** 才不被压住。这里取 84 = 52 刚需
+        /// + 32 呼吸（贴着栏边收尾会显得被切了一刀）。
+        ///
+        /// ⚠️ 栏是 `.overlay`，不参与布局，SwiftUI 不会替任何滚动容器预留空间。
+        /// 每个贴底的滚动容器都必须显式引用这个值 —— 散落魔数曾导致 HTML 预览与
+        /// 设置页整块内容被盖住（见 `HTMLPreviewView` / `SettingsView`）。
+        static let bottomBarInset: CGFloat = 84
     }
 
     // MARK: - 动效

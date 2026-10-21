@@ -37,7 +37,9 @@ struct MarkdownTextEditor: UIViewRepresentable {
         textView.delegate = context.coordinator
         textView.backgroundColor = UIColor(PaperTheme.paper)
         // 与原 SwiftUI TextEditor 的 padding 对齐：左右 ~14pt、顶部 ~14pt 留白
-        textView.textContainerInset = UIEdgeInsets(top: 14, left: 14, bottom: 88, right: 14)
+        textView.textContainerInset = UIEdgeInsets(top: 14, left: 14,
+                                                   bottom: PaperTheme.Spacing.bottomBarInset + 4,
+                                                   right: 14)
         textView.keyboardDismissMode = .interactive
         // Markdown 源码编辑：关掉智能引号 / 破折号，避免代码符号被改写
         textView.smartQuotesType = .no

@@ -78,8 +78,8 @@ struct MarkdownPreviewView: View {
             }
         }
         .coordinateSpace(name: Self.scrollSpace)
-        // 底部悬浮栏不挡内容：滚动内容底部留白
-        .contentMargins(.bottom, 84, for: .scrollContent)
+        // 底部悬浮栏不挡内容：滚动内容底部留白（数值推导见 PaperTheme.Spacing.bottomBarInset）
+        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         // 预热 Mermaid + 解析 blocks：推迟 ~50ms 让导航过渡先完成
         .task(priority: .userInitiated) {
             preloadMermaidIfNeeded()
