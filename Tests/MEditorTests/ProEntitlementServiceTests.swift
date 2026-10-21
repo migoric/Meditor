@@ -28,19 +28,19 @@ final class ProEntitlementServiceTests: XCTestCase {
         settings = AppSettings.shared
         savedKey = settings.proLicenseKey
         savedVerdict = settings.proKeyVerdict
-        savedVerdictKey = settings.proKeyVerdictKey
+        savedVerdictKey = settings.proKeyVerdictKeyHash
         savedVerifiedAt = settings.proKeyVerifiedAt
         // 干净起点
         settings.proLicenseKey = ""
         settings.proKeyVerdict = ""
-        settings.proKeyVerdictKey = ""
+        settings.proKeyVerdictKeyHash = ""
         settings.proKeyVerifiedAt = nil
     }
 
     override func tearDown() async throws {
         settings.proLicenseKey = savedKey
         settings.proKeyVerdict = savedVerdict
-        settings.proKeyVerdictKey = savedVerdictKey
+        settings.proKeyVerdictKeyHash = savedVerdictKey
         settings.proKeyVerifiedAt = savedVerifiedAt
         settings = nil
         try await super.tearDown()
@@ -65,7 +65,7 @@ final class ProEntitlementServiceTests: XCTestCase {
     func test_isProActive_cachedValidForCurrentKey_true() {
         settings.proLicenseKey = "pro-key-1"
         settings.proKeyVerdict = "valid"
-        settings.proKeyVerdictKey = "pro-key-1"
+        settings.proKeyVerdictKeyHash = ProKeyCacheHash.hash("pro-key-1")
         let service = makeService()
         XCTAssertTrue(service.isProActive)
         XCTAssertEqual(service.status, .active(offlineCache: false))
@@ -74,7 +74,7 @@ final class ProEntitlementServiceTests: XCTestCase {
     func test_isProActive_cachedInvalid_false() {
         settings.proLicenseKey = "bad-key"
         settings.proKeyVerdict = "invalid"
-        settings.proKeyVerdictKey = "bad-key"
+        settings.proKeyVerdictKeyHash = ProKeyCacheHash.hash("bad-key")
         let service = makeService()
         XCTAssertFalse(service.isProActive)
         XCTAssertEqual(service.status, .invalid)
@@ -84,7 +84,7 @@ final class ProEntitlementServiceTests: XCTestCase {
         // verdict 属于旧 key：换 key 后不得继承 valid（防止改一个字符绕过门控）
         settings.proLicenseKey = "pro-key-2"
         settings.proKeyVerdict = "valid"
-        settings.proKeyVerdictKey = "pro-key-1"
+        settings.proKeyVerdictKeyHash = ProKeyCacheHash.hash("pro-key-1")
         let service = makeService()
         XCTAssertFalse(service.isProActive)
         XCTAssertEqual(service.status, .unverified)
@@ -104,8 +104,29 @@ final class ProEntitlementServiceTests: XCTestCase {
         XCTAssertTrue(service.isProActive)
         XCTAssertEqual(service.status, .active(offlineCache: false))
         XCTAssertEqual(settings.proKeyVerdict, "valid")
-        XCTAssertEqual(settings.proKeyVerdictKey, "pro-key-1")
+        XCTAssertEqual(settings.proKeyVerdictKeyHash, ProKeyCacheHash.hash("pro-key-1"))
         XCTAssertNotNil(service.lastVerifiedAt)
+    }
+
+    func test_verifyNow_neverPersistsPlaintextKey() async {
+        // 反向验证（AGENTS.md §6）：判定缓存若改回持久化 key 明文，本条立即变红——
+        // 那等于把发布凭证在 Keychain 之外又存一份（proLicenseKey 迁移白做）。
+        settings.proLicenseKey = "pro-key-1"
+        let service = makeService { _ in true }
+        await service.verifyNow()
+        XCTAssertNil(
+            UserDefaults.standard.string(forKey: "MEditor.proKeyVerdictKey"),
+            "旧明文键必须随迁移删除，不得再写入"
+        )
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: "MEditor.proKeyVerdictKeyHash"),
+            ProKeyCacheHash.hash("pro-key-1"),
+            "持久化的只能是哈希"
+        )
+        XCTAssertNotEqual(
+            UserDefaults.standard.string(forKey: "MEditor.proKeyVerdictKeyHash"), "pro-key-1",
+            "哈希键里不得是 key 原文"
+        )
     }
 
     func test_verifyNow_serverInvalid_marksInvalid() async {
@@ -133,7 +154,7 @@ final class ProEntitlementServiceTests: XCTestCase {
             return true
         }
         await service.verifyNow()
-        XCTAssertEqual(settings.proKeyVerdictKey, "key-a")
+        XCTAssertEqual(settings.proKeyVerdictKeyHash, ProKeyCacheHash.hash("key-a"))
         XCTAssertFalse(service.isProActive, "当前 key-b 未验证，不得放行")
         XCTAssertEqual(service.status, .unverified)
     }
@@ -144,7 +165,7 @@ final class ProEntitlementServiceTests: XCTestCase {
         // 曾验证通过 → 网络失败维持有效（已付费用户离线可用）
         settings.proLicenseKey = "pro-key-1"
         settings.proKeyVerdict = "valid"
-        settings.proKeyVerdictKey = "pro-key-1"
+        settings.proKeyVerdictKeyHash = ProKeyCacheHash.hash("pro-key-1")
         let service = makeService()   // 默认 verify 抛 notConnectedToInternet
         await service.verifyNow()
         XCTAssertTrue(service.isProActive, "离线不得清掉已验证通过的缓存判定")
@@ -167,7 +188,7 @@ final class ProEntitlementServiceTests: XCTestCase {
     func test_refreshIfNeeded_freshVerdict_skipsNetwork() {
         settings.proLicenseKey = "pro-key-1"
         settings.proKeyVerdict = "valid"
-        settings.proKeyVerdictKey = "pro-key-1"
+        settings.proKeyVerdictKeyHash = ProKeyCacheHash.hash("pro-key-1")
         settings.proKeyVerifiedAt = Date()
         var calls = 0
         let service = makeService { _ in calls += 1; return true }

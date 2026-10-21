@@ -1,3 +1,5 @@
+import AppKit
+import CryptoKit
 import Foundation
 import Observation
 
@@ -66,7 +68,9 @@ final class AppSettings {
         // Pro 资格（定价线：免费 = 编辑器 + 手动 agent + 单篇导出；Pro = 定时自动化 + 无限托管）
         static let proLicenseKey = "MEditor.proLicenseKey"
         static let proKeyVerdict = "MEditor.proKeyVerdict"
+        /// 旧格式：判定所属 key 的明文（已废弃，迁移后删除——见 proKeyVerdictKeyHash）。
         static let proKeyVerdictKey = "MEditor.proKeyVerdictKey"
+        static let proKeyVerdictKeyHash = "MEditor.proKeyVerdictKeyHash"
         static let proKeyVerifiedAt = "MEditor.proKeyVerifiedAt"
     }
 
@@ -392,6 +396,9 @@ final class AppSettings {
     /// Pro key 落 Keychain 的防抖任务（见 `scheduleProKeyPersist`）。
     @ObservationIgnored private var proKeyPersistTask: Task<Void, Never>?
 
+    /// 终止前 flush 防抖写入的观察者（见 `flushProKeyPersist`）。
+    @ObservationIgnored private var terminateObserver: NSObjectProtocol?
+
     private static let proKeychain = Keychain(service: "com.meditor.app.pro", account: "license")
 
     /// 设置页的 SecureField 每敲一个字符就会写一次 `proLicenseKey`；
@@ -407,6 +414,17 @@ final class AppSettings {
         }
     }
 
+    /// 终止前把防抖窗口内待写的 Pro key 同步落 Keychain。
+    /// 没有这一步时，didSet 已删掉 defaults 里的旧明文、Keychain 写入却排在
+    /// 400ms 后的 Task 里——用户在输入框敲完最后几字符后 400ms 内退出（或崩溃），
+    /// key 两头都不在，静默丢失。
+    private func flushProKeyPersist() {
+        guard let task = proKeyPersistTask else { return }
+        task.cancel()
+        proKeyPersistTask = nil
+        Self.proKeychain.save(proLicenseKey.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// 读 Pro key：Keychain 优先，其次把老版本的 UserDefaults 明文迁过去。
     private static func loadProLicenseKey(from defaults: UserDefaults) -> String {
         if let stored = proKeychain.load(), !stored.isEmpty { return stored }
@@ -417,15 +435,17 @@ final class AppSettings {
         return legacy
     }
 
-    /// `proKeyVerdictKey` 对应 key 的最近一次在线验证判定（"" = 从未验证 / "valid" / "invalid"）。
+    /// `proKeyVerdictKeyHash` 对应 key 的最近一次在线验证判定（"" = 从未验证 / "valid" / "invalid"）。
     /// 离线宽限的基础：门控只读这份缓存，不联网（见 ProEntitlementService）。
     var proKeyVerdict: String {
         didSet { defaults.set(proKeyVerdict, forKey: Key.proKeyVerdict) }
     }
 
-    /// 缓存判定所属的 key——key 一改，旧判定自然失效（防止换 key 继承 valid）。
-    var proKeyVerdictKey: String {
-        didSet { defaults.set(proKeyVerdictKey, forKey: Key.proKeyVerdictKey) }
+    /// 缓存判定所属的 key 的 SHA-256——key 一改，旧判定自然失效（防止换 key 继承 valid）。
+    /// **只持久化哈希**：该值与 `proLicenseKey` 等值，明文落 plist 等于把发布凭证
+    /// 在 Keychain 之外又存了一份（proLicenseKey 迁 Keychain 就白做了）。
+    var proKeyVerdictKeyHash: String {
+        didSet { defaults.set(proKeyVerdictKeyHash, forKey: Key.proKeyVerdictKeyHash) }
     }
 
     /// 最近一次在线验证成功到达服务端的时间（nil = 从未验证过；UI 展示 + 刷新节流用）。
@@ -540,8 +560,35 @@ final class AppSettings {
         // Pro 资格（key 存 Keychain；老版本的 UserDefaults 明文在这里一次性迁移）
         proLicenseKey = Self.loadProLicenseKey(from: d)
         proKeyVerdict = d.string(forKey: Key.proKeyVerdict) ?? ""
-        proKeyVerdictKey = d.string(forKey: Key.proKeyVerdictKey) ?? ""
+        // 判定所属 key 只存哈希。旧格式存的是明文（与 proLicenseKey 等值，
+        // 等于凭证在 plist 又躺一份）：迁移为哈希并持久化，旧键无论是否有值都删掉。
+        // init 里的赋值不触发 didSet，所以迁移分支要显式 defaults.set。
+        if let hashed = d.string(forKey: Key.proKeyVerdictKeyHash), !hashed.isEmpty {
+            proKeyVerdictKeyHash = hashed
+        } else if let legacy = d.string(forKey: Key.proKeyVerdictKey), !legacy.isEmpty {
+            let migrated = ProKeyCacheHash.hash(legacy)
+            proKeyVerdictKeyHash = migrated
+            d.set(migrated, forKey: Key.proKeyVerdictKeyHash)
+        } else {
+            proKeyVerdictKeyHash = ""
+        }
+        d.removeObject(forKey: Key.proKeyVerdictKey)
         proKeyVerifiedAt = d.object(forKey: Key.proKeyVerifiedAt) as? Date
+        // 防抖窗口内退出不丢 key（见 flushProKeyPersist）。
+        // willTerminate 在 .main 队列派发，assumeIsolated 在此成立——不是消音器。
+        terminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flushProKeyPersist() }
+        }
+    }
+}
+
+/// Pro 判定缓存的 key 关联哈希：缓存要按 key 绑定（换 key 旧判定失效），
+/// 但持久化的只能是哈希，不能是 key 明文。
+enum ProKeyCacheHash {
+    static func hash(_ key: String) -> String {
+        SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 

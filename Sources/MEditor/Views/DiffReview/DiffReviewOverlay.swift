@@ -541,7 +541,9 @@ struct DiffWebView: NSViewRepresentable {
     /// 视觉呈现保持不变，但文档里的 `<script>` / `on*` 处理器都跑不起来。
     private func htmlShell(around raw: String, nonce: String) -> String {
         let meta = "<meta http-equiv=\"Content-Security-Policy\" content=\"\(Self.csp(nonce: nonce))\">"
-        if let headTag = raw.range(of: "<head", options: .caseInsensitive),
+        // 边界匹配：裸 "<head" 前缀会把 `<header>` 误当 head——meta 被插进 body，
+        // 而 body 里的 CSP meta 会被浏览器整体忽略，等于放行文档内脚本。
+        if let headTag = raw.range(of: #"<head(?=[\s>])"#, options: [.regularExpression, .caseInsensitive]),
            let close   = raw.range(of: ">", range: headTag.upperBound..<raw.endIndex) {
             var out = raw
             out.insert(contentsOf: meta, at: close.upperBound)
@@ -623,6 +625,11 @@ img{max-width:100%}
   }
 
   window.updateDiffStatus=function(diffId,newStatus){
+    // 必须写回数据层：pendingIds()（键盘审阅 j/k/↵）靠 p.status 过滤，
+    // 只改 DOM 的话 Enter 接受一段后高亮不前进，连续接受形同失效。
+    for(var i=0;i<paragraphs.length;i++){
+      if(paragraphs[i].diffId===diffId){paragraphs[i].status=newStatus;break;}
+    }
     var blocks=document.querySelectorAll('[data-diffid="'+diffId+'"]');
     blocks.forEach(function(b){
       b.className='para-block'+cls(newStatus);
