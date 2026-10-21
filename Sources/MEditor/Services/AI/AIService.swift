@@ -117,22 +117,47 @@ struct AIConfig: Sendable {
     /// CLI 请求级超时（秒）。超时后终止 claude 子进程并报错。默认 120s。
     var cliTimeoutSeconds: TimeInterval = 120
 
+    /// 按场景解析模型名：场景专属模型为空（或纯空白）时回退到通用模型。
+    ///
+    /// 抽成 `nonisolated static` 纯函数是为了让两个平台壳共用同一条回退规则——
+    /// 桌面端读 `AppSettings`，iOS 读 `MobileAISettings`，但"哪个字段优先、
+    /// 空串算什么"只能有一份定义。iOS 侧没有测试 target，这层抽出来后才能被
+    /// `Tests/MEditorTests` 直接覆盖（见 `AIConfigSceneModelTests`）。
+    ///
+    /// ⚠️ 去空白必须连换行一起去掉：粘贴一个尾部带换行的模型名时，
+    /// 只去空格会把 `"\n"` 当成合法模型名发出去，API 侧回 Model not found——
+    /// 而用户看到的是一个空字段。`whitespacesAndNewlines` 是 `whitespaces` 的超集，
+    /// 对正常输入无行为差异。
+    nonisolated static func resolveModel(
+        scene: AIScene,
+        fallback: String,
+        agent: String,
+        inline: String
+    ) -> String {
+        func trimmed(_ value: String) -> String {
+            value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        switch scene {
+        case .agent:
+            let scoped = trimmed(agent)
+            return scoped.isEmpty ? trimmed(fallback) : scoped
+        case .inline:
+            let scoped = trimmed(inline)
+            return scoped.isEmpty ? trimmed(fallback) : scoped
+        case .chat, .beautify:
+            return trimmed(fallback)
+        }
+    }
+
     @MainActor
     static func current(_ s: AppSettings, scene: AIScene = .chat) -> AIConfig {
         // 根据场景决定模型
-        let model: String
-        switch scene {
-        case .agent:
-            model = s.aiAgentModel.trimmingCharacters(in: .whitespaces).isEmpty
-                ? s.aiModel.trimmingCharacters(in: .whitespaces)
-                : s.aiAgentModel.trimmingCharacters(in: .whitespaces)
-        case .inline:
-            model = s.aiInlineModel.trimmingCharacters(in: .whitespaces).isEmpty
-                ? s.aiModel.trimmingCharacters(in: .whitespaces)
-                : s.aiInlineModel.trimmingCharacters(in: .whitespaces)
-        default:
-            model = s.aiModel.trimmingCharacters(in: .whitespaces)
-        }
+        let model = resolveModel(
+            scene: scene,
+            fallback: s.aiModel,
+            agent: s.aiAgentModel,
+            inline: s.aiInlineModel
+        )
         return AIConfig(
             kind:                  AIProviderKind(rawValue: s.aiProvider) ?? .disabled,
             baseURL:               s.aiBaseURL.trimmingCharacters(in: .whitespaces),

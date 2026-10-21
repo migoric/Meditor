@@ -175,6 +175,16 @@ struct DocumentView: View {
                     }
                 }
                 .disabled(ShareLinkPublisher.shared.isPublishing)
+                Button {
+                    publishToGist()
+                } label: {
+                    if GistPublisher.shared.isPublishing {
+                        Label("正在发布…", systemImage: "curlybraces")
+                    } else {
+                        Label("发布到 GitHub Gist", systemImage: "curlybraces")
+                    }
+                }
+                .disabled(GistPublisher.shared.isPublishing)
             }
             Button {
                 Pasteboard.copy(store.text)
@@ -229,6 +239,26 @@ struct DocumentView: View {
             )
             if let url = publisher.lastResultURL {
                 publishAlert = (message: "链接已复制到剪贴板：\n\(url)", url: url)
+            } else {
+                publishAlert = (message: publisher.lastError ?? "发布失败", url: nil)
+            }
+        }
+    }
+
+    /// 发布当前 Markdown 原文到 GitHub Gist；结果复用同一个弹窗反馈。
+    /// 与「发布在线链接」的区别：这条路上传的是 Markdown 源文件（适合存档/给开发者），
+    /// 不走自建 Worker，因此不依赖 Worker 是否在线。
+    private func publishToGist() {
+        let publisher = GistPublisher.shared
+        publisher.refreshTokenStatus()
+        guard publisher.isConfigured else {
+            publishAlert = (message: "请先在 设置 → 在线分享 → GitHub Gist 中配置 Token（需要 gist 权限）", url: nil)
+            return
+        }
+        Task {
+            await publisher.publish(fileName: store.fileName, markdown: store.text)
+            if let url = publisher.lastResultURL {
+                publishAlert = (message: "Gist 已发布，链接已复制：\n\(url)", url: url)
             } else {
                 publishAlert = (message: publisher.lastError ?? "发布失败", url: nil)
             }
