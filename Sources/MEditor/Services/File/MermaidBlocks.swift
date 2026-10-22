@@ -77,26 +77,33 @@ enum MermaidBlocks {
         var isMermaid: Bool { char == "`" && info == "mermaid" }
     }
 
+    /// 一行开头的围栏标记（`char` + `length` 个 + 标记之后的起始索引）。
+    ///
+    /// 是三成员的 struct 而不是元组：SwiftLint 的 `large_tuple`（error 级）
+    /// 禁止超过两个成员的元组。
+    private struct Marker {
+        let char: Character
+        let length: Int
+        let end: String.Index
+    }
+
     private static func openingFence(_ line: String) -> Fence? {
-        guard let fence = scanMarker(line, char: nil) else { return nil }
-        let rest = line[fence.end...]
-        if fence.char == "`", rest.contains("`") { return nil }
+        guard let marker = scanMarker(line, char: nil) else { return nil }
+        let rest = line[marker.end...]
+        if marker.char == "`", rest.contains("`") { return nil }
         let info = rest
             .split(whereSeparator: { $0 == " " || $0 == "\t" })
             .first.map(String.init) ?? ""
-        return Fence(char: fence.char, length: fence.length, info: info)
+        return Fence(char: marker.char, length: marker.length, info: info)
     }
 
     private static func isClosingFence(_ line: String, char: Character, minLength: Int) -> Bool {
-        guard let fence = scanMarker(line, char: char), fence.length >= minLength else { return false }
-        return line[fence.end...].allSatisfy { $0 == " " || $0 == "\t" }
+        guard let marker = scanMarker(line, char: char), marker.length >= minLength else { return false }
+        return line[marker.end...].allSatisfy { $0 == " " || $0 == "\t" }
     }
 
     /// 扫「0–3 空格缩进 + ≥3 个同字符围栏」，返回围栏字符、长度与围栏之后的末端索引。
-    private static func scanMarker(
-        _ line: String,
-        char expected: Character?
-    ) -> (char: Character, length: Int, end: String.Index)? {
+    private static func scanMarker(_ line: String, char expected: Character?) -> Marker? {
         var spaces = 0
         var idx = line.startIndex
         while idx < line.endIndex, line[idx] == " " {
@@ -116,6 +123,6 @@ enum MermaidBlocks {
             scan = line.index(after: scan)
         }
         guard length >= 3 else { return nil }
-        return (marker, length, scan)
+        return Marker(char: marker, length: length, end: scan)
     }
 }
