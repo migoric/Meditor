@@ -194,10 +194,24 @@
 
   // Paragraph-level parse cache: avoids re-parsing unchanged paragraphs.
   // Key = paragraph text (exact match, no hash collision risk).
-  // Only caches blocks under 2KB to bound memory usage.
+  // Value = **已消毒**的 HTML（命中即跳过 marked.parse 与 DOMPurify 两道）。
+  //
+  // 预算按**源码字节**而不是条目数：条目数 × 单块上限会被两个上限相乘地卡死——
+  // 旧配置「300 条 × 单块 2KB」意味着真实文档里 2–5KB 的段落（带表格的小节、
+  // 长列表项）**一条都进不来**，实测 178KB 文档改一段仍然等同冷启。
   var paragraphCache = new Map();
-  var PARAGRAPH_CACHE_LIMIT = 300;
-  var PARAGRAPH_CACHE_MAX_BLOCK = 2048;
+  var paragraphCacheBytes = 0;
+  var PARAGRAPH_CACHE_MAX_BYTES = 4 * 1024 * 1024;
+  var PARAGRAPH_CACHE_MAX_BLOCK = 256 * 1024;
+
+  /**
+   * 渲染计数：只数不改行为，给测试把「性能主张」钉住。
+   *
+   * 「分块缓存生效」这个说法无法用产物正确性的测试证明——删掉整个缓存、每次都整篇
+   * 解析，产物依然逐字节正确。所以需要出口：命中/重解析/整篇兜底/消毒各调用了几次。
+   * 测试断言的是这组比值，不是耗时（耗时在 CI 机器上不稳定）。
+   */
+  var renderStats = { fullParse: 0, blockParse: 0, blockHit: 0, sanitize: 0 };
 
   /** 顶层围栏开栏行：零缩进 + ≥3 个反引号或波浪号（理由见 splitBlocks）。 */
   var FENCE_OPEN = /^(`{3,}|~{3,})/;
@@ -316,7 +330,12 @@
    * 会丢掉列表上下文（渲染成缩进代码块、或位置错乱）。遇到这种一律返回 null
    * 让调用方全文解析——与支持围栏之前的行为一致，宁可少缓存，不可渲染错。
    *
-   * @returns {string[]|null} 块数组；围栏未闭合或有带缩进的围栏时返回 null。
+   * **未闭合围栏不返回 null**：从开栏行到文末整体算作一块。这条路径是打字过程中
+   * 每一帧都会走的（敲下 ``` 的那一刻），此前返回 null 等于每敲一个键都付一次
+   * 整篇 marked + 整篇 DOMPurify。整块切法在语义上是等价的——CommonMark 里未闭合
+   * 围栏本来就吞到文末，单独解析这一段与整篇解析该段的结果相同。
+   *
+   * @returns {string[]|null} 块数组；仅在遇到带缩进的围栏时返回 null。
    */
   function splitBlocks(content) {
     var lines = content.split('\n');
@@ -358,7 +377,14 @@
       current.push(line);
     }
 
-    if (fence) return null;     // 围栏未闭合（流式写入 / 编辑中途）
+    // 围栏未闭合（流式写入 / 刚敲下开栏行）：余下全文算一块，**不回退整篇解析**。
+    // `current` 此时已经攒了从开栏行前那一块起、到文末的全部行（含空行——
+    // 围栏内的空行走上面的 continue，不会被当分隔符）。
+    if (fence) {
+      if (current.length > 0) blocks.push(current.join('\n'));
+      return mergeUnsafeBoundaries(blocks);
+    }
+
     if (current.length > 0) blocks.push(current.join('\n'));
     return mergeUnsafeBoundaries(blocks);
   }
@@ -367,7 +393,9 @@
    * Render markdown by splitting into blocks (paragraphs separated by blank lines),
    * caching each block's HTML independently. Only changed blocks hit marked.parse.
    * Falls back to full parse for cross-block structures (link reference definitions)
-   * and for unterminated fences.
+   * and for indented fences (list-item containers we cannot reconstruct).
+   *
+   * 未闭合围栏**不再**回退整篇：见 splitBlocks 的说明。这条路径是打字时的每一帧。
    */
   function renderMarkdownCached(content) {
     // Fallback: link reference definitions are cross-block state.
@@ -392,31 +420,44 @@
       var block = blocks[i];
       if (!block.trim()) { htmlParts.push(''); continue; }
 
-      if (block.length <= PARAGRAPH_CACHE_MAX_BLOCK && paragraphCache.has(block)) {
-        htmlParts.push(paragraphCache.get(block));
+      var cached = cacheGet(block);
+      if (cached !== null) {
+        renderStats.blockHit++;
+        htmlParts.push(cached);
       } else {
+        renderStats.blockParse++;
         var blockHTML = sanitizeHTML(marked.parse(fixTableSeparators(block), { gfm: true, breaks: false }));
-        if (block.length <= PARAGRAPH_CACHE_MAX_BLOCK) {
-          paragraphCache.set(block, blockHTML);
-          if (paragraphCache.size > PARAGRAPH_CACHE_LIMIT) {
-            var firstKey = paragraphCache.keys().next().value;
-            paragraphCache.delete(firstKey);
-          }
-        }
+        cachePut(block, blockHTML);
         htmlParts.push(blockHTML);
-
-        // Evict oldest if over limit
-        if (paragraphCache.size > PARAGRAPH_CACHE_LIMIT) {
-          var firstKey = paragraphCache.keys().next().value;
-          paragraphCache.delete(firstKey);
-        }
       }
     }
 
     return htmlParts.join('\n');
   }
 
+  /**
+   * 读缓存。超单块上限的块不进缓存（一次改动就要整块重算，缓存它只占内存）。
+   * @returns {string|null} 命中返回已消毒 HTML；未命中返回 null。
+   */
+  function cacheGet(block) {
+    if (block.length > PARAGRAPH_CACHE_MAX_BLOCK) return null;
+    return paragraphCache.has(block) ? paragraphCache.get(block) : null;
+  }
+
+  /** 写缓存，并按源码字节预算做 FIFO 淘汰（Map 的插入顺序即写入顺序）。 */
+  function cachePut(block, html) {
+    if (block.length > PARAGRAPH_CACHE_MAX_BLOCK) return;
+    if (!paragraphCache.has(block)) paragraphCacheBytes += block.length;
+    paragraphCache.set(block, html);
+    while (paragraphCacheBytes > PARAGRAPH_CACHE_MAX_BYTES && paragraphCache.size > 1) {
+      var oldest = paragraphCache.keys().next().value;
+      paragraphCacheBytes -= oldest.length;
+      paragraphCache.delete(oldest);
+    }
+  }
+
   function renderMarkdown(content) {
+    renderStats.fullParse++;
     var processed = content
       .replace(/^(#{1,6}\s+[^\n]+)\n(?!\n)/gm, '$1\n\n')
       .replace(/^(---+|\*\*\*+|___+)\s*\n(?!\n)/gm, '$1\n\n');
@@ -432,6 +473,7 @@
   var SANITIZE_URI_REGEXP = /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|file|meditor-asset):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
 
   function sanitizeHTML(html) {
+    renderStats.sanitize++;
     // 消毒库缺失时兜底放行——template.html 的 CSP（script-src 'self'）仍挡着内联脚本。
     if (typeof DOMPurify === 'undefined' || typeof DOMPurify.sanitize !== 'function') return html;
     return DOMPurify.sanitize(html, { ALLOWED_URI_REGEXP: SANITIZE_URI_REGEXP });
@@ -826,6 +868,27 @@
     // 中间层（renderInto 会顺带 patchDOM，差异被 DOM 归一化吃掉）。
     renderMarkdown: renderMarkdown,
     renderMarkdownCached: renderMarkdownCached,
+    // 渲染计数（见 renderStats 注释）：测试用它把「缓存真的生效」钉住，
+    // 因为产物正确性测试对「整篇重解析」同样是绿的。
+    getRenderStats: function () {
+      var bytes = 0;
+      var keys = paragraphCache.keys();
+      for (var it = keys.next(); !it.done; it = keys.next()) bytes += it.value.length;
+      return {
+        fullParse: renderStats.fullParse,
+        blockParse: renderStats.blockParse,
+        blockHit: renderStats.blockHit,
+        sanitize: renderStats.sanitize,
+        cacheEntries: paragraphCache.size,
+        cacheBytes: bytes
+      };
+    },
+    resetRenderStats: function () {
+      renderStats.fullParse = 0;
+      renderStats.blockParse = 0;
+      renderStats.blockHit = 0;
+      renderStats.sanitize = 0;
+    },
     configureMermaidFromTheme: configureMermaidFromTheme,
     refreshMermaidForTheme: refreshMermaidForTheme,
     renderAllDiagrams: renderAllDiagrams
