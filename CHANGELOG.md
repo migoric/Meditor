@@ -10,6 +10,22 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
+## [Unreleased]
+
+### Fixed
+
+- **Pro key 的验证缓存不再把 key 明文写回 plist**（#66 迁移的补漏）。验证成功后
+  缓存判定按 key 绑定，但此前绑定值就是 key 原文，`didSet` 直接落
+  UserDefaults——任何验证过 key 的用户，明文仍躺在
+  `~/Library/Preferences/com.meditor.app.plist`（只是换了个键名）。现在只持久化
+  SHA-256，旧键一次性迁移并删除。顺带修掉一个次生丢 key：写入 Keychain 有
+  400ms 防抖，窗口内退出 App 会两头都不在，现在终止前同步 flush。
+- **键盘审阅「↵ 连续接受」现在会真正前进**。此前 JS 侧状态变更只改 DOM class、
+  不写回数据层，Enter 接受一段后高亮停留在已处理段上，必须「Enter+j」交替按。
+- **审阅面 CSP 注入不再被 `<header>` 骗过**。插入点此前用 `<head` 前缀匹配，
+  AI 产物以 `<header>` 开头时 CSP meta 被插进 body，被浏览器整体忽略，
+  文档内脚本恢复可执行。改为边界匹配并补了反向测试。
+
 ## [0.13.2] - 2026-10-22
 
 **只修一处：冷启动命中「上次选中的是 HTML」时，那篇文档一直是空白页。** 恢复会话走的是

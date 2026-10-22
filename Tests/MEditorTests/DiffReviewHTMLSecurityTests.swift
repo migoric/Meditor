@@ -108,6 +108,24 @@ final class DiffReviewHTMLSecurityTests: XCTestCase {
         XCTAssertTrue(html.contains("<p>hi</p>"))
     }
 
+    func testHTMLMode_headerTagIsNotMistakenForHead() {
+        // 反向验证（AGENTS.md §6）：`<head` 前缀匹配会把 `<header>` 误当 head，
+        // CSP meta 被插进 body——而 body 里的 CSP meta 会被浏览器整体忽略，
+        // 文档内 <script> 恢复可执行。改回前缀匹配本条立即变红。
+        let raw = "<!DOCTYPE html><html><body><header>页眉</header>"
+            + "<script>alert(1)</script></body></html>"
+        let html = makeView(isHTMLMode: true, rawHTML: raw).buildHTML()
+
+        let cspIndex = html.range(of: "Content-Security-Policy")?.lowerBound
+        let headerIndex = html.range(of: "<header>")?.lowerBound
+        XCTAssertNotNil(cspIndex, "无真正 <head> 时应走补壳分支，CSP 不能丢")
+        XCTAssertNotNil(headerIndex)
+        if let c = cspIndex, let h = headerIndex {
+            XCTAssertTrue(c < h, "CSP meta 必须在 <header>（body 内容）之前，插进 body 等于没有")
+        }
+        XCTAssertTrue(html.contains("<script>alert(1)</script>"), "原样内容不应被重写")
+    }
+
     // MARK: - Helper
 
     private func matches(in text: String, pattern: String) -> [String] {

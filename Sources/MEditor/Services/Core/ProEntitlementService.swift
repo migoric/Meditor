@@ -13,7 +13,8 @@ import Observation
 //
 // 验证链路：key 存 AppSettings.proLicenseKey；在线验证打 worker 的
 // GET /api/pro/verify（Bearer key → {valid}，复用托管的 PRO_TOKENS，不需新 secret）。
-// 服务端判定按 key 缓存（proKeyVerdict + proKeyVerdictKey + proKeyVerifiedAt）。
+// 服务端判定按 key 缓存（proKeyVerdict + proKeyVerdictKeyHash + proKeyVerifiedAt）——
+// 关联用的是 key 的 SHA-256，持久化层不落地 key 明文（见 AppSettings.proKeyVerdictKeyHash）。
 //
 // 离线宽限的不对称（有意为之）：
 //   - 曾验证通过的 key：离线时缓存判定维持有效（fail-open——已付费用户离线不应被锁出）
@@ -61,7 +62,7 @@ final class ProEntitlementService {
     var isProActive: Bool {
         !key.isEmpty
             && settings.proKeyVerdict == "valid"
-            && settings.proKeyVerdictKey == key
+            && settings.proKeyVerdictKeyHash == ProKeyCacheHash.hash(key)
     }
 
     init(settings: AppSettings = .shared) {
@@ -75,7 +76,7 @@ final class ProEntitlementService {
     private static func deriveStatus(settings: AppSettings, offlineCache: Bool = false) -> Status {
         let key = settings.proLicenseKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return .noKey }
-        guard settings.proKeyVerdictKey == key else { return .unverified }
+        guard settings.proKeyVerdictKeyHash == ProKeyCacheHash.hash(key) else { return .unverified }
         switch settings.proKeyVerdict {
         case "valid": return .active(offlineCache: offlineCache)
         case "invalid": return .invalid
@@ -96,7 +97,7 @@ final class ProEntitlementService {
             let ok = try await verify(currentKey)
             // 验证期间用户可能又改了 key——只写回「被验证的那个 key」的判定
             settings.proKeyVerdict = ok ? "valid" : "invalid"
-            settings.proKeyVerdictKey = currentKey
+            settings.proKeyVerdictKeyHash = ProKeyCacheHash.hash(currentKey)
             settings.proKeyVerifiedAt = Date()
             lastVerifiedAt = settings.proKeyVerifiedAt
             status = Self.deriveStatus(settings: settings)
