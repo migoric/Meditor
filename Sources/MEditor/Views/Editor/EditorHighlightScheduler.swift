@@ -11,11 +11,18 @@ final class EditorHighlightScheduler {
 
     /// Cached line offset table: lineOffsets[i] = UTF16 index of line i's start.
     ///
-    /// 不变量：`lineOffsets` 描述的是**长度为 `indexedLength` 的那份文本**。
-    /// 调用方（`EditorCoordinator.textDidChange` 等）在文本变化后显式 rebuild，
-    /// `ensureLineOffsets` 只按长度兜底——长度对不上说明表已过期，代价 O(1)。
+    /// 不变量：`lineOffsets` 描述的是**最后一次 rebuild 时那份文本**，长度记在
+    /// `indexedLength`。调用方（`EditorCoordinator.textDidChange` 等）在文本变化后
+    /// 显式 rebuild；`ensureLineOffsets` 只按长度兜底，代价 O(1)。
+    /// ⚠️ 只比长度意味着**等长改写不会触发兜底**（例如 `"ab\ncd"` → `"abcde"`），
+    /// 此时表是过期的。当前 5 个调用点都在改动后显式 rebuild，所以不可达；
+    /// 要更强的一致性得比对内容哈希，代价是每次 `lineIndex` 都 O(n)，不可接受。
     var lineOffsets: [Int] = [0]
     private(set) var indexedLength: Int = -1
+
+    /// rebuild 次数。只为让测试能断言「文本没变时不该重建」——
+    /// 这是性能主张本身，光看偏移值正确性是抓不到的。
+    private(set) var rebuildCount: Int = 0
 
     private var highlightTimer: Timer?
     private var visibleHighlightTimer: Timer?
@@ -28,8 +35,9 @@ final class EditorHighlightScheduler {
     /// Rebuild the line offset cache from the current text content.
     ///
     /// 逐 UTF16 单元扫 `0x0A`，分块读进栈外的固定缓冲区（4,096 单元 = 8KB），
-    /// 避免逐次 `NSString.range(of:)` 的搜索上下文开销。实测（M1，`-O`）：
-    /// 218KB 3.82→0.33ms、2.2MB 37.0→3.4ms、5.5MB 92.7→8.7ms，约 **10.7–11.7×**，
+    /// 避免逐次 `NSString.range(of:)` 的搜索上下文开销。实测（`-O`）：
+    /// 218KB 6.17→0.62ms、2.2MB 54.4→3.25ms、5.5MB 135.4→7.95ms ——
+    /// 小文件约 10×，**大文件 16.7–17.0×**（旧法每行一次 ICU 调用，行越长差越大）。
     /// 12 例语料（CRLF / 代理对 / 零宽 / 尾换行）与旧实现输出逐项一致。
     ///
     /// 正确性前提：`0x0A` 不会出现在任何多单元编码里（UTF-16 代理对的高位是
@@ -59,14 +67,16 @@ final class EditorHighlightScheduler {
 
         lineOffsets = offsets
         indexedLength = length
+        rebuildCount += 1
         PerformanceTracer.end("RebuildLineOffsets", log: PerformanceTracer.editor, id: sid)
     }
 
     /// 表与文本长度不一致时重建（O(1) 判断）。
     ///
-    /// 主路径不依赖这里：`textDidChange` 每次都会显式 rebuild。这里是兜底——
-    /// 程序化替换文本、或外部直接改 `NSTextStorage` 而未走 textDidChange 时，
-    /// 旧表不会静默留下，否则 `lineIndex(for:)` 与滚动同步会按旧行结构定位。
+    /// 主路径不依赖这里：`textDidChange` 每次都会显式 rebuild。这里是兜底——程序化
+    /// 替换文本、或外部直接改 `NSTextStorage` 而未走 textDidChange 时，避免按旧行
+    /// 结构定位。
+    /// ⚠️ **只防长度变化**：等长改写不会重建（见 `lineOffsets` 的说明）。
     func ensureLineOffsets(for text: String) {
         if (text as NSString).length != indexedLength { rebuildLineOffsets(for: text) }
     }

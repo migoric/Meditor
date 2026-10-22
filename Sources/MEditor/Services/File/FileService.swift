@@ -93,9 +93,13 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
     /// 一次枚举同时产出「可搜索文件」与「@mention 全量项（含目录）」。
     ///
     /// 这两个列表的**筛选谓词完全相同**（隐藏名单 / iCloud 占位符 / 扩展名白名单），
-    /// 早先各写一遍、各枚举一遍整棵目录树：4,650 项目录实测 174.5ms，
-    /// 合并为一次枚举后 89ms（省 49%）。索引在打开目录时同步构建（`reloadFresh`
-    /// → `rebuildIndex`），这部分直接压在用户等待里。
+    /// 早先各写一遍、各枚举一遍整棵目录树。合并成一次枚举省掉的是**重复枚举**
+    /// 那一段，不是排序：本方法仍是「1 次枚举 + 2 次 `sortItems`」（两份列表各排一次），
+    /// 而 4,500 项的排序本身比枚举贵得多（见 `sortItems` 的注释）。
+    /// ⚠️ 别把「省 49%」当成本方法的收益 —— 那个数字只计了枚举。
+    ///
+    /// 调用方在 `FileTreeManager.rebuildIndex` 的 `Task.detached(priority: .utility)` 里，
+    /// **不在主线程**，不会直接压住用户等待。
     ///
     /// 单一来源：`loadAllFiles` / `loadAllItems` 都从这里派生，避免两套谓词漂移。
     /// 两个数组里的 FileItem 是各自独立实例（仅 url/isDirectory 相同），
@@ -195,9 +199,13 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
     // MARK: - Private
 
     private func sortItems(_ items: [FileItem]) -> [FileItem] {
-        items.sorted { a, b in
-            if a.isDirectory != b.isDirectory { return a.isDirectory && !b.isDirectory }
+        // 预取 name：`FileItem.name` 是 `url.lastPathComponent` 计算属性，比较器里直接
+        // 取会每次比较现算两次（4,500 项 ≈ 10.8 万次比较 × 2 次 String 构造），
+        // 实测 91.7ms → 13.4ms。ICU 的 localizedStandardCompare 本身只占 13ms。
+        let keyed = items.map { (item: $0, name: $0.name) }
+        return keyed.sorted { a, b in
+            if a.item.isDirectory != b.item.isDirectory { return a.item.isDirectory && !b.item.isDirectory }
             return a.name.localizedStandardCompare(b.name) == .orderedAscending
-        }
+        }.map(\.item)
     }
 }

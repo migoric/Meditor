@@ -135,6 +135,19 @@ enum PreviewAssetMirror {
     private static let mermaidLock = NSLock()
     nonisolated(unsafe) private static var mermaidProvisioned = false
 
+    /// 同一个 cache dir 的写盘必须串行。
+    ///
+    /// 头注释的约定是「callers should treat a given cache dir as single-writer」，但
+    /// `WebViewPool.warmUp` 把 `prepareHTML` 挪进 `Task.detached` 之后，预热与真实
+    /// 预览会**并发**写同一个 `caches/com.meditor.preview`：`mirrorAssets` 在需要刷新
+    /// 时先 `removeItem(css|scripts|marked.min.js…)`，`pruneCacheIfNeeded` 甚至整目录删
+    /// ——正好删在另一个上下文的 `loadFileURL` 加载过程中，表现是有样式缺失 / 白屏。
+    /// 这里把「prune + mirror + 写 preview.html + 按需拷 mermaid」整段串行化。
+    ///
+    /// 只串行化写者；WKWebView 侧读 preview.html 不在锁内（读取要等写者跑完才可能
+    /// 看到完整目录，因为镜像在 `preview.html` 之前完成）。
+    private static let cacheWriteLock = NSLock()
+
     /// Copy mermaid.min.js into the preview cache dir on first need.
     ///
     /// 资源定位与拷贝分离：定位（依赖 Bundle 布局）在这里，锁内的
@@ -201,18 +214,22 @@ enum PreviewAssetMirror {
             .replacingOccurrences(of: "{{INITIAL_CONTENT_JSON}}", with: contentJSON)
 
         // Write to caches so loadFileURL can grant readAccessTo a stable directory.
-        try? fm.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        // Best-effort: prune if the cache has grown unreasonably large.
-        pruneCacheIfNeeded(at: cacheDir, fileManager: fm)
-        // Symlink (or copy) the resources into cache dir so relative paths work.
-        mirrorAssets(at: cacheDir, copyingFrom: resourcesRoot, fileManager: fm)
-
+        // 整段写盘持锁：另一个上下文（预热 / 另一个预览）可能正在同一目录里
+        // removeItem 或整目录 prune，见 cacheWriteLock 的说明。
         let fileURL = cacheDir.appendingPathComponent("preview.html")
-        try? html.write(to: fileURL, atomically: true, encoding: .utf8)
+        cacheWriteLock.withLock {
+            try? fm.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+            // Best-effort: prune if the cache has grown unreasonably large.
+            pruneCacheIfNeeded(at: cacheDir, fileManager: fm)
+            // Symlink (or copy) the resources into cache dir so relative paths work.
+            mirrorAssets(at: cacheDir, copyingFrom: resourcesRoot, fileManager: fm)
+            // 镜像先于 preview.html 落盘：读侧看到 preview.html 时，相对资源一定已在。
+            try? html.write(to: fileURL, atomically: true, encoding: .utf8)
 
-        // Provision mermaid.min.js only if initial content needs it.
-        if initialContent.contains("```mermaid") {
-            ensureMermaidProvisioned(at: cacheDir, fileManager: fm)
+            // Provision mermaid.min.js only if initial content needs it.
+            if initialContent.contains("```mermaid") {
+                ensureMermaidProvisioned(at: cacheDir, fileManager: fm)
+            }
         }
         return fileURL
     }

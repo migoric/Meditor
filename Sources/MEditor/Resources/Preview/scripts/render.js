@@ -144,6 +144,54 @@
     return clone.innerHTML;
   }
 
+  /**
+   * 给 marked 的三条块规则加「前置判据」，把 JSC 的 O(n) 失败路径短路掉。
+   *
+   * 背景（实测，jsc 与 WKWebView 同引擎）：JSC 的 YARR 对**部分** anchored 正则不做
+   * 「只在位置 0 尝试」的优化，一旦匹配失败就会沿整串走一遍。`html` 规则含反向引用
+   * `\1`，120KB 输入上失败一次要 **1.9ms**；而 marked 每产出一个 block token 就要把
+   * ~12 条规则对**剩余全文**各试一遍 ⇒ O(n²)（120KB 技术文档整篇解析 1256ms，
+   * 同一份 marked 在 V8 上只要 8.9ms）。
+   *
+   * 三条规则的首个有效字符是固定的（html 必是 `<`、blockquote 必是 `>`、hr 必是
+   * `-`/`_`/`*`，且前面最多 3 个空格），用 charCodeAt 判一下就能免掉整趟扫描。
+   * 判据只做「不可能匹配时提前返回」，能匹配时仍交给原正则 ⇒ 语义不可能变。
+   *
+   * ⚠️ 数值下标：`<` 60 / `>` 62 / `-` 45 / `_` 95 / `*` 42。
+   */
+  function installMarkedFastPathGuards() {
+    var rules = typeof marked !== 'undefined' && marked.Lexer &&
+      marked.Lexer.rules && marked.Lexer.rules.block && marked.Lexer.rules.block.gfm;
+    if (!rules) return;   // marked 版本变了：宁可不加判据，也不要抛错
+
+    function firstNonSpaceIn(src, codes) {
+      var i = 0;
+      while (i < 3 && src.charCodeAt(i) === 32) i++;
+      return codes.indexOf(src.charCodeAt(i)) !== -1;
+    }
+
+    function guarded(re, cheap) {
+      return {
+        source: re.source, flags: re.flags, global: false,
+        ignoreCase: re.ignoreCase, multiline: re.multiline,
+        sticky: false, unicode: re.unicode, lastIndex: 0,
+        exec: function (src) { return cheap(src) ? re.exec(src) : null; },
+        test: function (src) { return cheap(src) ? re.test(src) : false; }
+      };
+    }
+
+    var guards = {
+      html: function (src) { return firstNonSpaceIn(src, [60]); },
+      blockquote: function (src) { return firstNonSpaceIn(src, [62]); },
+      hr: function (src) { return firstNonSpaceIn(src, [45, 95, 42]); }
+    };
+    for (var name in guards) {
+      if (rules[name]) rules[name] = guarded(rules[name], guards[name]);
+    }
+  }
+
+  installMarkedFastPathGuards();
+
   // Paragraph-level parse cache: avoids re-parsing unchanged paragraphs.
   // Key = paragraph text (exact match, no hash collision risk).
   // Only caches blocks under 2KB to bound memory usage.
@@ -157,6 +205,105 @@
   var FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
   /** 带缩进的围栏行——可能是列表项里的围栏，其容器上下文我们还原不了。 */
   var FENCE_INDENTED = /^\s+(`{3,}|~{3,})/;
+
+  /** 无缩进的列表项行（`- ` / `* ` / `+ ` / `1. ` / `1) `）。 */
+  var LIST_ITEM_LINE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+
+  /**
+   * 会**跨空行**的 HTML 块起始（CommonMark 类型 1–5）。
+   * 类型 6/7（块级标签、完整标签）到下一个空行就结束，按空行切是安全的。
+   */
+  var HTML_SPANNING_OPEN = /^ {0,3}(?:<(script|pre|style|textarea)(?=[\s>]|$)|<!--|<\?|<!\[CDATA\[|<![A-Z])/i;
+
+  function hasListItemLine(block) {
+    var lines = block.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (LIST_ITEM_LINE.test(lines[i])) return true;
+    }
+    return false;
+  }
+
+  function startsWithListItem(block) {
+    var lines = block.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i] !== '') return LIST_ITEM_LINE.test(lines[i]);
+    }
+    return false;
+  }
+
+  /** 块开头是一个跨空行的 HTML 块、且块内还没闭合。 */
+  function opensUnclosedSpanningHTML(block) {
+    var m = HTML_SPANNING_OPEN.exec(block);
+    if (!m) return false;
+    var rest = block.slice(m[0].length);
+    var name = m[1] ? m[1].toLowerCase() : null;
+    if (name) return rest.toLowerCase().indexOf('</' + name + '>') === -1;
+    if (m[0].indexOf('<!--') !== -1) return rest.indexOf('-->') === -1;
+    if (m[0].indexOf('<?') !== -1) return rest.indexOf('?>') === -1;
+    if (m[0].indexOf('CDATA') !== -1) return rest.indexOf(']]>') === -1;
+    return rest.indexOf('>') === -1;                 // <!DOCTYPE 之类
+  }
+
+  /** 块级 HTML 起始行（`<div …`、`</div>`、`<!--`…）。 */
+  var HTML_BLOCK_START = /^ {0,3}<[a-zA-Z!/?]/;
+
+  /** HTML 空元素：不会再有闭合标签。 */
+  var VOID_ELEMENTS = {
+    area: 1, base: 1, br: 1, col: 1, embed: 1, hr: 1, img: 1,
+    input: 1, link: 1, meta: 1, param: 1, source: 1, track: 1, wbr: 1
+  };
+
+  /**
+   * 块以 `<tag …>` 开头、且这个元素在块内还没闭合。
+   *
+   * 除了 CommonMark 类型 1–5（本来就跨空行），类型 6/7 的块级标签也有问题：
+   * 单独把 `<div class="x">` 送去 sanitize 时 DOMPurify 会当成不完整片段丢掉，
+   * 整篇解析里它却是合法父节点 ⇒ 两侧产物不同。所以这里按「开闭标签计数」判，
+   * 与规范无关，只关心「消毒器看到的片段是否自洽」。
+   */
+  function opensUnclosedElement(block) {
+    if (!HTML_BLOCK_START.test(block)) return false;
+    var m = /^ {0,3}<([a-zA-Z][\w-]*)\b/.exec(block);
+    if (!m) return false;
+    var tag = m[1].toLowerCase();
+    if (VOID_ELEMENTS[tag]) return false;
+    var openTag = new RegExp("<" + tag + "\\b", "gi");
+    var closeTag = new RegExp("</" + tag + "\\s*>", "gi");
+    var opens = (block.match(openTag) || []).length;
+    var closes = (block.match(closeTag) || []).length;
+    return opens > closes;
+  }
+
+  /**
+   * 把「切在这里会改变语义」的相邻块合回去。
+   *
+   * 按空行切对**跨空行的结构**无解，实测有这些差异（整篇解析 vs 分块解析）：
+   * - 松散列表 `1. 甲\n\n2. 乙` 被切成两个 `<ol>`、丢 `<li><p>`；
+   * - 列表项的第二段（`- 甲\n\n  续段`）掉出列表；
+   * - `<!--\n\n注释\n\n-->` 被拆开，`-->` 漏成正文；
+   * - `<div>` 与 `</div>` 落在不同块 ⇒ DOMPurify 逐块消毒时把未闭合片段丢掉，
+   *   与整篇消毒结果不同。
+   *
+   * 合并永远**不会**产生错误输出（整篇解析就是参考答案），代价只是丢掉这一段
+   * 的缓存粒度 ⇒ 判据取「宁可多合，不可切错」，与 splitBlocks 的取舍一致。
+   *
+   * @returns {string[]} 合并后的块数组
+   */
+  function mergeUnsafeBoundaries(blocks) {
+    if (blocks.length < 2) return blocks;
+    var merged = [blocks[0]];
+    for (var i = 1; i < blocks.length; i++) {
+      var left = merged[merged.length - 1];
+      var right = blocks[i];
+      var unsafe = /^[ \t]/.test(right) ||                               // 缩进续行
+        (startsWithListItem(right) && hasListItemLine(left)) ||           // 松散列表
+        opensUnclosedSpanningHTML(left) ||                                // 跨空行 HTML（类型 1–5）
+        opensUnclosedElement(left);                                       // 未闭合的块级标签
+      if (unsafe) merged[merged.length - 1] = left + '\n\n' + right;
+      else merged.push(right);
+    }
+    return merged;
+  }
 
   /**
    * 按空行切块，**顶层围栏代码块内部不切**。
@@ -213,7 +360,7 @@
 
     if (fence) return null;     // 围栏未闭合（流式写入 / 编辑中途）
     if (current.length > 0) blocks.push(current.join('\n'));
-    return blocks;
+    return mergeUnsafeBoundaries(blocks);
   }
 
   /**
@@ -224,7 +371,9 @@
    */
   function renderMarkdownCached(content) {
     // Fallback: link reference definitions are cross-block state.
-    if (/^\[.+\]:\s/m.test(content)) {
+    // 冒号后的空白不是必需的（`[bar]:https://x` 也是合法定义），此前要求 `\s`
+    // 会把这种写法漏过去 ⇒ 定义块单独解析成空串、正文留 `[bar]`，链接静默丢失。
+    if (/^ {0,3}\[[^\]\n]+\]:/m.test(content)) {
       return renderMarkdown(content);
     }
 
@@ -673,6 +822,10 @@
 
   global.MEditorRender = {
     renderInto: renderInto,
+    // 纯函数出口：测试要做「分块 vs 整篇」的出口等价性比对，只能拿到这两个
+    // 中间层（renderInto 会顺带 patchDOM，差异被 DOM 归一化吃掉）。
+    renderMarkdown: renderMarkdown,
+    renderMarkdownCached: renderMarkdownCached,
     configureMermaidFromTheme: configureMermaidFromTheme,
     refreshMermaidForTheme: refreshMermaidForTheme,
     renderAllDiagrams: renderAllDiagrams
