@@ -22,15 +22,139 @@
     'console': 'plaintext', 'shellsession': 'plaintext'
   };
 
+  /**
+   * 从 `from` 起找下一个**可能是围栏**的标记位置（行首 0–3 空格之后的 ``` / ~~~）。
+   *
+   * 为什么不用「按行切分再逐行测」：这条路径每一帧都跑，240KB 文档有 6,000 行，
+   * 每行一次 `slice` + 一次正则 ≈ 4–5ms。围栏只出现在少数几行，用 `indexOf`
+   * 在两个标记之间跳，代价只跟**标记个数**有关。
+   *
+   * 4 空格缩进是缩进代码块，里面的 ``` 只是字面文本，不是围栏（CommonMark）。
+   */
+  function findFenceMarker(src, from) {
+    var i = from;
+    while (i < src.length) {
+      var tick = src.indexOf('```', i);
+      var tilde = src.indexOf('~~~', i);
+      var pos;
+      if (tick === -1) pos = tilde;
+      else if (tilde === -1) pos = tick;
+      else pos = tick < tilde ? tick : tilde;
+      if (pos === -1) return -1;
+      if (isAtLineStart(src, pos)) return pos;
+      i = pos + 1;
+    }
+    return -1;
+  }
+
+  /** `pos` 之前只有行首或 0–3 个空格？ */
+  function isAtLineStart(src, pos) {
+    var k = pos - 1;
+    var spaces = 0;
+    while (k >= 0 && src.charCodeAt(k) === 32 && spaces <= 3) {
+      spaces += 1;
+      k -= 1;
+    }
+    if (spaces > 3) return false;
+    return k < 0 || src.charCodeAt(k) === 10;
+  }
+
+  /** `[from, to)` 是否只有空白（空格 / 制表 / CR）。 */
+  function isBlankRange(src, from, to) {
+    for (var i = from; i < to; i++) {
+      var c = src.charCodeAt(i);
+      if (c !== 32 && c !== 9 && c !== 13) return false;
+    }
+    return true;
+  }
+
+  /**
+   * 摘出 ```mermaid 围栏块，换成占位 div，marked 之后再交给 mermaid 渲染。
+   *
+   * **围栏配对必须按 CommonMark 规则扫描**，不能像改前那样用
+   * `/```mermaid[^]*?```/g` 找最近的收尾。那条正则不认围栏规则，代价是：
+   * 正文里只要出现一处 ```mermaid（行中间的、被外层围栏包着的、教程里描述写法的），
+   * 它就会和后面**任意**一个 ``` 配成一对，中间内容被整段摘走当成交给 mermaid
+   * 的代码——CHANGELOG 实测吞掉 19,370 字符。而且是**消失**而不是退化成代码块，
+   * 用户没有任何线索。
+   *
+   * 现在的判定：
+   *   - 开栏行 0–3 空格缩进，≥3 个同字符；反引号围栏的 info 里不能再有反引号
+   *    （否则行内代码 ```` ``` ``` ```` 会被当成围栏）；
+   *   - 关栏行只能有围栏字符与空白，且长度 ≥ 开栏长度（```` 能关 ```，反之不能）；
+   *   - **所有**围栏都要跨过（含 `~~~`、含 `swift` 这类非 mermaid 语言），
+   *     围栏内的 ``` 只是文本；
+   *   - 只有「反引号开栏 + info 首 token 恰为 `mermaid`（区分大小写）」才出图。
+   *     这两个限定与 Swift 侧 `MermaidBlocks` 是同一口径——诊断校验的块必须
+   *     恰好是预览会渲染成图的块，否则报的是用户看不见的错。
+   *
+   * 未闭合的 mermaid 围栏**不出图**（没有关栏行就没有块边界，marked 会把它
+   * 当普通代码块渲染到文末），保持与预览一致。
+   */
   function extractMermaid(content) {
+    var src = content || '';
+    // 快路径：没有 ``` 或压根没出现 "mermaid" ⇒ 不可能有 mermaid 围栏。
+    // 这份函数每帧都跑，绝大多数文档根本不含这两个串。
+    if (src.indexOf('```') === -1 || src.indexOf('mermaid') === -1) {
+      return { processed: src, diagrams: [] };
+    }
+
     var diagrams = [];
-    var processed = content.replace(/```mermaid[^]*?```/g, function (match) {
-      var code = match.replace('```mermaid', '').slice(0, -3).trim();
-      var id = 'mermaid-' + diagrams.length;
-      diagrams.push({ id: id, code: code });
-      return '<div class="mermaid-placeholder" id="' + id + '"></div>';
-    });
-    return { processed: processed, diagrams: diagrams };
+    var pieces = [];
+    var cursor = 0;        // 已原样写出的位置
+    var open = null;       // { char, len, info, lineStart, bodyStart }
+    var pos = 0;
+
+    while (true) {
+      var mk = findFenceMarker(src, pos);
+      if (mk === -1) break;
+
+      var ch = src.charAt(mk);
+      var len = 1;
+      while (mk + len < src.length && src.charAt(mk + len) === ch) len += 1;
+      var markerEnd = mk + len;
+      var nl = src.indexOf('\n', mk);
+      var lineEnd = nl === -1 ? src.length : nl;
+      var lineStart = mk === 0 ? 0 : src.lastIndexOf('\n', mk - 1) + 1;
+
+      if (open) {
+        // 关栏：同字符 + 长度不小于开栏 + 行尾只有空白
+        if (ch === open.char && len >= open.len && isBlankRange(src, markerEnd, lineEnd)) {
+          if (open.info === 'mermaid') {
+            var id = 'mermaid-' + diagrams.length;
+            diagrams.push({ id: id, code: src.slice(open.bodyStart, lineStart).trim() });
+            pieces.push(src.slice(cursor, open.lineStart));
+            pieces.push('<div class="mermaid-placeholder" id="' + id + '"></div>');
+            // 只吃到关栏行行尾、**保留换行**：占位 div 与后面的正文必须各占一行，
+            // 否则会并成同一个 HTML 块、正文被吞进 div 里。
+            cursor = lineEnd;
+          }
+          open = null;
+        }
+        pos = lineEnd + 1;
+        continue;
+      }
+
+      // 开栏
+      var s = markerEnd;
+      while (s < lineEnd && (src.charCodeAt(s) === 32 || src.charCodeAt(s) === 9)) s += 1;
+      var e = s;
+      while (e < lineEnd) {
+        var c = src.charCodeAt(e);
+        if (c === 32 || c === 9 || c === 13) break;
+        e += 1;
+      }
+      if (ch === '`' && src.indexOf('`', markerEnd) !== -1 && src.indexOf('`', markerEnd) < lineEnd) {
+        pos = lineEnd + 1;   // info 里带反引号 ⇒ 不是围栏（行内代码）
+        continue;
+      }
+      // info string 取首个 token：```mermaid theme=dark 也算 mermaid 块
+      open = { char: ch, len: len, info: src.slice(s, e), lineStart: lineStart, bodyStart: lineEnd + 1 };
+      pos = lineEnd + 1;
+    }
+
+    pieces.push(src.slice(cursor));
+    return { processed: pieces.join(''), diagrams: diagrams };
   }
 
   // ── 数学公式（KaTeX）────────────────────────────────────────────────
@@ -972,6 +1096,12 @@
     },
     configureMermaidFromTheme: configureMermaidFromTheme,
     refreshMermaidForTheme: refreshMermaidForTheme,
-    renderAllDiagrams: renderAllDiagrams
+    renderAllDiagrams: renderAllDiagrams,
+    // 测试出口：DOM 里的占位元素会被异步换成 SVG 或错误块（mermaid 库缺失时
+    // 直接变成 error-block），从页面结构上数不清「到底摘了几个、边界在哪」。
+    // 这里直接给出最近一次 renderInto 的提取结果，让围栏配对的断言能精确到代码内容。
+    getMermaidDiagrams: function () {
+      return latestDiagrams.map(function (d) { return { id: d.id, code: d.code }; });
+    }
   };
 })(window);
