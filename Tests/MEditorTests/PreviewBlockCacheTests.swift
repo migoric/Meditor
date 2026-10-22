@@ -91,9 +91,11 @@ final class PreviewBlockCacheTests: XCTestCase {
         XCTAssertEqual(codeText, "let a = 1\n\nlet b = 2", "增量 patch 不该丢掉代码块")
     }
 
-    func testUnterminatedFenceFallsBackToFullParse() async throws {
-        // AI 流式写入 / 编辑中途会出现未闭合围栏：切块会把后续内容误当正文，
-        // 必须退回整篇解析（marked 会把余下内容当代码）。
+    func testUnterminatedFenceParsesTailAsOneBlock() async throws {
+        // AI 流式写入 / 编辑中途会出现未闭合围栏。此前这里回退**整篇**解析——
+        // 那是「刚敲下 ``` 」那一帧的代价（66KB 文档整篇 marked + 整篇消毒 36ms）。
+        // 现在把「开栏行到文末」整体算一块：CommonMark 里未闭合围栏本来就吞到文末，
+        // 单独解析这一段与整篇解析该段的结果相同，前面的块还能照常命中缓存。
         let streaming = """
         # 标题
 
@@ -108,7 +110,9 @@ final class PreviewBlockCacheTests: XCTestCase {
         _ = try await render(streaming, in: webView)
 
         let parsed: [String] = try await strings("window.__srcs", webView)
-        XCTAssertEqual(parsed.count, 1, "未闭合围栏必须整篇解析，实际解析了 \(parsed.count) 块")
+        XCTAssertEqual(parsed.count, 4, "应是「3 个普通块 + 未闭合围栏一块」，实际 \(parsed.count) 块：\(parsed)")
+        XCTAssertEqual(parsed.last?.hasPrefix("```swift"), true, "未闭合围栏没有整体成块：\(parsed.last ?? "nil")")
+        XCTAssertEqual(parsed.last?.contains("let x = 1"), true, "围栏内容被切出去了：\(parsed.last ?? "nil")")
 
         let codeText = try await eval("document.querySelector('#content pre code').textContent.trim()", webView)
         XCTAssertEqual(codeText, "let x = 1")

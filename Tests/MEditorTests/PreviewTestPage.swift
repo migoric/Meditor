@@ -67,8 +67,46 @@ enum PreviewTestPage {
         return String(array.dropFirst().dropLast())
     }
 
-    /// 读取仓库内的预览资源源码（marked / render.js …）。
+    /// 渲染计数快照（`render.js` 的 `getRenderStats`）。
     ///
+    /// 用来把「缓存真的命中」这类**性能主张**钉住：产物正确性测试无法区分
+    /// 「命中缓存」与「整篇重解析」，两者输出一致。
+    struct RenderStats: CustomStringConvertible {
+        var fullParse = 0
+        var blockParse = 0
+        var blockHit = 0
+        var sanitize = 0
+        var cacheEntries = 0
+        var cacheBytes = 0
+
+        var description: String {
+            "fullParse=\(fullParse) blockParse=\(blockParse) blockHit=\(blockHit) "
+            + "sanitize=\(sanitize) entries=\(cacheEntries) bytes=\(cacheBytes)"
+        }
+    }
+
+    static func resetStats(_ webView: WKWebView) async throws {
+        try await eval("MEditorRender.resetRenderStats(); 1", webView)
+    }
+
+    static func stats(_ webView: WKWebView) async throws -> RenderStats {
+        guard let raw = try await eval("JSON.stringify(MEditorRender.getRenderStats())", webView),
+              let data = raw.data(using: .utf8),
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            throw XCTSkip("拿不到渲染计数：render.js 里没有 getRenderStats")
+        }
+        var stats = RenderStats()
+        stats.fullParse = json["fullParse"] as? Int ?? 0
+        stats.blockParse = json["blockParse"] as? Int ?? 0
+        stats.blockHit = json["blockHit"] as? Int ?? 0
+        stats.sanitize = json["sanitize"] as? Int ?? 0
+        stats.cacheEntries = json["cacheEntries"] as? Int ?? 0
+        stats.cacheBytes = json["cacheBytes"] as? Int ?? 0
+        return stats
+    }
+
+    /// 读取仓库内的预览资源源码（marked / render.js …）。    ///
     /// 走 `#filePath` 而不是 Bundle：`swift test` 下 `Bundle.main` 是 xctest 启动器，
     /// `PreviewResourceLocator` 解析为 nil，拿不到 Resources。
     static func previewScript(named relative: String) throws -> String {
