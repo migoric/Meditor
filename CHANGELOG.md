@@ -39,7 +39,14 @@
   **超线性**增长（30KB 90ms / 60KB 304ms / 120KB 1181ms，每翻一倍约 4×），而同一份
   `marked.min.js`、同一批字符串在 V8（node）下是线性的（3.3 / 6.3 / 12.9ms），
   120KB 处相差约 90×。根因未定位，记为待查。
-
+- **启动预热不再阻塞主线程，且与真实预览共用一套资源镜像**。`WebViewPool.warmUp`
+  曾在主线程自己抄了一份「目标不存在就 `copyItem`」的镜像逻辑（856KB），与真实
+  预览走的 `PreviewAssetMirror.mirrorAssets`（hard-link + 按源/目标 mtime 判刷新 +
+  目录按条目补齐）是两套实现。这不只是重复代码：预热缓存**永不刷新**——
+  `fileExists` 直接跳过，`shouldRefresh` / `directoryNeedsRefresh` 没有机会生效，
+  升级后残留的旧 CSS/JS（含 `css/katex.min.css`、`css/fonts/*.woff2` 这类新增资源）
+  会一直喂给升级后的第一个预览。现在镜像与 `preview.html` 生成统一走
+  `PreviewAssetMirror.prepareHTML`，并挪到后台任务，主线程只建 WebView 与导航。
 ### Fixed
 
 - **Pro key 的验证缓存不再把 key 明文写回 plist**（#66 迁移的补漏）。验证成功后
