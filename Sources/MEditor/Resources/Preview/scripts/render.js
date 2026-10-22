@@ -151,22 +151,89 @@
   var PARAGRAPH_CACHE_LIMIT = 300;
   var PARAGRAPH_CACHE_MAX_BLOCK = 2048;
 
+  /** 顶层围栏开栏行：零缩进 + ≥3 个反引号或波浪号（理由见 splitBlocks）。 */
+  var FENCE_OPEN = /^(`{3,}|~{3,})/;
+  /** 闭合围栏行：CommonMark 允许 0–3 空格缩进，其后只能有空白。 */
+  var FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
+  /** 带缩进的围栏行——可能是列表项里的围栏，其容器上下文我们还原不了。 */
+  var FENCE_INDENTED = /^\s+(`{3,}|~{3,})/;
+
   /**
-   * Render markdown by splitting into paragraphs (blocks separated by blank lines),
+   * 按空行切块，**顶层围栏代码块内部不切**。
+   *
+   * 不能直接用 `content.split(/\n{2,}/)`：围栏里经常有空行（用空行分段的
+   * shell 脚本、配置样例），切开后首行成了未闭合代码块、代码正文被当普通
+   * 段落、收尾的 ``` 漏成正文。
+   *
+   * 保守边界：带缩进的围栏（4 空格）通常是列表项的内容，单独把代码块切出来
+   * 会丢掉列表上下文（渲染成缩进代码块、或位置错乱）。遇到这种一律返回 null
+   * 让调用方全文解析——与支持围栏之前的行为一致，宁可少缓存，不可渲染错。
+   *
+   * @returns {string[]|null} 块数组；围栏未闭合或有带缩进的围栏时返回 null。
+   */
+  function splitBlocks(content) {
+    var lines = content.split('\n');
+    var blocks = [];
+    var current = [];
+    var fence = null;          // { char: '`' | '~', len: n } —— 非 null 即在围栏内
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+
+      if (fence) {
+        var close = FENCE_CLOSE.exec(line);
+        if (close && close[1].charAt(0) === fence.char && close[1].length >= fence.len) {
+          fence = null;
+        }
+        current.push(line);
+        continue;
+      }
+
+      var open = FENCE_OPEN.exec(line);
+      if (open) {
+        fence = { char: open[1].charAt(0), len: open[1].length };
+        current.push(line);
+        continue;
+      }
+
+      // 缩进围栏 ⇒ 容器（列表）里的代码块，切块会破坏它的上下文
+      if (FENCE_INDENTED.test(line)) return null;
+
+      // 只有真空行才是块分隔符（与 \n{2,} 同义；含空白的行留给 marked 判定）
+      if (line === '') {
+        if (current.length > 0) {
+          blocks.push(current.join('\n'));
+          current = [];
+        }
+        continue;
+      }
+
+      current.push(line);
+    }
+
+    if (fence) return null;     // 围栏未闭合（流式写入 / 编辑中途）
+    if (current.length > 0) blocks.push(current.join('\n'));
+    return blocks;
+  }
+
+  /**
+   * Render markdown by splitting into blocks (paragraphs separated by blank lines),
    * caching each block's HTML independently. Only changed blocks hit marked.parse.
-   * Falls back to full parse if content has complex cross-block structures.
+   * Falls back to full parse for cross-block structures (link reference definitions)
+   * and for unterminated fences.
    */
   function renderMarkdownCached(content) {
-    var blocks = content.split(/\n{2,}/);
-
     // Fallback: link reference definitions are cross-block state.
-    // Also fallback if content has fenced code blocks anywhere — splitting on
-    // \n\n would break fences that contain blank lines, shattering the code
-    // block into separate paragraphs (first line becomes an unterminated code
-    // block, body renders as plain paragraphs, closing ``` leaks as text) and
-    // corrupting TOC line mapping. Note the `m` flag + `\s*`: the fence may sit
-    // mid-document and be slightly indented, not just at the very start.
-    if (blocks.length <= 2 || /^\[.+\]:\s/m.test(content) || /^\s*```/m.test(content)) {
+    if (/^\[.+\]:\s/m.test(content)) {
+      return renderMarkdown(content);
+    }
+
+    // 围栏内部不切块 ⇒ 含代码块的文档也能命中块级缓存。
+    // 此前这里是「任意位置出现围栏就放弃分块」，而技术文档几乎必然含代码块，
+    // 等于缓存对目标用户基本失效（757KB 实测全量 marked.parse 98.7ms，
+    // 每一轮防抖更新都要重付一次）。
+    var blocks = splitBlocks(content);
+    if (!blocks || blocks.length <= 2) {
       return renderMarkdown(content);
     }
 
