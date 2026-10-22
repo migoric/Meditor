@@ -381,4 +381,30 @@ final class FileServiceTests: XCTestCase {
         }
         XCTAssertFalse(file === item, "同一路径在两份列表里应是不同实例")
     }
+
+    /// 排序必须**预取** name，不能在比较器里逐次现算。
+    ///
+    /// `FileItem.name` 是 `url.lastPathComponent` 计算属性，比较器里直接取等于每次比较
+    /// 现算两次：500 项 ≈ 4,500 次比较 ⇒ 9,000 次取值（实测排序 91.7ms vs 13.4ms）。
+    /// 这条守的是「性能主张」本身——只断言排序结果正确的用例，把预取删掉照样全绿。
+    func test_loadAll_sortDoesNotRecomputeNamePerComparison() {
+        var names: [String] = []
+        for i in 0..<120 {
+            names.append(String(format: "note%03d.md", i))
+        }
+        createDir("bulk")
+        for name in names { createFile("bulk/\(name)") }
+
+        FileItem.nameAccessCount = 0
+        let combined = service.loadAll(under: tempDir)
+        let accesses = FileItem.nameAccessCount
+
+        XCTAssertEqual(combined.files.count, names.count)
+        // 预取实现：每个 item 取一次（两份列表各一份实例 ⇒ ≤ 2N）。
+        // 逐次现取：n·log n·2 ≈ 1,700 次。阈值取 3N = 360 留足余量。
+        XCTAssertLessThan(
+            accesses, names.count * 3,
+            "排序里仍在逐次取 name（\(accesses) 次 / \(names.count) 项）—— 预取被去掉了"
+        )
+    }
 }

@@ -112,4 +112,34 @@ final class EditorLineOffsetsTests: XCTestCase {
             XCTAssertEqual(scheduler.lineIndex(for: probe, in: text), line, "第 \(line) 行定位错")
         }
     }
+
+    // MARK: - 性能语义（缓存必须真的命中）
+
+    /// 文本没变时，`lineIndex` 不能触发重建。
+    ///
+    /// 这是「O(1) 兜底校验」这个**性能主张本身**：删掉 `indexedLength = length`
+    /// 之后每次调用都会重建（`computeVisibleTopLine` 每个滚动 tick 都要调它，
+    /// 等于退回 O(n) 全文扫描），但文本正确性用例全绿 —— 光看偏移值抓不到。
+    func test_lineIndex_doesNotRebuildWhenTextUnchanged() {
+        let scheduler = EditorHighlightScheduler()
+        let text = "第一行\n第二行\n第三行"
+        scheduler.rebuildLineOffsets(for: text)
+        let baseline = scheduler.rebuildCount
+
+        for _ in 0..<50 { _ = scheduler.lineIndex(for: 8, in: text) }
+
+        XCTAssertEqual(baseline, 1, "显式 rebuild 一次后计数应为 1")
+        XCTAssertEqual(
+            scheduler.rebuildCount, baseline,
+            "文本没变却重建了 \(scheduler.rebuildCount - baseline) 次 —— 兜底校验形同虚设"
+        )
+    }
+
+    /// 长度变化必须重建（否则上一轮改成「永不重建」也能过）。
+    func test_lineIndex_rebuildsWhenLengthChanges() {
+        let scheduler = EditorHighlightScheduler()
+        scheduler.rebuildLineOffsets(for: "abc")
+        _ = scheduler.lineIndex(for: 0, in: "abcdef")
+        XCTAssertEqual(scheduler.rebuildCount, 2, "长度变了却未重建")
+    }
 }
