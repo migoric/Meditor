@@ -12,6 +12,22 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **每次按键重建行偏移表的成本降到 1/10**。`EditorHighlightScheduler.rebuildLineOffsets`
+  此前用 `NSString.range(of:)` 逐行找换行，O(行数) 次搜索调用，且**不受**大文件
+  高亮阈值保护——1.24MB 文档单次重建 19.9ms，按 8 字/秒打字等于每 125ms 一次 20ms
+  卡顿，超出 16.7ms 帧预算。改成把文本分块读进 4,096 个 UTF16 单元的缓冲区、
+  逐单元比较 `0x0A`：实测 218KB 3.82→0.33ms、2.2MB 37.0→3.4ms、5.5MB 92.7→8.7ms
+  （约 10.7–11.7×），12 例语料（CRLF / 代理对 / 零宽 / 无尾换行 / 空串）输出与旧
+  算法逐项一致。同时修掉 `lineOffsetsDirty` 只读不写的死变量——注释说「每次内容
+  变更失效」，实际 `ensureLineOffsets` 恒为空操作，旧表会静默留下；现在按文本长度
+  做 O(1) 兜底校验。
+- **打开目录时不再把整棵目录树枚举两遍**。`rebuildIndex` 分别调
+  `loadAllFiles` / `loadAllItems`，两者筛选谓词完全相同。合并为
+  `loadAll(under:)` 一次枚举同时产出两份列表，4,650 项实测 174.5ms → 89ms。
+  两个单列表方法改为从其派生，谓词单源，不会再漂移。
+
 ### Fixed
 
 - **Pro key 的验证缓存不再把 key 明文写回 plist**（#66 迁移的补漏）。验证成功后

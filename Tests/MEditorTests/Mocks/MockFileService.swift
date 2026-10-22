@@ -55,14 +55,34 @@ class MockFileService: FileServiceProtocol, @unchecked Sendable {
     func loadAllFiles(under directory: URL) -> [FileItem] {
         lock.lock()
         defer { lock.unlock() }
+        _separateScanCalls += 1
         return children[directory] ?? []
     }
 
     func loadAllItems(under directory: URL) -> [FileItem] {
         lock.lock()
         defer { lock.unlock() }
+        _separateScanCalls += 1
         return children[directory] ?? []
     }
+
+    func loadAll(under directory: URL) -> (files: [FileItem], items: [FileItem]) {
+        lock.lock()
+        defer { lock.unlock() }
+        _combinedScanCalls += 1
+        let items = children[directory] ?? []
+        return (items.filter { !$0.isDirectory }, items)
+    }
+
+    // MARK: - 枚举次数观测（守卫「建索引只扫一遍目录树」）
+
+    private var _separateScanCalls = 0
+    private var _combinedScanCalls = 0
+
+    /// 两个单列表方法被调用的次数。建索引只该走 `loadAll`，这里是 0。
+    var separateScanCallCount: Int { lock.lock(); defer { lock.unlock() }; return _separateScanCalls }
+    /// `loadAll` 被调用的次数。
+    var combinedScanCallCount: Int { lock.lock(); defer { lock.unlock() }; return _combinedScanCalls }
 
     func readFile(at url: URL) throws -> String {
         if let error = readError { throw error }

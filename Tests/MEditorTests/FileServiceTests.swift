@@ -325,4 +325,60 @@ final class FileServiceTests: XCTestCase {
         items = service.loadAllItems(under: tempDir)
         XCTAssertTrue(Set(items.map(\.name)).contains("later.md"), "重建索引后应能搜到新增文件")
     }
+
+    // MARK: - loadAll（一次枚举同时产出两份列表）
+    // 建索引要的是「可搜索文件」+「@mention 全量项」，谓词相同 ⇒ 必须一次枚举。
+    // 这里钉住合并实现的语义：与两个单列表方法完全等价，顺序也一致。
+
+    func test_loadAll_producesBothListsWithSeparateScanSemantics() {
+        createDir("dir1")
+        createDir("dir1/sub")
+        createFile("readme.md")
+        createFile("page.html")
+        createFile("skip.xyz")                 // 非支持扩展名：两份列表都不该有
+        createFile("dir1/a.md")
+        createFile("dir1/sub/b.html")
+        createDir("node_modules")
+        createFile("node_modules/pkg.md")      // 整树跳过
+        createFile("dir1/.draft.md.icloud")    // iCloud 占位符跳过
+
+        let combined = service.loadAll(under: tempDir)
+
+        // 临时目录在 /var → /private/var 的符号链接下，两侧都先解链再取相对路径
+        let base = tempDir.resolvingSymlinksInPath().path + "/"
+        func rel(_ items: [FileItem]) -> [String] {
+            items.map { $0.url.resolvingSymlinksInPath().path.replacingOccurrences(of: base, with: "") }
+        }
+
+        // 目录在前、同名按 localizedStandardCompare：dir1 → sub → a.md → b.html → page.html → readme.md
+        XCTAssertEqual(rel(combined.items), ["dir1", "dir1/sub", "dir1/a.md", "dir1/sub/b.html", "page.html", "readme.md"])
+        XCTAssertEqual(rel(combined.files), ["dir1/a.md", "dir1/sub/b.html", "page.html", "readme.md"])
+    }
+
+    func test_loadAll_filesAreSubsetOfItemsAndNeverDirectories() {
+        createDir("d")
+        createDir("d/e")
+        createFile("d/e/f.md")
+        createFile("top.md")
+
+        let combined = service.loadAll(under: tempDir)
+
+        XCTAssertTrue(combined.files.allSatisfy { !$0.isDirectory }, "files 里不该出现目录")
+        XCTAssertTrue(combined.items.contains { $0.isDirectory }, "items 必须含目录，否则 @mention 搜不到文件夹")
+        let itemURLs = Set(combined.items.map(\.url))
+        XCTAssertTrue(combined.files.allSatisfy { itemURLs.contains($0.url) }, "files 应是 items 的子集")
+    }
+
+    func test_loadAll_itemsAndFilesDoNotShareInstances() {
+        // 两个列表的 FileItem 各自独立：mention 侧的可变字段（children 等）
+        // 不该串到索引侧，反之亦然。
+        createFile("x.md")
+
+        let combined = service.loadAll(under: tempDir)
+        guard let file = combined.files.first else { return XCTFail("expected one file") }
+        guard let item = combined.items.first(where: { $0.url == file.url }) else {
+            return XCTFail("expected matching item")
+        }
+        XCTAssertFalse(file === item, "同一路径在两份列表里应是不同实例")
+    }
 }

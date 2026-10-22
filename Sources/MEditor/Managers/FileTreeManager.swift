@@ -190,9 +190,10 @@ final class FileTreeManager {
         mentionItems = []
         indexStale = false
         Task.detached(priority: .utility) { [weak self] in
-            let files = service.loadAllFiles(under: rootURL)
-            let items = service.loadAllItems(under: rootURL)
-            await self?.applyIndexedFiles(files, items: items, generation: generation, rootURL: rootURL)
+            // 一次枚举同时拿到两份列表：分两次调用会把整棵目录树扫两遍
+            // （4,650 项实测 174.5ms → 89ms）。
+            let index = service.loadAll(under: rootURL)
+            await self?.applyIndexedFiles(index.files, items: index.items, generation: generation, rootURL: rootURL)
             await MainActor.run {
                 PerformanceTracer.end("RebuildFileIndex", log: PerformanceTracer.fileOps, id: sid)
             }

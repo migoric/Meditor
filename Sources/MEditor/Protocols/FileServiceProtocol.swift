@@ -8,6 +8,9 @@ protocol FileServiceProtocol: AnyObject, Sendable {
     func loadChildren(for item: FileItem) -> [FileItem]
     func loadAllFiles(under directory: URL) -> [FileItem]
     func loadAllItems(under directory: URL) -> [FileItem]
+    /// 一次枚举同时产出上面两个列表。建索引时只要这两份数据，
+    /// 分两次调用等于把整棵目录树枚举两遍。
+    func loadAll(under directory: URL) -> (files: [FileItem], items: [FileItem])
 
     // File I/O
     func readFile(at url: URL) throws -> String
