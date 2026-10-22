@@ -162,7 +162,12 @@ final class TabManager {
         tab.contentRevision &+= 1
         tab.awaitingInitialContent = false
         onRecordModDate?(tab.url)
-        if selectedTabID == tabID, tab.language == .markdown { onSyncPreview?(tab) }
+        // 恢复会话时 tab 先以空内容入列（awaitingInitialContent），内容在这里才回填。
+        // 两种语言都要把内容推给预览：markdown 靠 contentRevision，HTML 靠 reloadToken
+        // （PreviewManager.showHTML）。此前这里只放行 markdown，HTML tab 的预览就停在
+        // 入场那次「加载空内容」上——表现为冷启动白屏，切一下 tab 才渲染（切 tab 会走
+        // onSyncPreview）。是否真的会重载由 PreviewManager 自己按内容 diff 决定，幂等。
+        if selectedTabID == tabID { onSyncPreview?(tab) }
     }
 
     func failLoadingTab(tabID: UUID, url: URL, error: Error) {

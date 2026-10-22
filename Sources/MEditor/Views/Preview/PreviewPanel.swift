@@ -80,32 +80,41 @@ struct PreviewPanel: View {
                         inlineEditBarOverlay
                     }
                 } else if showsHTML {
-                    WebPreviewView(
-                        fileURL: state.previewHTMLFileURL,
-                        reloadToken: state.previewReloadToken,
-                        content: state.previewContent,
-                        exporter: state.previewExporter,
-                        rootURL: state.rootURL,
-                        findController: state.previewFindController,
-                        onSelectionChange: { text, rect in
-                            withAnimation(DS.Motion.fast) {
-                                state.previewSelectedText = text
-                                state.previewSelectedRect = rect
+                    if isLoadingHTML {
+                        // 内容还没读进来（恢复会话/大文件异步读）。此时建 WKWebView 只会
+                        // 先 loadHTMLString 一个空页，等文件读完再导航一次——两次解析，
+                        // 中间还是一片白。等内容到了再建，只导航一次。
+                        // 编辑器侧对 awaitingInitialContent 也是同样的处理（EditorView）。
+                        Color.clear
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        WebPreviewView(
+                            fileURL: state.previewHTMLFileURL,
+                            reloadToken: state.previewReloadToken,
+                            content: state.previewContent,
+                            exporter: state.previewExporter,
+                            rootURL: state.rootURL,
+                            findController: state.previewFindController,
+                            onSelectionChange: { text, rect in
+                                withAnimation(DS.Motion.fast) {
+                                    state.previewSelectedText = text
+                                    state.previewSelectedRect = rect
+                                }
+                            },
+                            onAddTodo: { text in
+                                state.appendTodoToCurrentFile(text)
                             }
-                        },
-                        onAddTodo: { text in
-                            state.appendTodoToCurrentFile(text)
+                        )
+                        .overlay {
+                            inlineEditBarOverlay
                         }
-                    )
-                    .overlay {
-                        inlineEditBarOverlay
                     }
                 } else {
                     emptyState
                         .background(Color(nsColor: .textBackgroundColor))
                 }
 
-                if isLoadingMarkdown {
+                if isShowingLoadingOverlay {
                     loadingOverlay
                 }
 
@@ -159,7 +168,17 @@ struct PreviewPanel: View {
 
     private var showsMarkdown: Bool { state.previewMode == .markdown }
     private var showsHTML: Bool { state.previewMode == .html }
-    private var isLoadingMarkdown: Bool { showsMarkdown && (state.selectedTab?.awaitingInitialContent ?? false) }
+
+    /// 选中文档的内容还没读进来（恢复会话或大文件异步读取）。
+    private var isAwaitingInitialContent: Bool {
+        state.selectedTab?.awaitingInitialContent ?? false
+    }
+    private var isLoadingMarkdown: Bool { showsMarkdown && isAwaitingInitialContent }
+    private var isLoadingHTML: Bool { showsHTML && isAwaitingInitialContent }
+
+    /// 加载指示器：Markdown 与 HTML 都要有——HTML 此前没有任何反馈，白屏期间
+    /// 用户只能看到一片空白，分不清是在加载还是卡死。
+    private var isShowingLoadingOverlay: Bool { isLoadingMarkdown || isLoadingHTML }
 
     /// 圈选操作浮动条：跟随选区位置摆放（选区下方，贴底时翻到上方；
     /// 无位置信息时回退到底部居中）。
