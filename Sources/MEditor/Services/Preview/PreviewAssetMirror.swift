@@ -6,9 +6,9 @@ import Foundation
 /// and a stable `allowingReadAccessTo` root.
 ///
 /// Extracted from `MarkdownWebPreview` (view layer) so the file-management
-/// logic is testable and can run off the main thread. All methods are
-/// thread-safe with respect to each other only at the "atomic write / replace"
-/// level — callers should treat a given cache dir as single-writer.
+/// logic is testable and can run off the main thread. 写者间的互斥由
+/// `cacheWriteLock` 承担（见下）——预热与真实预览会并发写同一个 cache dir，
+/// 「调用方保证单写者」的约定在 warmUp 后台化之后已不成立。
 enum PreviewAssetMirror {
 
     /// Assets mirrored eagerly on every preview init.
@@ -137,7 +137,6 @@ enum PreviewAssetMirror {
 
     /// 同一个 cache dir 的写盘必须串行。
     ///
-    /// 头注释的约定是「callers should treat a given cache dir as single-writer」，但
     /// `WebViewPool.warmUp` 把 `prepareHTML` 挪进 `Task.detached` 之后，预热与真实
     /// 预览会**并发**写同一个 `caches/com.meditor.preview`：`mirrorAssets` 在需要刷新
     /// 时先 `removeItem(css|scripts|marked.min.js…)`，`pruneCacheIfNeeded` 甚至整目录删
@@ -156,6 +155,15 @@ enum PreviewAssetMirror {
     /// `Bundle.main` 是 Xcode 的 xctest 启动器（实测解析为 nil），不拆的
     /// 话这段拷贝逻辑在测试里一行都跑不到。
     static func ensureMermaidProvisioned(at cacheDir: URL, fileManager fm: FileManager = .default) {
+        // 锁外调用点（预览 / mermaid 校验器）也要互斥：拷贝目标目录可能被
+        // 另一上下文的 pruneCacheIfNeeded 整目录删掉。
+        cacheWriteLock.withLock {
+            ensureMermaidProvisionedLocked(at: cacheDir, fileManager: fm)
+        }
+    }
+
+    /// 调用方必须已持 cacheWriteLock（如 prepareHTML）。
+    private static func ensureMermaidProvisionedLocked(at cacheDir: URL, fileManager fm: FileManager) {
         // 定位失败不置位：下次预览打开还可重试（打包缺文件时不该永久放弃）。
         guard let root = PreviewResourceLocator.resourcesRoot() else { return }
         provisionMermaid(from: root, at: cacheDir, fileManager: fm)
@@ -174,9 +182,11 @@ enum PreviewAssetMirror {
             let dst = cacheDir.appendingPathComponent("mermaid.min.js")
             if fm.fileExists(atPath: dst.path) { mermaidProvisioned = true; return }
             let src = sourceRoot.appendingPathComponent("mermaid.min.js")
-            if fm.fileExists(atPath: src.path) {
-                try? fm.copyItem(at: src, to: dst)
-            }
+            // 只有真的拷上了才置位：失败（比如目录恰好被并发 prune 整目录删掉）
+            // 时置位等于本进程内 mermaid 永久缺失；不置位则下次触发自然重试，
+            // 代价只是一次 stat。
+            guard fm.fileExists(atPath: src.path),
+                  (try? fm.copyItem(at: src, to: dst)) != nil else { return }
             mermaidProvisioned = true
         }
     }
@@ -228,7 +238,7 @@ enum PreviewAssetMirror {
 
             // Provision mermaid.min.js only if initial content needs it.
             if initialContent.contains("```mermaid") {
-                ensureMermaidProvisioned(at: cacheDir, fileManager: fm)
+                ensureMermaidProvisionedLocked(at: cacheDir, fileManager: fm)
             }
         }
         return fileURL

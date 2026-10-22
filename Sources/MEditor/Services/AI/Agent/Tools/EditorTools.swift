@@ -76,7 +76,16 @@ struct OpenFileTool: AgentTool {
             throw AgentError.executionError("缺少 filename 参数")
         }
         let opened = await context.openFile(named: filename)
-        guard opened else { return "[!] 未找到文件：\(filename)" }
+        guard opened else {
+            // false 有两种含义：不存在，或存在但超过打开上限（TabManager 会
+            // 向用户弹体积错误）。报「未找到」会误导模型放弃或走 read_file
+            // 绕路，先区分再报。
+            if await context.resolveExistingFile(filename) != nil {
+                return "[!] 文件存在但超过编辑器的打开体积上限：\(filename)。"
+                    + "请不要尝试 read_file 全量读取，改用 search_workspace 定位相关段落。"
+            }
+            return "[!] 未找到文件：\(filename)"
+        }
         // 编辑器内容是异步加载的，open 之后 selectedTab.content 仍可能为空，
         // 因此这里直接从磁盘读回内容一并返回，避免 agent 误以为"已看到内容"而产生幻觉。
         if let url = await context.resolveExistingFile(filename),

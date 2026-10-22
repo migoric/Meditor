@@ -39,9 +39,9 @@ enum ParagraphDiffer {
     }
 
     /// 调试计数：实际填了多少个 DP 格。测试读增量前先置 0。
-    ///
     /// 「剥前后缀省掉了工作量」这个主张无法用产物正确性证明（省了也输出一样），
     /// 所以用计数守，而不是耗时。仅 DEBUG 累加，release 里不参与编译。
+    /// 安全性：测试在主线程串行读写；`&+=` 无同步最坏只是丢计数、断言误红。
     #if DEBUG
     nonisolated(unsafe) static var dpCellCount = 0
     #endif

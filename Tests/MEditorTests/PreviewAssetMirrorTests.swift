@@ -312,7 +312,7 @@ final class PreviewAssetMirrorTests: XCTestCase {
 
         // 幂等性：把目标替换成哨兵值后再调，必须原样不动。
         // （此时标志已置位、目标文件也存在，两条短路任一成立都必须是 no-op；
-        // 标志的独立贡献——无源场景仍置位——由下面 missingSource 测试钉住。）
+        // 标志的独立贡献——失败时不置位、可重试——由 missingSource 测试钉住。）
         try "SENTINEL".write(to: dst, atomically: true, encoding: .utf8)
         PreviewAssetMirror.provisionMermaid(from: source, at: cache)
         XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "SENTINEL",
@@ -335,9 +335,10 @@ final class PreviewAssetMirrorTests: XCTestCase {
                        "目标已存在时必须保留，不覆盖")
     }
 
-    /// 源里没有 mermaid.min.js（打包缺文件）时不崩、不拷贝，但标志仍置位
-    /// ——每次预览打开都重试 stat 没有意义。后验：置位后源再出现也不补拷。
-    func test_provisionMermaid_missingSource_setsFlagAndStopsRetrying() throws {
+    /// 源里没有 mermaid.min.js（打包缺文件）或拷贝失败时**不得置位**——置位
+    /// 意味着本进程内 mermaid 永久缺失（目录恰好被并发 prune 掉就是这种）。
+    /// 重试的代价只是一次 stat。后验：源随后出现时必须补拷成功。
+    func test_provisionMermaid_missingSource_retriesWhenSourceAppears() throws {
         PreviewAssetMirror.resetMermaidProvisionedForTesting()
         defer { PreviewAssetMirror.resetMermaidProvisionedForTesting() }
 
@@ -349,12 +350,12 @@ final class PreviewAssetMirrorTests: XCTestCase {
         PreviewAssetMirror.provisionMermaid(from: source, at: cache)
         XCTAssertFalse(FileManager.default.fileExists(atPath: dst.path), "无源时不得凭空造文件")
 
-        // 源随后出现（模拟延迟挂载）：标志已置位，仍然不拷——证明真的置位了。
+        // 源随后出现（模拟延迟挂载）：未置位 ⇒ 重试必须补拷。
         try "LATE".write(to: source.appendingPathComponent("mermaid.min.js"),
                          atomically: true, encoding: .utf8)
         PreviewAssetMirror.provisionMermaid(from: source, at: cache)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: dst.path),
-                       "标志置位后即使源出现也不补拷（每次预览打开不重试）")
+        XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "LATE",
+                       "失败/缺源不置位，源出现后必须能补拷")
     }
 
     /// 并发首调：8 个上下文同时首次触发，必须全部安全返回、文件恰好一份、

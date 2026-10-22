@@ -91,7 +91,7 @@ jobs:
     name: Build (x86_64)
     # 只编 x86_64 这一条 slice：不打包、不签名、不跑测试。
     #
-    # 为什么需要：发布包是 Universal（scripts/bundle.sh:18 用 arm64 + x86_64
+    # 为什么需要：发布包是 Universal（scripts/bundle.sh:82 用 arm64 + x86_64
     # lipo 合成），但 CI runner 是 arm64 —— `swift test` 只编 host 架构，而
     # PR CI 早已不跑 bundle.sh（理由见文件末尾）。于是 x86_64 那半个二进制
     # 平时没有任何 job 编它，只在打 tag 那一刻由 bundle.sh 编出来 ⇒ 代码里一旦
@@ -132,6 +132,10 @@ jobs:
           # 产物必须真的是 x86_64：`--arch` 被删掉或被环境变量覆盖时，swift build
           # 会静默退回 host 架构（runner 是 arm64）——这一关就变成「又编了一遍
           # arm64」，白付 runner 时间还假报通过。
+          #
+          # 前提：本 job 不用 actions/cache。文件存在性断言依赖「编出来才有
+          # $BIN」——若将来加 .build 缓存，残留的 x86_64 产物会让「--arch 失效」
+          # 这个形态假绿；加缓存时请同步在这里 rm -rf .build/x86_64-apple-macosx。
           #
           # 报错要直接指着真因说。实测把 `--arch x86_64` 删掉时，裸 lipo 的报错是
           # `lipo: can't open input file: .build/x86_64-apple-macosx/debug/MEditor`

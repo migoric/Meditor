@@ -71,7 +71,12 @@ class MockFileService: FileServiceProtocol, @unchecked Sendable {
         defer { lock.unlock() }
         _combinedScanCalls += 1
         let items = children[directory] ?? []
-        return (items.filter { !$0.isDirectory }, items)
+        // 与生产实现同口径：files/items 都过扩展名白名单（FileService.loadAll
+        // 另过滤隐藏名与 .icloud 占位符——mock 的 children 由测试手工构造，
+        // 不存在这两类）。
+        let supported = FileTypeConfiguration.shared.supportedExtensions
+        let visible = items.filter { $0.isDirectory || supported.contains($0.fileExtension) }
+        return (visible.filter { !$0.isDirectory }, visible)
     }
 
     // MARK: - 枚举次数观测（守卫「建索引只扫一遍目录树」）

@@ -41,9 +41,10 @@ final class FileItem: Identifiable, Hashable, @unchecked Sendable {
     #if DEBUG
     /// name 取值次数。仅供测试验证「排序里没有逐次现取」这一性能属性——
     /// 排序 500 项时：预取实现 ≈500 次，逐次现取 ≈9000 次（n·log n·2）。
+    /// 安全性：仅 DEBUG 编译、测试串行读写；后台线程的 `&+=` 理论上
+    /// 是数据竞争，但最坏只是丢计数（断言值偏小、测试误红），不影响发布产物。
     nonisolated(unsafe) static var nameAccessCount = 0
     #endif
-
 
     /// True if this file can be opened by the editor.
     var isSupported: Bool {
