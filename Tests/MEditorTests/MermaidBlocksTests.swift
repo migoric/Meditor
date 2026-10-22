@@ -2,7 +2,8 @@ import XCTest
 @testable import MEditor
 
 /// MermaidBlocks 提取与行号映射：纯逻辑，不碰 WebKit。
-/// 判定口径锚定 render.js 的 /```mermaid/ 检测（预览会渲染成图的才校验）。
+/// 判定口径锚定 render.js 的 `extractMermaid`（预览会渲染成图的才校验），
+/// 围栏配对规则 = CommonMark：0–3 空格缩进、关栏长度 ≥ 开栏、关栏行只有空白。
 final class MermaidBlocksTests: XCTestCase {
 
     func testExtractsSingleBlockWithStartLineAndCode() {
@@ -87,5 +88,63 @@ final class MermaidBlocksTests: XCTestCase {
         // 外层 swift 围栏内的 ``` 行不是开栏（同字符关栏语义与 DocumentDiagnostics 一致）
         let content = "```\n```mermaid\ngraph TD\n```\n```\n"
         XCTAssertTrue(MermaidBlocks.extract(from: content).isEmpty)
+    }
+
+    // MARK: CommonMark 围栏配对（#85）
+
+    func testFourSpaceIndentedFenceIsIndentedCodeBlock() {
+        // 4 空格是缩进代码块，marked 不会把它当围栏 ⇒ 预览不出图，也不该校验
+        let content = "    ```mermaid\n    graph TD\n    ```\n"
+        XCTAssertTrue(MermaidBlocks.extract(from: content).isEmpty)
+    }
+
+    func testMermaidInsideLongerFenceNotExtracted() {
+        // 外层 4 个反引号围栏里的 ```mermaid 只是文本
+        let content = "````\n```mermaid\ngraph TD\n```\n````\n"
+        XCTAssertTrue(MermaidBlocks.extract(from: content).isEmpty)
+    }
+
+    func testLongerFenceMayCloseShorterFence() {
+        // 开栏 3 个、关栏 4 个 ⇒ 合法关闭（CommonMark 只要求 ≥）
+        let blocks = MermaidBlocks.extract(from: "```mermaid\ngraph TD\n````\n")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0].code, "graph TD")
+    }
+
+    func testShorterFenceCannotCloseLongerFence() {
+        // 开栏 4 个、中间 3 个 ⇒ 中间那行是内容，不算关栏
+        let blocks = MermaidBlocks.extract(from: "````mermaid\ngraph TD\n```\n````\n")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0].code, "graph TD\n```")
+    }
+
+    func testInlineTripleBackticksInProseDoNotOpenFence() {
+        // 行中间的 ``` 不是围栏（行首锚定）
+        let content = """
+        正文里说「行首的 ```mermaid 才是围栏」。
+
+        ```swift
+        let x = 1
+        ```
+
+        再说一句 ```mermaid。
+        """
+        XCTAssertTrue(MermaidBlocks.extract(from: content).isEmpty)
+    }
+
+    func testFenceAfterOtherFenceStillFound() {
+        // 状态机：非 mermaid 围栏关掉之后，后面的 mermaid 围栏仍要认出来，
+        // 且行号是**原文**行号（不是相对上一块的行号）
+        let content = "```swift\nlet x = 1\n```\n\n```mermaid\ngraph TD\n```\n"
+        let blocks = MermaidBlocks.extract(from: content)
+        XCTAssertEqual(blocks.map(\.startLine), [4])
+        XCTAssertEqual(blocks.map(\.code), ["graph TD"])
+    }
+
+    func testCRLFFenceExtracted() {
+        // CRLF 文本不该因为行尾 \r 让 info string 变成 "mermaid\r"
+        let blocks = MermaidBlocks.extract(from: "```mermaid\r\ngraph TD\r\n```\r\n")
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0].code, "graph TD")
     }
 }
