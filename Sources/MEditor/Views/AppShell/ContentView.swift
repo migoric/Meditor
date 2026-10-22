@@ -173,26 +173,6 @@ struct ContentView: View {
                 Text(L("alert.saveChangesMessage", tab.name))
             }
         }
-        .alert(L("alert.largeFile"), isPresented: Binding(
-            get: { state.showingLargeFileWarning },
-            set: { if !$0 { state.showingLargeFileWarning = false; state.pendingLargeFile = nil } }
-        )) {
-            Button(L("alert.openAnyway"), role: .none) {
-                if let item = state.pendingLargeFile {
-                    state.showingLargeFileWarning = false
-                    state.pendingLargeFile = nil
-                    state.openFileUnchecked(item)
-                }
-            }
-            Button(L("common.cancel"), role: .cancel) {
-                state.showingLargeFileWarning = false
-                state.pendingLargeFile = nil
-            }
-        } message: {
-            if let item = state.pendingLargeFile {
-                Text(L("alert.largeFileMessage", item.name))
-            }
-        }
         // Close Project confirmation — prevents accidental data loss from the menu item.
         .confirmationDialog(
             "Close Project?",

@@ -163,8 +163,9 @@ final class AppStateDocumentAdapter: AgentDocumentAdapter {
     func openFile(at url: URL) -> Bool {
         guard let state = appState,
               FileManager.default.fileExists(atPath: url.path) else { return false }
-        state.openFile(FileItem(url: url, isDirectory: false))
-        return true
+        // 返回真实结果：超过编辑器体积上限时并未打开，工具必须如实回「没打开」，
+        // 否则模型会以为文件已就位、继续在看不见的文档上编辑。
+        return state.openFile(FileItem(url: url, isDirectory: false))
     }
 
     // MARK: - Notifications

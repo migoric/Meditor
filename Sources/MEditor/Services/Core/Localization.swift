@@ -430,9 +430,6 @@ extension LocalizationManager {
         "alert.fileChangedMessage": ("\"%@\" was modified by another app. Keep your changes or reload from disk?", "\"%@\"被其他应用修改。保留你的更改还是从磁盘重新加载？"),
         "alert.keepMine": ("Keep Mine", "保留我的"),
         "alert.reload": ("Reload", "重新加载"),
-        "alert.largeFile": ("Large File", "大文件"),
-        "alert.largeFileMessage": ("\"%@\" is large and may be slow to edit. Open anyway?", "\"%@\"文件较大，编辑可能较慢。仍要打开吗？"),
-        "alert.openAnyway": ("Open Anyway", "仍然打开"),
 
         // Toolbar tooltips
         "tooltip.showSidebar": ("Show Sidebar (⌥⌘B)", "显示侧边栏 (⌥⌘B)"),
@@ -772,6 +769,7 @@ extension LocalizationManager {
         "error.sessionRestoreFailed": ("Couldn't restore previous session: %@.", "无法恢复上次会话：%@。"),
         "error.icloudNotDownloaded": ("\"%@\" hasn't been downloaded from iCloud yet. Download started — please try again shortly.", "\"%@\" 尚未从 iCloud 下载，已开始下载，请稍后重试。"),
         "error.icloudReadFailed": ("Couldn't read iCloud file \"%@\": %@", "无法读取 iCloud 文件\"%@\"：%@"),
+        "error.fileTooLarge": ("\"%@\" is %@ — over the %@ open limit, so it can't be edited here.", "\"%@\" 有 %@，超过 %@ 的打开上限，无法在此编辑。"),
 
         // Export errors
         "export.err.noWebView": ("Preview is not available.", "预览不可用。"),

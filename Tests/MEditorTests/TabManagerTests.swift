@@ -26,44 +26,83 @@ final class TabManagerTests: XCTestCase {
 
     private func makeFile(_ name: String, size: Int64 = 100) -> FileItem {
         let url = tempDir.appendingPathComponent(name)
-        FileManager.default.createFile(atPath: url.path, contents: Data(count: Int(size)))
+        // 只落 min(size, 64KB) 的真实字节：体积一律由 mockAttributes 提供，
+        // 免得「20 MB 上限判定」这类用例真往磁盘写 20 MB。填 'a' 而非 0，
+        // 避免文本解码器把 NUL 当二进制拒掉。
+        let materialized = Int(min(size, 64 * 1024))
+        FileManager.default.createFile(atPath: url.path,
+                                       contents: Data(repeating: 0x61, count: materialized))
         mockService.mockAttributes[url] = [.size: size]
         return FileItem(url: url, isDirectory: false)
     }
 
     // MARK: - openFile
 
-    func testOpenFileLargeFileTriggersWarning() {
-        let item = makeFile("big.md", size: TabManager.largeFileThreshold + 1)
-        tabManager.openFile(item)
-        XCTAssertTrue(tabManager.showingLargeFileWarning)
-        XCTAssertEqual(tabManager.pendingLargeFile?.url, item.url)
-        XCTAssertTrue(tabManager.openTabs.isEmpty)
+    /// 超过上限：报告错误、不建 tab、**不弹确认框**。
+    /// 旧实现是「1 MB 以上先问一句仍要打开吗」，两种回答都不带来新信息
+    /// （降级早在 150 KB / 512 KB 就发生了），见 TabManager.openSizeLimit 注释。
+    func testOpenFileBeyondLimitReportsErrorAndOpensNothing() {
+        var reported: AppError?
+        tabManager.onReport = { reported = $0 }
+
+        let item = makeFile("big.md", size: TabManager.openSizeLimit + 1)
+        XCTAssertFalse(tabManager.openFile(item), "超限必须返回 false")
+
+        guard case .fileTooLarge(let url, size: let size, limit: let limit)? = reported else {
+            return XCTFail("应报告 .fileTooLarge，实际 \(String(describing: reported))")
+        }
+        XCTAssertEqual(url, item.url)
+        XCTAssertEqual(size, TabManager.openSizeLimit + 1)
+        XCTAssertEqual(limit, TabManager.openSizeLimit)
+        XCTAssertTrue(tabManager.openTabs.isEmpty, "超限不得留下未加载的 tab")
+    }
+
+    /// 1 MB–上限之间：直接打开，不再打扰。
+    func testOpenFileBetweenOneMegabyteAndLimitOpensDirectly() {
+        let item = makeFile("large-enough.md", size: 8 * 1024 * 1024)
+        XCTAssertTrue(tabManager.openFile(item))
+        XCTAssertEqual(tabManager.openTabs.count, 1)
+    }
+
+    /// HTML 放宽到 32 MB：带 base64 图片的单页文章常态就过 16 MB。
+    func testOpenFileHTMLExtendsLimit() {
+        var reported: AppError?
+        tabManager.onReport = { reported = $0 }
+
+        let html = makeFile("page.html", size: 20 * 1024 * 1024)
+        XCTAssertTrue(tabManager.openFile(html), "20 MB 的 HTML 未超 32 MB 上限")
+        XCTAssertNil(reported)
+
+        let htm = makeFile("page.htm", size: TabManager.openSizeLimitHTML + 1)
+        XCTAssertFalse(tabManager.openFile(htm))
+        guard case .fileTooLarge(_, size: _, limit: let limit)? = reported else {
+            return XCTFail("超 32 MB 的 HTML 也应被拒，实际 \(String(describing: reported))")
+        }
+        XCTAssertEqual(limit, TabManager.openSizeLimitHTML)
     }
 
     func testOpenFileSmallFileOpensTab() {
         let item = makeFile("small.md", size: 100)
-        tabManager.openFile(item)
-        XCTAssertFalse(tabManager.showingLargeFileWarning)
+        XCTAssertTrue(tabManager.openFile(item))
         XCTAssertEqual(tabManager.openTabs.count, 1)
     }
 
-    // MARK: - openFileUnchecked
+    // MARK: - openFile
 
     func testOpenFileUncheckedExistingTabDoesNotDuplicate() {
         let item = makeFile("a.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         XCTAssertEqual(tabManager.openTabs.count, 1)
         let firstTabID = tabManager.openTabs[0].id
 
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         XCTAssertEqual(tabManager.openTabs.count, 1)
         XCTAssertEqual(tabManager.selectedTabID, firstTabID)
     }
 
     func testOpenFileUncheckedSymlinkVariantURLDoesNotDuplicate() {
         let item = makeFile("a2.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         XCTAssertEqual(tabManager.openTabs.count, 1)
         let firstTabID = tabManager.openTabs[0].id
 
@@ -74,7 +113,7 @@ final class TabManagerTests: XCTestCase {
         let variant = FileItem(url: resolvedURL, isDirectory: false)
         mockService.mockAttributes[resolvedURL] = [.size: 100]
 
-        tabManager.openFileUnchecked(variant)
+        tabManager.openFile(variant)
         XCTAssertEqual(tabManager.openTabs.count, 1)
         XCTAssertEqual(tabManager.selectedTabID, firstTabID)
     }
@@ -83,7 +122,7 @@ final class TabManagerTests: XCTestCase {
 
     func testCloseTabModifiedShowsConfirmation() {
         let item = makeFile("b.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         tabManager.openTabs[0].isModified = true
         let tabID = tabManager.openTabs[0].id
 
@@ -96,7 +135,7 @@ final class TabManagerTests: XCTestCase {
 
     func testCloseTabUnmodifiedClosesDirectly() {
         let item = makeFile("c.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         let tabID = tabManager.openTabs[0].id
 
         tabManager.closeTab(tabID)
@@ -109,7 +148,7 @@ final class TabManagerTests: XCTestCase {
 
     func testPerformCloseLastTabSetsSelectedTabIDNil() {
         let item = makeFile("d.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         let tabID = tabManager.openTabs[0].id
 
         tabManager.performCloseTab(tabID)
@@ -121,8 +160,8 @@ final class TabManagerTests: XCTestCase {
     func testPerformCloseSelectsNeighbour() {
         let a = makeFile("a.md")
         let b = makeFile("b.md")
-        tabManager.openFileUnchecked(a)
-        tabManager.openFileUnchecked(b)
+        tabManager.openFile(a)
+        tabManager.openFile(b)
         let bID = tabManager.openTabs[0].id
 
         tabManager.performCloseTab(bID)
@@ -135,9 +174,9 @@ final class TabManagerTests: XCTestCase {
 
     func testSelectNextTabWrapsAround() {
         let a = makeFile("a.md"); let b = makeFile("b.md"); let c = makeFile("c.md")
-        tabManager.openFileUnchecked(a)
-        tabManager.openFileUnchecked(b)
-        tabManager.openFileUnchecked(c)
+        tabManager.openFile(a)
+        tabManager.openFile(b)
+        tabManager.openFile(c)
         // Tabs are inserted at index 0, so order is [c, b, a].
         let lastID = tabManager.openTabs.last!.id
         tabManager.selectedTabID = lastID
@@ -150,8 +189,8 @@ final class TabManagerTests: XCTestCase {
 
     func testSelectPreviousTabWrapsAround() {
         let a = makeFile("a.md"); let b = makeFile("b.md")
-        tabManager.openFileUnchecked(a)
-        tabManager.openFileUnchecked(b)
+        tabManager.openFile(a)
+        tabManager.openFile(b)
         let firstID = tabManager.openTabs.first!.id
         tabManager.selectedTabID = firstID
 
@@ -165,9 +204,9 @@ final class TabManagerTests: XCTestCase {
 
     func testMoveTabInBounds() {
         let a = makeFile("a.md"); let b = makeFile("b.md"); let c = makeFile("c.md")
-        tabManager.openFileUnchecked(a)
-        tabManager.openFileUnchecked(b)
-        tabManager.openFileUnchecked(c)
+        tabManager.openFile(a)
+        tabManager.openFile(b)
+        tabManager.openFile(c)
         let originalFirst = tabManager.openTabs[0].url
 
         tabManager.moveTab(from: 0, to: 2)
@@ -177,7 +216,7 @@ final class TabManagerTests: XCTestCase {
 
     func testMoveTabOutOfBoundsDoesNotCrash() {
         let a = makeFile("a.md")
-        tabManager.openFileUnchecked(a)
+        tabManager.openFile(a)
 
         XCTAssertNoThrow(tabManager.moveTab(from: 0, to: 99))
         XCTAssertNoThrow(tabManager.moveTab(from: -1, to: 0))
@@ -188,7 +227,7 @@ final class TabManagerTests: XCTestCase {
 
     func testReopenLastClosedTabRestoresTab() {
         let item = makeFile("reopen.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         let tabID = tabManager.openTabs[0].id
         tabManager.performCloseTab(tabID)
         XCTAssertTrue(tabManager.openTabs.isEmpty)
@@ -203,7 +242,7 @@ final class TabManagerTests: XCTestCase {
 
     func testUpdateTabContentMarksModified() {
         let item = makeFile("mod.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         let tabID = tabManager.openTabs[0].id
         tabManager.openTabs[0].isModified = false
 
@@ -219,9 +258,9 @@ final class TabManagerTests: XCTestCase {
         let a = makeFile("a.md")
         let b = makeFile("b.md")
         let c = makeFile("c.md")
-        tabManager.openFileUnchecked(a)
-        tabManager.openFileUnchecked(b)
-        tabManager.openFileUnchecked(c)
+        tabManager.openFile(a)
+        tabManager.openFile(b)
+        tabManager.openFile(c)
         let aID = tabManager.openTabs.first { $0.url == a.url }!.id
         let bID = tabManager.openTabs.first { $0.url == b.url }!.id
         tabManager.performCloseTab(aID)
@@ -239,7 +278,7 @@ final class TabManagerTests: XCTestCase {
 
     func testSaveTabClearsModifiedFlag() {
         let item = makeFile("save.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         let tab = tabManager.openTabs[0]
         tab.isModified = true
 
@@ -253,7 +292,7 @@ final class TabManagerTests: XCTestCase {
     /// 随后被第一次的旧内容覆盖。
     func testSaveTabSerializesConcurrentWritesForSameURL() async throws {
         let item = makeFile("race.md")
-        tabManager.openFileUnchecked(item)
+        tabManager.openFile(item)
         let tab = tabManager.openTabs[0]
 
         mockService.writeDelay = 0.3
