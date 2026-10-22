@@ -31,10 +31,11 @@ python3 scripts/check_service_layer_deps.py                 # 分层守卫
 python3 scripts/check_dead_tokens.py                        # 设计 token 守卫
 ```
 
-CI main gate：`Build & Test (macOS 26)`（含 SwiftLint + 覆盖率门槛）· `Build (iOS Simulator)`。
+CI main gate：`Build & Test (macOS 26)`（含 SwiftLint + 覆盖率门槛）· `Build (x86_64)`
+（发布包是 Universal，runner 只有 arm64，这一条专编 Intel 半边）· `Build (iOS Simulator)`。
 另有若干同样要绿的守卫 job（`Layer Guard` / `UI Guard` / `Worker Tests` …）。
 
-> ⚠️ **改 `name:` 之前先看这条**：上面两个名字同时是分支保护里的必需检查（`protected: true`，
+> ⚠️ **改 `name:` 之前先看这条**：上面三个名字同时是分支保护里的必需检查（`protected: true`，
 > `enforce_admins` 也开着）。改名会让所有 PR 卡在一个永不到来的必需检查上。
 > 同理 **不能给 `on.pull_request` 加 `paths-ignore`** —— 被过滤掉的 workflow 不产生 check run，
 > 直接等于让所有纯文档 PR 永久卡死（本仓 `AGENTS.md` §3 也记了这句）。
