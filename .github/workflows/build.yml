@@ -87,6 +87,52 @@ jobs:
             --min-dir Skills=85 \
             --min-dir Views=1
 
+  cross-arch:
+    name: Build (x86_64)
+    # 只编 x86_64 这一条 slice：不打包、不签名、不跑测试。
+    #
+    # 为什么需要：发布包是 Universal（scripts/bundle.sh:18 用 arm64 + x86_64
+    # lipo 合成），但 CI runner 是 arm64 —— `swift test` 只编 host 架构，而
+    # PR CI 早已不跑 bundle.sh（理由见文件末尾）。于是 x86_64 那半个二进制
+    # 平时没有任何 job 编它，只在打 tag 那一刻由 bundle.sh 编出来 ⇒ 代码里一旦
+    # 混进 arm64-only 的东西（SIMD 内建、只在部分架构导出的 Foundation 符号、
+    # 按架构分支的 availability），要等发版才红，而那时 tag 已经打出去了。
+    #
+    # 命令与 bundle.sh:49 对齐（同样带 App Intents const-values flags）：口径
+    # 一致才谈得上「这里编得过 = 发版编得过」。const-values 提取本身也会在
+    # x86_64 frontend 上跑一遍，能多抓到一类 AppIntents 用法问题。
+    #
+    # 用 debug 口径，不是 release：这一关要回答的是「这个架构能不能编出来」，
+    # 与优化级别无关（arm64 侧也是 debug）。WMO / 跨模块优化专属的编译问题
+    # 两条流水线都不拦，那是另一个议题，别在这里假装覆盖了。
+    #
+    # 不跑测试：测试 target 不进发布包，在 x86_64 上多编 1,600 例只增加成本；
+    # 被测代码的正确性由上面 host 架构的 `Test with coverage` 负责，这一关
+    # 只关心「能不能编」。
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Build x86_64 slice
+        run: |
+          swift build --arch x86_64 \
+            -Xswiftc -emit-const-values-path \
+            -Xswiftc "$PWD/.build/debug/MEditor.swiftconstvalues" \
+            -Xswiftc -Xfrontend \
+            -Xswiftc -const-gather-protocols-file \
+            -Xswiftc -Xfrontend \
+            -Xswiftc "$PWD/scripts/appintents-protocols.json"
+          # 产物必须真的是 x86_64：--arch 拼错 / 被环境变量覆盖时，
+          # 静默退回 host 架构会让这一关变成「编了两遍 arm64」，白付 runner 钱
+          # 还假报通过。
+          lipo -archs .build/x86_64-apple-macosx/debug/MEditor | grep -qx 'x86_64'
+
   ios:
     name: Build (iOS Simulator)
     # macos-26：部署目标 26.0 需要 iOS 26 SDK。历史上用 macos-15 是因为项目文件

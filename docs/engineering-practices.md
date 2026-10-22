@@ -14,12 +14,19 @@
   > 历史注记：仓库 2026-10-20 短暂转 private 期间，免费计划的保护接口直接 403、`protected` 变
   > `false`，那段时间**没有任何强制执行**。同日转回 public 后重建了规则。别拿旧结论当现状，
   > 判断这类事一律查 API。
-- **必需检查**（分支保护里写死的名字，2026-10-22 起共 7 个）：
-  `Build & Test (macOS 26)` · `Build (iOS Simulator)` · `Layer Guard` · `UI Guard` ·
-  `Docs Guard` · `Worker Tests` · `iOS Shared Source Guard`。
+- **必需检查**（分支保护里写死的名字，2026-10-22 起共 8 个）：
+  `Build & Test (macOS 26)` · `Build (x86_64)` · `Build (iOS Simulator)` ·
+  `Layer Guard` · `UI Guard` · `Docs Guard` · `Worker Tests` · `iOS Shared Source Guard`。
   （`SwiftLint` / `Coverage Gate` 两个 job 已在 2026-10-20 的流水线瘦身里并入 `Build & Test`，
   不再是独立 check；五个守卫 job 此前只是「跑了但不阻塞」，2026-10-22 才纳入必需——
   那之前任何一个守卫红了 PR 照样能合。）
+  > `Build (x86_64)` 是 2026-10-22 补的，补的是一个**只有发版才暴露**的缺口：runner 是
+  > arm64，`swift test` 只编 host 架构，而发布包是 Universal（`bundle.sh` 用两个架构
+  > lipo 合成）。PR CI 又不跑 `bundle.sh` ⇒ 合进 main 的代码「能不能在 Intel Mac 上编」
+  > 要等打 tag 那一刻才知道，而那时 tag 已经推出去了。这个 job 只做
+  > `swift build --arch x86_64`（与 `bundle.sh` 同参，含 App Intents const-values
+  > flags；debug 口径，不打包、不签名、不跑测试），本机全量约 2 分钟。它**不**覆盖
+  > release/WMO 与测试 target 的 x86_64 编译——那是另一件事，别当成已经覆盖了。
 - 守卫 job 的覆盖面与跑法见 §5 与 `AGENTS.md` §3。
 - 任何检查变红时 main 不可合入 —— 红测试永远进不了 main。
 - 紧急修复 main 时：Settings → Branches → 临时关闭 enforceAdmins，修完立即恢复。

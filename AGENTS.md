@@ -159,10 +159,12 @@ python3 scripts/check_bare_numbers.py       # 裸字号/圆角/路径 try? 棘�
 > 解法是 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build`。
 > `scripts/test.sh` 已经内置了这一步，裸 `swift build` 没有。
 
-CI 里两个 main gate（其余见 `docs/engineering-practices.md` §1）：
-`Build & Test (macOS 26)` · `Build (iOS Simulator)`。
+CI 里三个编译 gate（其余见 `docs/engineering-practices.md` §1）：
+`Build & Test (macOS 26)` · `Build (x86_64)` · `Build (iOS Simulator)`。
 `SwiftLint` 与 `Coverage Gate` 已并入 `Build & Test`（同一台 macOS runner 里顺序执行）。
-分支保护（`protected: true`）的必需检查共 **7 个**：上面两个 main gate 加五个守卫 job
+`Build (x86_64)` 只 `swift build --arch x86_64`：runner 是 arm64，不编这一条的话
+「发布包（Universal）的 Intel 半边能不能编」要等打 tag 才知道。
+分支保护（`protected: true`）的必需检查共 **8 个**：上面三个编译 gate 加五个守卫 job
 （`Layer Guard` / `UI Guard` / `Docs Guard` / `Worker Tests` / `iOS Shared Source Guard`，
 2026-10-22 起全部必需）—— 改任何一个的名字或给 `pull_request` 加
 `paths-ignore` 都会让 PR 卡在一个永不出现的检查上。
