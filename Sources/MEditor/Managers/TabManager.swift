@@ -26,12 +26,39 @@ final class TabManager {
     var showingCloseConfirmation = false
     /// 批量关闭时排队等待确认的 dirty tab（见 closeTab/confirmCloseTab）。
     @ObservationIgnored private var pendingCloseQueue: [EditorTab] = []
-    var pendingLargeFile: FileItem?
-    var showingLargeFileWarning = false
-
     @ObservationIgnored var recentlyClosedURLs: [URL] = []
     static let recentlyClosedLimit = 16
-    static let largeFileThreshold: Int64 = 1024 * 1024
+
+    /// 编辑上限：**超过就拒绝打开**，不是「要不要打开」的提示阈值。
+    ///
+    /// 曾经是 1 MB 的确认弹窗，问「文件较大，编辑可能较慢。仍要打开吗？」——
+    /// 三个理由让它只是噪音：
+    /// 1. 代码早已在 150 KB 关掉语法高亮（`NativeEditorView.syntaxHighlightThreshold`）、
+    ///    在 512 KB 转异步读盘。到 1 MB 时该降级的都降过了，弹窗预警的事
+    ///    在用户看到弹窗之前就已经发生，而且界面上没有任何地方告诉他。
+    /// 2. 1 MB 这一档根本不慢：-O 下行偏移重建约 1.4 ms/MB（5.5 MB 实测 7.95 ms，
+    ///    见 `EditorHighlightScheduler.rebuildLineOffsets`），读盘在毫秒量级
+    ///    （debug 探针 1 MB 8.5 ms / 64 MB 94 ms）⇒ 打开是 10 ms 量级的事。
+    /// 3. 它出现在用户已经双击了文件之后，两种回答都不带来新信息。
+    ///
+    /// 真正疼的是另一端：行偏移表每次击键按 O(n) 重建 —— debug 探针测到
+    /// 123 ms/1 MB、497 ms/4 MB、2.07 s/16 MB、4.15 s/32 MB、8.14 s/64 MB，
+    /// 线性、约 127 ms/MB（debug 系数，-O 下按上面 1.4 ms/MB 折算：
+    /// 16 MB ≈ 23 ms/帧、32 MB ≈ 46 ms、64 MB ≈ 92 ms）；常驻内存约 5 倍文件体积
+    /// （debug 探针 64 MB ⇒ 333 MB RSS，含测试进程本身）。16 MB 是「还能忍」和
+    /// 「每敲一个字掉帧」之间的那条线，所以拦在这里。
+    static let openSizeLimit: Int64 = 16 * 1024 * 1024
+
+    /// HTML/HTM 单独放宽到 32 MB：带 base64 图片的单页文章轻易过 16 MB，
+    /// 而这类文件主要是「看预览」。与 iOS `DocumentStore.byteLimit` 的 32 MB 一致。
+    static let openSizeLimitHTML: Int64 = 32 * 1024 * 1024
+
+    static func openSizeLimit(for url: URL) -> Int64 {
+        switch url.pathExtension.lowercased() {
+        case "html", "htm": return openSizeLimitHTML
+        default:            return openSizeLimit
+        }
+    }
 
     // MARK: - Pure dependencies
 
@@ -91,18 +118,21 @@ final class TabManager {
 
     // MARK: - Open
 
-    func openFile(_ item: FileItem) {
-        guard !item.isDirectory else { return }
-        let attrs = fileService.attributes(at: item.url)
-        if let size = attrs?[.size] as? Int64, size > Self.largeFileThreshold {
-            pendingLargeFile = item
-            showingLargeFileWarning = true
-            return
+    /// 打开文件。
+    ///
+    /// 体积超过 `openSizeLimit(for:)` 时**报告错误并返回 false**——不再弹
+    /// 「仍要打开吗」的确认框（理由见上限处的注释）。返回值是真实结果，
+    /// AI 的 `open_document` 依赖它：旧实现不管有没有弹窗都返回 true，
+    /// 于是「模型说已打开、界面什么也没发生」。
+    @discardableResult
+    func openFile(_ item: FileItem) -> Bool {
+        guard !item.isDirectory else { return false }
+        let limit = Self.openSizeLimit(for: item.url)
+        if let size = fileService.attributes(at: item.url)?[.size] as? Int64, size > limit {
+            onReport?(.fileTooLarge(item.url, size: size, limit: limit))
+            return false
         }
-        openFileUnchecked(item)
-    }
 
-    func openFileUnchecked(_ item: FileItem) {
         let sid = PerformanceTracer.begin("OpenFile", log: PerformanceTracer.fileOps)
         let needsDirectAccess = onRequiresDirectFileAccess?(item.url) ?? true
         if needsDirectAccess { onBeginAccessing?(item.url) }
@@ -113,7 +143,7 @@ final class TabManager {
             selectedTabID = existing.id
             onSyncPreview?(existing)
             PerformanceTracer.end("OpenFile", log: PerformanceTracer.fileOps, id: sid)
-            return
+            return true
         }
 
         let lang = FileTypeConfiguration.shared.editorLanguage(for: item.fileExtension) ?? .markdown
@@ -130,7 +160,7 @@ final class TabManager {
             onRecordModDate?(tab.url)
             onSyncPreview?(tab)
             PerformanceTracer.end("OpenFile", log: PerformanceTracer.fileOps, id: sid)
-            return
+            return true
         }
 
         let tab = EditorTab(url: item.url, content: "", language: lang, awaitingInitialContent: true)
@@ -153,6 +183,7 @@ final class TabManager {
                 PerformanceTracer.end("OpenFile", log: PerformanceTracer.fileOps, id: sid)
             }
         }
+        return true
     }
 
     func applyLoadedContent(tabID: UUID, content: String) {

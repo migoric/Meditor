@@ -25,22 +25,14 @@ extension AppState {
         get { tabManager.showingCloseConfirmation }
         set { tabManager.showingCloseConfirmation = newValue }
     }
-    var pendingLargeFile: FileItem? {
-        get { tabManager.pendingLargeFile }
-        set { tabManager.pendingLargeFile = newValue }
-    }
-    var showingLargeFileWarning: Bool {
-        get { tabManager.showingLargeFileWarning }
-        set { tabManager.showingLargeFileWarning = newValue }
-    }
     var recentlyClosedURLs: [URL] {
         get { tabManager.recentlyClosedURLs }
         set { tabManager.recentlyClosedURLs = newValue }
     }
 
     // Actions
-    func openFile(_ item: FileItem)                              { tabManager.openFile(item) }
-    func openFileUnchecked(_ item: FileItem)                     { tabManager.openFileUnchecked(item) }
+    @discardableResult
+    func openFile(_ item: FileItem) -> Bool                      { tabManager.openFile(item) }
     func applyLoadedContent(tabID: UUID, content: String)        { tabManager.applyLoadedContent(tabID: tabID, content: content) }
     func failLoadingTab(tabID: UUID, url: URL, error: Error)     { tabManager.failLoadingTab(tabID: tabID, url: url, error: error) }
     func closeTab(_ tabID: UUID)                                 { tabManager.closeTab(tabID) }

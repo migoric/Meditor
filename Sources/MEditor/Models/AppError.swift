@@ -14,6 +14,9 @@ enum AppError: LocalizedError {
     case previewResourceMissing(String)
     case exportFailed(format: String, underlying: Error?)
     case sessionRestoreFailed(String)
+    /// 文件体积超过编辑器上限（`TabManager.openSizeLimit(for:)`），拒绝打开。
+    /// 与「读失败」分开：文件是好的，只是这里打不开。
+    case fileTooLarge(URL, size: Int64, limit: Int64)
 
     /// Short, end-user-friendly description.
     var errorDescription: String? {
@@ -36,7 +39,22 @@ enum AppError: LocalizedError {
             return L("error.exportFailed", format, e?.localizedDescription ?? L("error.unknown"))
         case .sessionRestoreFailed(let detail):
             return L("error.sessionRestoreFailed", detail)
+        case .fileTooLarge(let url, let size, let limit):
+            return L("error.fileTooLarge",
+                     url.lastPathComponent,
+                     Self.byteText(size),
+                     Self.byteText(limit))
         }
+    }
+
+    /// 「23.4 MB」这类展示用体积。用 `ByteCountFormatter` 而不是自己除 1024：
+    /// 单位与系统其余地方一致，且中英切换时单位词也跟着系统走。
+    static func byteText(_ bytes: Int64) -> String {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        f.allowedUnits = [.useMB, .useGB]
+        f.allowsNonnumericFormatting = false
+        return f.string(fromByteCount: bytes)
     }
 
     /// Severity for routing: `.user` errors are surfaced via Alert, `.silent`
