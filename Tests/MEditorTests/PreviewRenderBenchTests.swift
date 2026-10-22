@@ -76,5 +76,10 @@ final class PreviewRenderBenchTests: XCTestCase {
         let mixed = (0..<150).map { _ in [para, code, "| a | b |\n| - | - |\n| 1 | 2 |", "> 引用"].joined(separator: "\n\n") }
             .joined(separator: "\n\n")
         try await bench("synth:混合大餐", mixed, webView)
+
+        // outline 重型语料：2000 个标题——TOC 提取（bridge 的 tocItems）随渲染一起跑，
+        // renderInto 列即含 outline 数据面的成本
+        let headings = (0..<2000).map { "## 第 \($0) 章 标题\n\n\(para)" }.joined(separator: "\n\n")
+        try await bench("synth:标题×2000(outline)", headings, webView)
     }
 }
