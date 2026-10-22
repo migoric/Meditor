@@ -106,7 +106,7 @@ enum PreviewTestPage {
         return stats
     }
 
-    /// 读取仓库内的预览资源源码（marked / render.js …）。    ///
+    /// 读取仓库内的预览资源源码（marked / render.js …）。
     /// 走 `#filePath` 而不是 Bundle：`swift test` 下 `Bundle.main` 是 xctest 启动器，
     /// `PreviewResourceLocator` 解析为 nil，拿不到 Resources。
     static func previewScript(named relative: String) throws -> String {

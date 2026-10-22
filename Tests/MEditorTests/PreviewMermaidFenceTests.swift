@@ -192,6 +192,19 @@ final class PreviewMermaidFenceTests: XCTestCase {
         XCTAssertTrue(body.contains("graph TD"))
     }
 
+    func testTildeMermaidFenceWithBacktickElsewhereIsNotRendered() async throws {
+        // 反向验证（AGENTS.md §6）：关栏分支若只判 info 不判开栏字符，
+        // ~~~mermaid 会被摘成图——本条随即变红。文档里必须另有 ``` 放行快路径。
+        let doc = "~~~mermaid\ngraph TD\n~~~\n\n正文。\n\n```swift\nlet a = 1\n```\n"
+        let webView = try await PreviewTestPage.makeWebView().0
+        try await PreviewTestPage.render(doc, in: webView)
+
+        let count = try await diagrams(webView).count
+        XCTAssertEqual(count, 0, "~~~mermaid 不是图（与 Swift 侧 MermaidBlocks 同口径）")
+        let body = try await text(webView)
+        XCTAssertTrue(body.contains("graph TD"), "波浪号围栏内容应作为普通代码块保留")
+    }
+
     // MARK: - 工具
 
     private struct Diagram: Decodable { let id: String; let code: String }

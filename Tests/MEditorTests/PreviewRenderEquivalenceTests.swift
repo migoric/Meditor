@@ -39,7 +39,17 @@ final class PreviewRenderEquivalenceTests: XCTestCase {
         ("引用块含空行", "> 引用一\n>\n> 引用二\n\n正文一。\n\n正文二。"),
         ("围栏内含空行", "正文一。\n\n```swift\nlet a = 1\n\nlet b = 2\n```\n\n正文二。\n\n正文三。"),
         ("未闭合围栏", "正文一。\n\n```swift\nlet x = 1"),
+        ("未闭合围栏超两块", "正文一。\n\n正文二。\n\n```swift\nlet x = 1\n\nlet y = 2"),
         ("行内代码含反引号", "这是 ``a ` b`` 行内代码。\n\n正文一。\n\n正文二。\n\n正文三。"),
+        // 反引号围栏的 info 含反引号 ⇒ CommonMark 规定该行不是围栏；
+        // 切块器若认它当开栏，会与 marked 的奇偶错开，块边界切进真代码块。
+        ("伪围栏info含反引号", "教程一。\n\n教程二。\n\n``` 或者 ```javascript\n说明文字。\n\n```swift\nlet a = 1\n```\n\n正文三。"),
+        // 引用定义可以出现在容器里（blockquote / 列表项缩进），文档级生效；
+        // 判据只认行首 ≤3 空格时这类定义漏检，走分块后链接静默丢失。
+        ("引用定义在引用块里", "> [bar]: /url\n\n见 [bar] 链接。\n\n另起一段。\n\n再一段。"),
+        ("引用定义在列表项里", "- item\n\n    [x]: /url\n\n见 [x] 这里。\n\n另起一段。\n\n再一段。"),
+        // 预处理（标题/分隔线后补空行）不识别围栏时，会把空行插进代码内容。
+        ("围栏内注释紧跟代码", "```python\n# 注释\nx = 1\n```\n\n正文一。\n\n正文二。\n\n正文三。"),
         ("围栏内含更短反引号", "````md\n```js\nx\n```\n````\n\n正文一。\n\n正文二。"),
         ("任务列表", "- [ ] 未完成\n\n- [x] 已完成\n\n正文一。\n\n正文二。"),
         ("深层嵌套列表", "1. 一\n   - 一甲\n\n   - 一乙\n\n2. 二\n\n正文一。"),
@@ -98,6 +108,38 @@ final class PreviewRenderEquivalenceTests: XCTestCase {
         let literal = try await PreviewTestPage.eval(
             "document.getElementById('content').textContent.indexOf('[bar]')", webView)
         XCTAssertEqual(literal, "-1", "正文里留下了未解析的 [bar]")
+    }
+
+    /// 容器内的引用定义同样文档级生效（blockquote / 列表项缩进），
+    /// 分块判据漏检 ⇒ 定义块被吞、链接静默丢失。
+    func testContainerReferenceDefinitionKeepsLink() async throws {
+        let (webView, _) = try await PreviewTestPage.makeWebView()
+        for text in [
+            "> [bar]: /url-a\n\n见 [bar] 链接。\n\n另起一段。\n\n再一段。",
+            "- item\n\n    [bar]: /url-b\n\n见 [bar] 这里。\n\n另起一段。\n\n再一段。",
+        ] {
+            _ = try await PreviewTestPage.render(text, in: webView)
+            let found = try await PreviewTestPage.eval(
+                "document.querySelector('#content a[href^=\"/url-\"]') ? 'ok' : 'missing'", webView)
+            XCTAssertEqual(found, "ok", "容器内引用定义漏检，链接丢失：\(text.prefix(20))…")
+        }
+    }
+
+    /// 结构行补空行必须围栏感知：整篇路径也不准往代码内容里插空行。
+    func testFullParseDoesNotPadInsideFence() async throws {
+        let (webView, _) = try await PreviewTestPage.makeWebView()
+        let literal = try PreviewTestPage.jsStringLiteral("```python\n# 注释\nx = 1\n```\n")
+        let code = try await PreviewTestPage.eval("""
+        (function () {
+          var html = MEditorRender.renderMarkdown(\(literal));
+          var m = html.match(/<code[^>]*>([\\s\\S]*?)<\\/code>/);
+          return m ? m[1] : 'NO-CODE';
+        })()
+        """, webView)
+        XCTAssertTrue(
+            code?.contains("# 注释\nx = 1") == true,
+            "代码内容被预处理改写（围栏内插了空行）：\(code ?? "nil")"
+        )
     }
 
     // MARK: - 夹具
