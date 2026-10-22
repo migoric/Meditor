@@ -81,7 +81,9 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # Lipo both architectures into a universal binary
 lipo -create "${BINARIES[@]}" -output "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-# Strip 符号表：universal 里 38.8 MB → 14.7 MB，下载包 9.4 MB → 6.4 MB。
+# Strip 符号表：universal 二进制 38.8 MB → 14.7 MB；它在 zip 里占的那一条
+# 压缩后 9.42 MB → 6.43 MB（这是「主二进制条目」的体积，不是整个下载包：
+# 包从 13.57 MB 降到 9.27 MB，见 CHANGELOG 0.13.6）。
 # 删的只是 __LINKEDIT 里的 nlist 数组 + 字符串表（「名称 → 地址」的索引），
 # __TEXT（代码 / 常量 / C 字符串 / __swift5_* 元数据）逐字节不变——验证方式：
 #   比较 load commands 之后到 __TEXT 末尾的字节，两者 sha256 相同。
