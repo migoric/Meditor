@@ -12,6 +12,8 @@ final class WebViewPool {
 
     private(set) var warmedView: WKWebView?
     private(set) var isReady = false
+    /// 镜像/写盘正在进行（避免 `bootSequence` 与 `dequeue` 的重填重复触发）。
+    private var isPreparing = false
 
     let cacheDir: URL = {
         let cachesDir = FileManager.default.firstURL(for: .cachesDirectory)
@@ -21,33 +23,36 @@ final class WebViewPool {
     private init() {}
 
     /// Pre-create WKWebView + load template with all assets. Call at app launch.
+    ///
+    /// 资源镜像与 `preview.html` 的生成一律交给 `PreviewAssetMirror.prepareHTML`。
+    /// 这里曾经自己抄了一份「缺了才 `copyItem`」的逻辑，与
+    /// `PreviewAssetMirror.mirrorAssets`（hard-link + 按源/目标 mtime 判刷新）
+    /// 是两套实现：后果是**预热缓存永不刷新**——升级后残留的旧 CSS/JS 会一直
+    /// 喂给第一个预览（`fileExists` 就跳过，`shouldRefresh` 无从生效），
+    /// 而且那 856KB 的拷贝发生在主线程（`bootSequence` 的第一步）。
+    ///
+    /// 现在镜像与写盘挪到后台，主线程只负责建 WebView 和发起导航。
     func warmUp() {
-        guard warmedView == nil else { return }
-        guard let resourcesRoot = PreviewResourceLocator.resourcesRoot(),
-              let templateURL = PreviewResourceLocator.templateURL(),
-              let template = try? String(contentsOf: templateURL, encoding: .utf8) else { return }
-
-        // Ensure all assets are in cache dir (same as real preview).
-        // 与 PreviewAssetMirror.mirroredItems 保持一致；mermaid.min.js
-        // 不预热——render.js 首次遇到 mermaid 图时动态加载。
-        let fm = FileManager.default
-        try? fm.createDirectory(at: cacheDir, withIntermediateDirectories: true)
-        let items = PreviewAssetMirror.mirroredItems
-        for item in items {
-            let src = resourcesRoot.appendingPathComponent(item)
-            let dst = cacheDir.appendingPathComponent(item)
-            guard fm.fileExists(atPath: src.path), !fm.fileExists(atPath: dst.path) else { continue }
-            try? fm.copyItem(at: src, to: dst)
+        guard warmedView == nil, !isPreparing else { return }
+        isPreparing = true
+        let cacheDir = self.cacheDir
+        Task.detached(priority: .utility) {
+            let fileURL = PreviewAssetMirror.prepareHTML(
+                initialContent: "",
+                theme: .github,
+                cacheDir: cacheDir
+            )
+            await MainActor.run { self.beginLoading(fileURL: fileURL) }
         }
+    }
 
-        // Write template with empty content
-        let html = template
-            .replacingOccurrences(of: "{{INITIAL_THEME}}", with: "github")
-            .replacingOccurrences(of: "{{INITIAL_CONTENT_JSON}}", with: "\"\"")
-        let fileURL = cacheDir.appendingPathComponent("preview.html")
-        try? html.write(to: fileURL, atomically: true, encoding: .utf8)
+    /// 主线程收尾：建 WKWebView 并加载刚写好的 `preview.html`。
+    private func beginLoading(fileURL: URL?) {
+        isPreparing = false
+        guard warmedView == nil else { return }
+        // 资源定位失败（打包缺文件）时不置位，下次还能重试。
+        guard let fileURL else { return }
 
-        // Create and load
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(MeditorAssetSchemeHandler(), forURLScheme: MeditorAssetSchemeHandler.scheme)
         config.userContentController = WKUserContentController()
