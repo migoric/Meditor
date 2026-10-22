@@ -28,7 +28,7 @@ Meditor/
 │   ├── Managers/                 # 状态管理：Tab / FileTree / Share / Template / Todo…
 │   ├── ViewModels/               # AppState（组合式状态层）＋ 各 @Observable UI 状态
 │   └── Views/                    # SwiftUI + AppKit 视图
-├── Tests/MEditorTests/           # 130 个 .swift / ~25.8k 行
+├── Tests/MEditorTests/           # 131 个 .swift / ~25.9k 行
 ├── Mobile/                       # iOS 伴生 App（独立 Xcode 工程）
 │   └── Sources/                  # 29 个 .swift / ~6.5k 行
 ├── worker/                       # Cloudflare Workers（在线发布后端，独立 toolchain）
