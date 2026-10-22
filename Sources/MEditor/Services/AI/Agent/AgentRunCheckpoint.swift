@@ -109,7 +109,8 @@ final class AgentRunCheckpoint {
 
     /// 覆盖写前记录：写前内容未知时的兜底采集。打开的 tab 内存内容优先
     /// （用户视角的最新内容，可能含未保存编辑——与 fileContentFull 的取舍一致）；
-    /// 否则同步读盘（≤1MB 小文件，与 `TabManager.openFile` 主线程同步读的取舍一致）。
+    /// 否则同步读盘（小文件同步读的取舍与 `TabManager.openFile` 一致，那边阈值 512KB；
+    /// 这里的上限是快照自己的 `maxSnapshotBytes`，1MB）。
     func captureBeforeWrite(url: URL, tabContent: String?) {
         if let tabContent {
             captureBeforeWrite(url: url, knownContent: tabContent)

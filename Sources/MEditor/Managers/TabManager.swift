@@ -128,8 +128,10 @@ final class TabManager {
     func openFile(_ item: FileItem) -> Bool {
         guard !item.isDirectory else { return false }
         let limit = Self.openSizeLimit(for: item.url)
-        if let size = fileService.attributes(at: item.url)?[.size] as? Int64, size > limit {
-            onReport?(.fileTooLarge(item.url, size: size, limit: limit))
+        // 文件属性取一次：上限判定与同步/异步读共用，也消掉两次读取间文件被替换的窗口。
+        let fileSize = fileService.attributes(at: item.url)?[.size] as? Int64
+        if let fileSize, fileSize > limit {
+            onReport?(.fileTooLarge(item.url, size: fileSize, limit: limit))
             return false
         }
 
@@ -152,8 +154,7 @@ final class TabManager {
         // （异步跳转至少隔一两个 runloop，肉眼可见闪一下）。大文件仍走异步，
         // 不阻塞主线程。
         let syncThreshold: Int64 = 512 * 1024
-        let fileSize = (fileService.attributes(at: item.url)?[.size] as? Int64) ?? .max
-        if fileSize <= syncThreshold, let content = try? fileService.readFile(at: item.url) {
+        if (fileSize ?? .max) <= syncThreshold, let content = try? fileService.readFile(at: item.url) {
             let tab = EditorTab(url: item.url, content: content, language: lang)
             openTabs.insert(tab, at: 0)
             selectedTabID = tab.id

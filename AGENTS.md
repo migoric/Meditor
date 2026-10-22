@@ -22,13 +22,13 @@
 Meditor/
 ├── Package.swift                 # swift-tools-version 6.2（⇒ 必须 Xcode 26 工具链）
 ├── VERSION                       # macOS 版本单源（bundle.sh 注入 Info.plist）
-├── Sources/MEditor/              # 桌面端主体 —— 273 个 .swift / ~53.2k 行
+├── Sources/MEditor/              # 桌面端主体 —— 273 个 .swift / ~53.6k 行
 │   ├── Models/  Protocols/       # 数据模型与结构接口（最底层，零上层依赖）
 │   ├── Services/                 # 能力层：AI（Agent/Backends/Tools）、MCP、Core、File…
 │   ├── Managers/                 # 状态管理：Tab / FileTree / Share / Template / Todo…
 │   ├── ViewModels/               # AppState（组合式状态层）＋ 各 @Observable UI 状态
 │   └── Views/                    # SwiftUI + AppKit 视图
-├── Tests/MEditorTests/           # 119 个 .swift / ~23.8k 行
+├── Tests/MEditorTests/           # 130 个 .swift / ~25.8k 行
 ├── Mobile/                       # iOS 伴生 App（独立 Xcode 工程）
 │   └── Sources/                  # 29 个 .swift / ~6.5k 行
 ├── worker/                       # Cloudflare Workers（在线发布后端，独立 toolchain）
@@ -36,7 +36,7 @@ Meditor/
 └── scripts/                      # 打包 / 测试 / 覆盖率 / 守卫脚本
 ```
 
-**体量读数会腐烂** —— 上面的数字是 2026-10-22 的实测值，**引用前请现场复算**：
+**体量读数会腐烂** —— 上面的数字是 2026-10-23 的实测值，**引用前请现场复算**：
 
 ```bash
 find Sources/MEditor -name '*.swift' | wc -l

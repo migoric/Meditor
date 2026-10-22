@@ -18,9 +18,8 @@
 直接失败退出。不要在这里加调色板量化——图标有渐变，量化会出色带，而且实测
 量化到 256 色只再省 1%，不值得。
 
-依赖 Pillow（系统 python3 没有）：
-    /Users/migor/.workbuddy/binaries/python/envs/default/bin/python \
-        scripts/optimize_appicon.py
+依赖 Pillow（系统 python3 没有，先 `python3 -m pip install Pillow`
+或换用任何带 Pillow 的 python 解释器）。
 
 用法：
     python scripts/optimize_appicon.py            # 就地重写
@@ -62,7 +61,7 @@ def main() -> int:
     try:
         from PIL import Image
     except ImportError:
-        raise SystemExit("需要 Pillow：用 ~/.workbuddy/binaries/python/envs/default/bin/python 跑")
+        raise SystemExit("需要 Pillow：python3 -m pip install Pillow（或换用带 Pillow 的解释器）")
 
     raw = ICNS.read_bytes()
     entries = parse(raw)
