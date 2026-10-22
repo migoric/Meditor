@@ -121,7 +121,7 @@ jobs:
 
       - name: Build x86_64 slice
         run: |
-          swift build --arch x86_64 \
+          swift build \
             -Xswiftc -emit-const-values-path \
             -Xswiftc "$PWD/.build/debug/MEditor.swiftconstvalues" \
             -Xswiftc -Xfrontend \
