@@ -81,6 +81,17 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # Lipo both architectures into a universal binary
 lipo -create "${BINARIES[@]}" -output "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
+# Strip 符号表：universal 里 38.8 MB → 14.7 MB，下载包 9.4 MB → 6.4 MB。
+# 删的只是 __LINKEDIT 里的 nlist 数组 + 字符串表（「名称 → 地址」的索引），
+# __TEXT（代码 / 常量 / C 字符串 / __swift5_* 元数据）逐字节不变——验证方式：
+#   比较 load commands 之后到 __TEXT 末尾的字节，两者 sha256 相同。
+# 代价仅限「拿地址回查函数名」，而那条链要 dSYM 才成立，发布包从来没有 dSYM。
+# ⚠️ 必须在签名之前：strip 会让已有签名失效（构建产物带的是 swift build 的
+#   ad-hoc 签名），这里 strip 完由文件末尾那次 codesign 统一签。
+STRIP_BEFORE=$(stat -f %z "$APP_BUNDLE/Contents/MacOS/$APP_NAME")
+strip -x "$APP_BUNDLE/Contents/MacOS/$APP_NAME" 2>/dev/null
+echo "🗜  $APP_NAME binary: $STRIP_BEFORE → $(stat -f %z "$APP_BUNDLE/Contents/MacOS/$APP_NAME") bytes (stripped)"
+
 # SwiftPM 链接 Sparkle.xcframework 时 rpath 指向构建目录（Vendor/ 或 .build/artifacts）——
 # .app 里 dyld 找不到框架会启动即崩（Library not loaded: @rpath/Sparkle.framework）。
 # 补一条 @executable_path/../Frameworks，指向 bundle 内嵌的框架。
@@ -175,6 +186,9 @@ echo "🔍 Assembling Quick Look extension ($QL_NAME.appex)..."
 rm -rf "$QL_APPEX"
 mkdir -p "$QL_APPEX/Contents/MacOS" "$QL_APPEX/Contents/Resources"
 lipo -create "${QL_BINARIES[@]}" -output "$QL_APPEX/Contents/MacOS/$QL_NAME"
+# 扩展同样 strip（理由见主二进制那段）。appex 在 lipo 之后、下面单独 codesign
+# 之前，顺序天然正确。
+strip -x "$QL_APPEX/Contents/MacOS/$QL_NAME" 2>/dev/null
 cp "$PROJECT_DIR/Sources/$QL_NAME/Info.plist" "$QL_APPEX/Contents/Info.plist"
 # 扩展版本与主 app 保持一致（同一份 VERSION / CI 环境变量）
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$QL_APPEX/Contents/Info.plist"

@@ -12,6 +12,37 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **下载包从 13.6 MB 降到 9.1 MB（-33%），装到磁盘上从 47.7 MB 降到 22.5 MB。**
+  （13.57 MB 是 0.13.5 的 zip；9.12 MB 是本地走完整 `bundle.sh` 后按 CI 同款
+  `ditto -c -k --keepParent` 打出来的，发布产物的 Sparkle 版本略有差异，量级在
+  几十 KB。）三处，都不动功能：
+
+  ① **发布包里的可执行文件剥掉符号表**（`scripts/bundle.sh` 在 lipo 之后、签名之前
+  `strip -x`）。universal 二进制 38.76 MB → 14.71 MB，压缩后下载体积 9.42 → 6.43 MB
+  （本节这两个数是 0.13.5 的包实测的；本地重建的包是 36.40 → 14.78 MB）。
+  删掉的是 `__LINKEDIT` 里的 nlist 数组与字符串表，即「名称 → 地址」的索引；**代码段
+  逐字节不变**——比较 load commands 之后到 `__TEXT` 末尾的 6,546,568 字节，两个文件的
+  sha256 相同，`__swift5_*` 元数据段也一个不少（Swift 的反射不依赖符号表）。代价仅限
+  「拿地址回查函数名」，而这条链要 dSYM 才成立，发布包从来没有 dSYM。同一个包里的
+  Quick Look 扩展一并 strip。
+
+  ② **删掉 `Preview/mermaid.min.js.gz`（883 KB，无引用）**。它是 6 月那次「存 gzip、
+  首次用时解压」方案（`b9dc09c`）的遗留：后来加载路径改成 `PreviewAssetMirror` 直接
+  按需拷贝明文 `mermaid.min.js`，解压代码已全部删除（全仓搜 `gunzip|Gzip|decompress`
+  零命中），只剩这份压缩副本还躺在 `Resources/` 里被整目录复制进包。等于同一份文件
+  存了两遍，而 gz 在 zip 里压不动，883 KB 全额计入下载体积。
+
+  ③ **`AppIcon.icns` 无损重压**（新增 `scripts/optimize_appicon.py`）：992,502 B →
+  659,420 B。原文件各层 PNG 用的是低效编码（1024px 那层单层 565 KB）；`iconutil` 重打包
+  会把 PNG 重新编码回去（642 KB 的 iconset 打回去仍是 969 KB），所以脚本按 icns 容器
+  格式逐块改写，条目顺序与类型不变，并逐层比对像素必须完全一致。
+
+  ⚠️ 没做的三件，理由记在这里免得反复讨论：**只发 arm64**（能再省约 3.3 MB，但砍掉
+  Intel Mac 支持）、**mermaid 换按需构建**（可省 0.3–0.6 MB，要引入打包流程且渲染
+  结果需要两端重新对齐）、**删 Sparkle 的 Installer.xpc**（仅 40 KB，且属于框架内部）。
+
 ## [0.13.5] - 2026-10-22
 
 **这一版全是「看起来没问题、实际有代价」的东西。** 一是长文档打字变慢：上一版给分块器
