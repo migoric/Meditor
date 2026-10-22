@@ -154,11 +154,11 @@ toast（底部胶囊 2.5s，可带操作按钮）/ EmptyStateView / WelcomeView�
 
 ## 10. 已知短板（与 spec 无关，纯现状）
 
-1. 无障碍覆盖极低：21.2k 行视图里 `accessibilityLabel` 仅 20 处、
+1. 无障碍覆盖极低：21.4k 行视图里 `accessibilityLabel` 仅 22 处、
    `accessibilityIdentifier` 为 0（等于没有 UI 测试挂点）、无 VoiceOver 走查
-2. 无减少动态效果适配（`accessibilityReduceMotion` 0 处；欢迎页那组无限循环动画照跑）
+2. 减少动态效果适配刚起步（`accessibilityReduceMotion` 仅 1 处：欢迎页，#68 接入；其余动画未覆盖）
 3. 侧栏无拖拽（spec 遗留，若要恢复分层导航需补）
-4. 单文件偏大：`Localization.swift` 1315 行、`AgentRunner.swift` 843 行、`AIService.swift` 820 行
+4. 单文件偏大：`Localization.swift` 1344 行、`AIService.swift` 845 行、`AgentRunner.swift` 843 行
 5. **抬升语言已统一**（2026-10 修复）：`dsElevation` 24 处 + `DS.Elevation` 3 处；
    裸 `.shadow(` 从 29 处降到 9 处。原「无抬升 token」条目作废。
 6. **行选中色已有 token**（2026-10 修复）：`selectionFill` 12 处统一取档；

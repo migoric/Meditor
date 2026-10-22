@@ -15,6 +15,8 @@ extension AIAssistantPanel {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.craftPrimary)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L("ai.command.a11y.pending"))
             Text(pending.command)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(theme.craftPrimary)
@@ -63,6 +65,8 @@ extension AIAssistantPanel {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.craftPrimary)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L("ai.write.a11y.pending", pending.path))
             Text(pending.path)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(theme.craftPrimary)

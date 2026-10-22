@@ -14,6 +14,15 @@
 
 ### Fixed
 
+- **macOS：冷启动恢复会话时，选中的 HTML 会一直白屏，切一下 tab 才渲染**。恢复会话时
+  tab 先以空内容入列（`awaitingInitialContent`），内容由后台读完回填；而
+  `TabManager.applyLoadedContent` 此前只把回填结果推给 markdown 预览，HTML 于是停在
+  入场那次「加载空内容」上——`reloadToken` 不再递增，`WebPreviewView` 按
+  `(fileURL, reloadToken)` 去重后认为无事可做，直到切 tab（切 tab 会重新同步）才刷新。
+  现在两种语言都会回灌，是否重载仍由 `PreviewManager` 按内容 diff 决定（幂等）。
+  顺带两处体验：① 内容到达前不再创建 `WKWebView`——此前会先加载一个空页、读完再导航
+  一次，等于两次解析；② HTML 补上加载指示器，此前遮罩只挂在 Markdown 上，白屏期间
+  没有任何反馈。
 - **iOS：打开文件的失败全链路有回声，且体积上限按类型区分**。此前多个入口失败时
   静默无反应（首页导入、底栏导入、快捷动作、从「文件」App 分享进来），且体积判定
   各自为政——「打开文件」被拒的同一份文件能从最近列表打开。现在：① 所有读取路径

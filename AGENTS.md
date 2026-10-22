@@ -22,33 +22,33 @@
 Meditor/
 ├── Package.swift                 # swift-tools-version 6.2（⇒ 必须 Xcode 26 工具链）
 ├── VERSION                       # macOS 版本单源（bundle.sh 注入 Info.plist）
-├── Sources/MEditor/              # 桌面端主体 —— 267 个 .swift / ~50.9k 行
+├── Sources/MEditor/              # 桌面端主体 —— 273 个 .swift / ~53.2k 行
 │   ├── Models/  Protocols/       # 数据模型与结构接口（最底层，零上层依赖）
 │   ├── Services/                 # 能力层：AI（Agent/Backends/Tools）、MCP、Core、File…
 │   ├── Managers/                 # 状态管理：Tab / FileTree / Share / Template / Todo…
 │   ├── ViewModels/               # AppState（组合式状态层）＋ 各 @Observable UI 状态
 │   └── Views/                    # SwiftUI + AppKit 视图
-├── Tests/MEditorTests/           # 111 个 .swift / ~22.4k 行
+├── Tests/MEditorTests/           # 119 个 .swift / ~23.8k 行
 ├── Mobile/                       # iOS 伴生 App（独立 Xcode 工程）
-│   └── Sources/                  # 27 个 .swift / ~5.7k 行
+│   └── Sources/                  # 29 个 .swift / ~6.5k 行
 ├── worker/                       # Cloudflare Workers（在线发布后端，独立 toolchain）
 ├── website/  pages/              # 静态站与文档页
 └── scripts/                      # 打包 / 测试 / 覆盖率 / 守卫脚本
 ```
 
-**体量读数会腐烂** —— 上面的数字是 2026-10-17 的实测值，**引用前请现场复算**：
+**体量读数会腐烂** —— 上面的数字是 2026-10-22 的实测值，**引用前请现场复算**：
 
 ```bash
 find Sources/MEditor -name '*.swift' | wc -l
 find Sources/MEditor -name '*.swift' -exec cat {} + | wc -l
 ```
 
-当前最大的五个文件（也是重构优先级最高的五个）：`Services/Core/Localization.swift` 1271 行、
-`Services/AI/Agent/AgentRunner.swift` 843 行、`Views/AI/AtMention/AtMentionComposerView.swift` 812 行、
-`ViewModels/AppState.swift` 762 行、`Services/AI/AIService.swift` 757 行。
+当前最大的五个文件（也是重构优先级最高的五个）：`Services/Core/Localization.swift` 1344 行、
+`Services/AI/AIService.swift` 845 行、`Services/AI/Agent/AgentRunner.swift` 843 行、
+`ViewModels/AppState.swift` 819 行、`Views/AI/AtMention/AtMentionComposerView.swift` 812 行。
 
-（上一版只列四个，漏掉了实际第二大的 `AgentRunner.swift` —— 它是 Agent 的核心执行器，
-大小和重要性都不该缺席。数字为 2026-10-17 实测。）
+（数字为 2026-10-22 实测。对比 10-17 那版：`AIService.swift` 与 `AppState.swift` 五天内各涨了
+~90/~60 行并反超进榜——这两个正是打磨期要拆的热文件，涨速本身就是证据。）
 
 ---
 
@@ -90,7 +90,7 @@ UI 常量走 `DS.*`（`Views/Shared/DesignTokens.swift`）。**定义了没人�
 ### 2.3 共享内核：iOS 侧是**手工清单**
 
 iOS target 在 `Mobile/MEditorMobile.xcodeproj/project.pbxproj` 的 `Shared` 组里**逐条枚举**
-`../Sources/MEditor/**` 的文件（当前 **49 条**），不是文件系统同步组。后果：
+`../Sources/MEditor/**` 的文件（当前 **50 条**），不是文件系统同步组。后果：
 
 - **新增一个共享文件，必须同时改 pbxproj**，否则 iOS 静默缺文件、编译红。
 - 共享文件里**不许有未包裹的 AppKit 依赖**（用 `#if os(macOS)`）。目前唯一合法的
@@ -151,6 +151,7 @@ swiftlint lint --strict --config .swiftlint.yml Sources
 python3 scripts/check_service_layer_deps.py
 python3 scripts/check_dead_tokens.py
 python3 scripts/check_docs_consistency.py   # 文档断言 vs 代码事实
+python3 scripts/check_bare_numbers.py       # 裸字号/圆角/路径 try? 棘轮（只许降）
 ```
 
 > ⚠️ **`swift build` 的前提是 `xcode-select -p` 指向 Xcode**。指向 CommandLineTools 时
@@ -161,7 +162,9 @@ python3 scripts/check_docs_consistency.py   # 文档断言 vs 代码事实
 CI 里两个 main gate（其余见 `docs/engineering-practices.md` §1）：
 `Build & Test (macOS 26)` · `Build (iOS Simulator)`。
 `SwiftLint` 与 `Coverage Gate` 已并入 `Build & Test`（同一台 macOS runner 里顺序执行）。
-这两个名字同时是分支保护里的必需检查（`protected: true`）—— 改名或给 `pull_request` 加
+分支保护（`protected: true`）的必需检查共 **7 个**：上面两个 main gate 加五个守卫 job
+（`Layer Guard` / `UI Guard` / `Docs Guard` / `Worker Tests` / `iOS Shared Source Guard`，
+2026-10-22 起全部必需）—— 改任何一个的名字或给 `pull_request` 加
 `paths-ignore` 都会让 PR 卡在一个永不出现的检查上。
 
 **本地跑不动的两处，如实说明**：
