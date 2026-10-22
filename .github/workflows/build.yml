@@ -121,17 +121,32 @@ jobs:
 
       - name: Build x86_64 slice
         run: |
-          swift build \
+          swift build --arch x86_64 \
             -Xswiftc -emit-const-values-path \
             -Xswiftc "$PWD/.build/debug/MEditor.swiftconstvalues" \
             -Xswiftc -Xfrontend \
             -Xswiftc -const-gather-protocols-file \
             -Xswiftc -Xfrontend \
             -Xswiftc "$PWD/scripts/appintents-protocols.json"
-          # 产物必须真的是 x86_64：--arch 拼错 / 被环境变量覆盖时，
-          # 静默退回 host 架构会让这一关变成「编了两遍 arm64」，白付 runner 钱
-          # 还假报通过。
-          lipo -archs .build/x86_64-apple-macosx/debug/MEditor | grep -qx 'x86_64'
+
+          # 产物必须真的是 x86_64：`--arch` 被删掉或被环境变量覆盖时，swift build
+          # 会静默退回 host 架构（runner 是 arm64）——这一关就变成「又编了一遍
+          # arm64」，白付 runner 时间还假报通过。
+          #
+          # 报错要直接指着真因说。实测把 `--arch x86_64` 删掉时，裸 lipo 的报错是
+          # `lipo: can't open input file: .build/x86_64-apple-macosx/debug/MEditor`
+          # ——看着像路径写错，实际是根本没编这个架构。
+          BIN=.build/x86_64-apple-macosx/debug/MEditor
+          if [ ! -f "$BIN" ]; then
+            echo "::error::没有产出 x86_64 切片（$BIN 不存在）——--arch x86_64 被删了或被覆盖了？"
+            exit 1
+          fi
+          ARCHS_OUT=$(lipo -archs "$BIN")
+          if [ "$ARCHS_OUT" != "x86_64" ]; then
+            echo "::error::$BIN 的架构是 '$ARCHS_OUT'，期望 x86_64"
+            exit 1
+          fi
+          echo "✓ 产物架构：$ARCHS_OUT"
 
   ios:
     name: Build (iOS Simulator)
