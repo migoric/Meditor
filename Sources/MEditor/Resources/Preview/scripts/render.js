@@ -118,9 +118,11 @@
       var lineStart = mk === 0 ? 0 : src.lastIndexOf('\n', mk - 1) + 1;
 
       if (open) {
-        // 关栏：同字符 + 长度不小于开栏 + 行尾只有空白
+        // 关栏：同字符 + 长度不小于开栏 + 行尾只有空白。
+        // 出图只认反引号开栏（与 Swift 侧 MermaidBlocks 同口径）——
+        // ~~~mermaid 是合法围栏但不产图，此前漏判 char 会被摘成 diagram。
         if (ch === open.char && len >= open.len && isBlankRange(src, markerEnd, lineEnd)) {
-          if (open.info === 'mermaid') {
+          if (open.char === '`' && open.info === 'mermaid') {
             var id = 'mermaid-' + diagrams.length;
             diagrams.push({ id: id, code: src.slice(open.bodyStart, lineStart).trim() });
             pieces.push(src.slice(cursor, open.lineStart));
@@ -337,8 +339,23 @@
    */
   var renderStats = { fullParse: 0, blockParse: 0, blockHit: 0, sanitize: 0 };
 
-  /** 顶层围栏开栏行：零缩进 + ≥3 个反引号或波浪号（理由见 splitBlocks）。 */
-  var FENCE_OPEN = /^(`{3,}|~{3,})/;
+  /**
+   * 顶层开栏判定：零缩进 + ≥3 个反引号或波浪号；反引号围栏的 info 里
+   * 再出现反引号 ⇒ 该行**不是**围栏（CommonMark：那种写法是行内代码）。
+   * splitBlocks / padStructureLines 都走这一个判据（extractMermaid 有自己的
+   * 行循环，含 info 解析，口径已逐条对齐）——三套围栏判定若各写一份，
+   * 失同步就是「分块与整篇解析出口不等价」的直接来源。
+   *
+   * @param {string} line 一行原文（不含 \n）
+   * @returns {{char: string, len: number}|null}
+   */
+  function fenceOpenInfo(line) {
+    var m = /^(`{3,}|~{3,})/.exec(line);
+    if (!m) return null;
+    if (m[1].charAt(0) === '`' && line.indexOf('`', m[1].length) !== -1) return null;
+    return { char: m[1].charAt(0), len: m[1].length };
+  }
+
   /** 闭合围栏行：CommonMark 允许 0–3 空格缩进，其后只能有空白。 */
   var FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
   /** 带缩进的围栏行——可能是列表项里的围栏，其容器上下文我们还原不了。 */
@@ -560,9 +577,9 @@
         continue;
       }
 
-      var open = FENCE_OPEN.exec(line);
+      var open = fenceOpenInfo(line);
       if (open) {
-        fence = { char: open[1].charAt(0), len: open[1].length };
+        fence = open;
         current.push(line);
         continue;
       }
@@ -606,7 +623,10 @@
     // Fallback: link reference definitions are cross-block state.
     // 冒号后的空白不是必需的（`[bar]:https://x` 也是合法定义），此前要求 `\s`
     // 会把这种写法漏过去 ⇒ 定义块单独解析成空串、正文留 `[bar]`，链接静默丢失。
-    if (/^ {0,3}\[[^\]\n]+\]:/m.test(content)) {
+    // 定义还能出现在容器里（blockquote `> [x]: /u`、列表项缩进 `    [x]: /u`），
+    // 同样是文档级生效——判据放宽到「任意前导空白/引用符」，宁可多回退
+    // （代码块里写 `[a]: b` 会误触发整篇解析，只丢缓存），不可漏检丢链接。
+    if (/^[ \t>]*\[[^\]\n]+\]:/m.test(content)) {
       return renderMarkdown(content);
     }
 
@@ -661,12 +681,39 @@
     }
   }
 
+  /**
+   * 结构行后补空行：标题 / 分隔线后紧跟非空行时插入空行（marked 需要）。
+   * 必须围栏感知：两条裸正则会把空行插进围栏内部的 `# 注释` / `---` 之后，
+   * 改写代码内容。已知边界：缩进围栏（列表项内）不做状态跟踪——与旧实现同。
+   */
+  function padStructureLines(content) {
+    var lines = content.split('\n');
+    var out = [];
+    var fence = null;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      out.push(line);
+      if (fence) {
+        var close = FENCE_CLOSE.exec(line);
+        if (close && close[1].charAt(0) === fence.char && close[1].length >= fence.len) {
+          fence = null;
+        }
+        continue;
+      }
+      var open = fenceOpenInfo(line);
+      if (open) { fence = open; continue; }
+      var next = i + 1 < lines.length ? lines[i + 1] : '';
+      if (next !== '' && next !== '\r'
+          && (/^#{1,6}\s+\S/.test(line) || /^(---+|\*\*\*+|___+)[ \t\r]*$/.test(line))) {
+        out.push('');
+      }
+    }
+    return out.join('\n');
+  }
+
   function renderMarkdown(content) {
     renderStats.fullParse++;
-    var processed = content
-      .replace(/^(#{1,6}\s+[^\n]+)\n(?!\n)/gm, '$1\n\n')
-      .replace(/^(---+|\*\*\*+|___+)\s*\n(?!\n)/gm, '$1\n\n');
-    processed = fixTableSeparators(processed);
+    var processed = fixTableSeparators(padStructureLines(content));
     return sanitizeHTML(marked.parse(processed, { gfm: true, breaks: false }));
   }
 
