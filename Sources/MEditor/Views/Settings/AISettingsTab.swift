@@ -26,7 +26,7 @@ extension SettingsView {
             cliOptionRow
             rowDivider
             apiKeyOptionRow
-            if settings.aiProvider == AIProviderKind.openai.rawValue {
+            if usesRemoteAPI {
                 rowDivider
                 settingsStackedRow(label: L("ai.apiKey"), subtitle: L("ai.apiKey.localOnly")) { aiKeyField }
                 rowDivider
@@ -35,6 +35,14 @@ extension SettingsView {
                 }
             }
         }
+    }
+
+    /// 「填自己的 API key」这一档包含两种线格式：OpenAI 兼容与 Anthropic 直连。
+    /// 判断必须两处一起认，否则选了 Anthropic 预设之后整块远程设置（key / 测试连接
+    /// / 模型）会从界面上消失——provider 被切成 anthropic 的那一刻配置就摸不到了。
+    private var usesRemoteAPI: Bool {
+        let kind = AIProviderKind(rawValue: settings.aiProvider)
+        return kind == .openai || kind == .anthropic
     }
 
     private var cliOptionSelected: Bool {
@@ -90,7 +98,7 @@ extension SettingsView {
     }
 
     var apiKeyOptionRow: some View {
-        let selected = settings.aiProvider == AIProviderKind.openai.rawValue
+        let selected = usesRemoteAPI
         return Button(action: enableAPIKeyProvider) {
             HStack(alignment: .center, spacing: DS.Space.md) {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
@@ -156,7 +164,11 @@ extension SettingsView {
                     options: [
                         (AIProviderKind.disabled.rawValue, L("ai.provider.disabled")),
                         (AIProviderKind.claudeCLI.rawValue, L("ai.mode.local")),
-                        (AIProviderKind.openai.rawValue, L("ai.mode.remote"))
+                        (AIProviderKind.openai.rawValue, L("ai.mode.remote")),
+                        // Anthropic 直连（Messages API）与 OpenAI 兼容是两套线格式：
+                        // 端点、消息结构、prompt caching 断点都不同，必须能显式选到，
+                        // 否则「选 Anthropic 预设」只能改 baseURL、线格式仍是 OpenAI。
+                        (AIProviderKind.anthropic.rawValue, L("ai.mode.remoteAnthropic"))
                     ]
                 )
             }
@@ -196,19 +208,20 @@ extension SettingsView {
                     connectionTestButton(disabled: settings.aiCLIPath.isEmpty) { await runCLITest() }
                 }
             }
-        } else if settings.aiProvider == AIProviderKind.openai.rawValue {
+        } else if usesRemoteAPI {
             settingsGroup(title: L("ai.section.remote")) {
                 settingsStackedRow(label: L("ai.preset")) {
                     SettingsMenu(
                         selection: Binding<String>(
                             get: { AIPresets.match(settings.aiBaseURL)?.id ?? "custom" },
                             set: { id in
-                                guard let p = AIPresets.all.first(where: { $0.id == id }) else { return }
-                                settings.aiBaseURL = p.baseURL
-                                aiModels = p.models
-                                if !p.models.contains(settings.aiModel) {
-                                    settings.aiModel = p.models.first ?? settings.aiModel
-                                }
+                                // 三个字段一起写：provider 决定线格式，漏掉它就是
+                                // 「配置看着对、发出去 404」（Anthropic 预设的历史 bug）。
+                                guard let applied = AIPresets.apply(id: id, currentModel: settings.aiModel) else { return }
+                                settings.aiProvider = applied.kind.rawValue
+                                settings.aiBaseURL = applied.baseURL
+                                aiModels = AIPresets.all.first(where: { $0.id == id })?.models ?? aiModels
+                                settings.aiModel = applied.model
                             }
                         ),
                         options: AIPresets.all.map { ($0.id, $0.name) } + [("custom", L("ai.preset.custom"))]
@@ -278,6 +291,18 @@ extension SettingsView {
                 subtitle: L("settings.ai.autoApplyWritesHint")
             ) {
                 Toggle("", isOn: bindableSettings.aiAgentAutoApplyWrites)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+
+            rowDivider
+
+            settingsRow(
+                label: L("settings.ai.trace"),
+                subtitle: L("settings.ai.traceHint")
+            ) {
+                Toggle("", isOn: bindableSettings.aiTraceEnabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
@@ -392,6 +417,9 @@ extension SettingsView {
     }
 
     func enableAPIKeyProvider() {
+        // 已经是远程档（openai / anthropic）就别再改：这一行是「切到本模式」，
+        // 不是「重置为本模式的默认值」。否则在 anthropic 下点一下自己会被打回 openai。
+        guard !usesRemoteAPI else { return }
         settings.aiProvider = AIProviderKind.openai.rawValue
     }
 

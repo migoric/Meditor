@@ -46,6 +46,8 @@ final class AppSettings {
         static let aiAgentAutoApplyWrites = "MEditor.aiAgentAutoApplyWrites"
         // 端侧智能（Apple Foundation Models）
         static let aiOnDevicePasteCleanup = "MEditor.aiOnDevicePasteCleanup"
+        /// 运行轨迹落盘（默认关，见 AgentTraceStore：只存元数据，不存正文）
+        static let aiTraceEnabled = "MEditor.aiTraceEnabled"
         // 设置页 AI tab「高级」区展开状态（默认收起，首屏只留一个决策）
         static let aiAdvancedExpanded = "MEditor.aiAdvancedExpanded"
         static let userDocPathBookmark = "MEditor.userDocPathBookmark"
@@ -215,6 +217,17 @@ final class AppSettings {
     /// 写文档/打补丁先进入逐块审阅态，用户接受后才写盘）。给信任度高的用户。
     var aiAgentAutoApplyWrites: Bool {
         didSet { defaults.set(aiAgentAutoApplyWrites, forKey: Key.aiAgentAutoApplyWrites) }
+    }
+
+    /// 每次 agent run 结束后把**元数据**轨迹写进
+    /// `~/Library/Application Support/MEditor/traces/`（默认关）。
+    ///
+    /// 关着的理由：轨迹是排障/评测资料，不是产品功能。写盘属于"用户没要求的事"，
+    /// 默认做就等于替他决定。开着的价值：出问题时有工具序列、成败、耗时、token
+    /// 可复盘；评测侧也能拿它做回归比对。只记元数据（工具名/字节数/成败），
+    /// 不记参数与结果正文——那里可能有文档内容。
+    var aiTraceEnabled: Bool {
+        didSet { defaults.set(aiTraceEnabled, forKey: Key.aiTraceEnabled) }
     }
 
     // MARK: - 端侧智能（Apple Foundation Models）
@@ -540,6 +553,7 @@ final class AppSettings {
         aiAutoAttachContext = d.object(forKey: Key.aiAutoAttachContext) != nil
             ? d.bool(forKey: Key.aiAutoAttachContext) : true
         aiAgentAutoApplyWrites = d.bool(forKey: Key.aiAgentAutoApplyWrites)  // 默认关 = 预览优先
+        aiTraceEnabled = d.bool(forKey: Key.aiTraceEnabled)                  // 默认关 = 不写盘
         // 端侧智能（默认关：用户显式开启后才过端侧模型）
         aiOnDevicePasteCleanup = d.bool(forKey: Key.aiOnDevicePasteCleanup)
         // AI 设置「高级」区（默认收起）

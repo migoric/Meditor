@@ -7,15 +7,21 @@ extension SettingsView {
     func runConnectionTest() async {
         connectionTesting = true
         connectionTestResult = nil
-        let baseURL = settings.aiBaseURL.trimmingCharacters(in: .whitespaces)
-        let apiKey = AIAPIKeyStore.load() ?? ""
-        let model = settings.aiModel.isEmpty ? "gpt-4o-mini" : settings.aiModel
-        let isAnthropic = baseURL.lowercased().contains("anthropic")
+        // 与聊天/Agent 走**同一个** resolver：测试通过必须意味着真发消息也通过。
+        // （此前这里按 baseURL 是否含 "anthropic" 嗅探线格式，而生产路径用 provider
+        // 字段 ⇒ 选了 Anthropic 预设时测试走 anthropic、发送走 openai，测试绿、一发 404。）
+        let config = AIConfig.resolve(
+            providerRaw: settings.aiProvider,
+            baseURL: settings.aiBaseURL,
+            model: settings.aiModel,
+            cliPath: "",
+            cliModel: "",
+            apiKey: AIAPIKeyStore.load() ?? "",
+            requestTimeoutSeconds: 10
+        )
 
         do {
-            let resultModel = try await performConnectionTest(
-                baseURL: baseURL, apiKey: apiKey, model: model, isAnthropic: isAnthropic
-            )
+            let resultModel = try await performConnectionTest(config: config)
             connectionTestOK = true
             connectionTestResult = L("settings.test.okModel", resultModel)
         } catch {
@@ -25,22 +31,20 @@ extension SettingsView {
         connectionTesting = false
     }
 
-    private func performConnectionTest(
-        baseURL: String, apiKey: String, model: String, isAnthropic: Bool
-    ) async throws -> String {
-        guard !baseURL.isEmpty else { throw URLError(.badURL) }
+    private func performConnectionTest(config: AIConfig) async throws -> String {
+        guard !config.baseURL.isEmpty else { throw URLError(.badURL) }
         // 连接测试与聊天/Agent 共用 RestAgentBackend 的请求构造（wire format 唯一来源）；
         // 仅收紧超时（10s）与负载（单条 "hi"，非流式）。
-        let config = AIConfig(
-            kind: isAnthropic ? .anthropic : .openai,
-            baseURL: baseURL,
-            model: model,
-            cliPath: "",
-            cliModel: "",
-            apiKey: apiKey,
-            requestTimeoutSeconds: 10
-        )
-        let backend = RestAgentBackend(config: config, wire: isAnthropic ? .anthropic : .openAI)
+        var config = config
+        config.requestTimeoutSeconds = 10
+        // 模型留空时按线格式给一个该格式认得的默认值：Anthropic 端点不认识
+        // gpt-4o-mini，会回 Model not found —— 那看起来像 key 错了。
+        var model = config.model.trimmingCharacters(in: .whitespaces)
+        if model.isEmpty {
+            model = config.kind == .anthropic ? "claude-sonnet-4-5" : "gpt-4o-mini"
+            config.model = model
+        }
+        let backend = AgentBackendFactory.make(config: config)
         _ = try await backend.complete(
             messages: [AgentMessage(role: .user, content: "hi")],
             tools: []

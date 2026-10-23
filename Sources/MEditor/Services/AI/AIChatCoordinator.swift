@@ -41,6 +41,8 @@ final class AIChatCoordinator {
         let userTurnCount = convo.messages.filter { $0.role == .user }.count
         let baseSys = systemContext(includeFullDoc: userTurnCount == 1 && includeAutoContext)
         let mcpManager = state.mcpClientManager
+        // 工具预算的相关性打分输入：本轮用户原话（不进 Task 里读，避免跨 actor 取状态）
+        let userQuery = convo.messages.last(where: { $0.role == .user })?.text ?? ""
 
         Task {
             // @mention IO 在后台执行
@@ -58,6 +60,11 @@ final class AIChatCoordinator {
             var tools = BuiltinAgentTools.all
             tools.append(contentsOf: await mcpManager.refreshForAgentRun(workspaceURL: wsRoot))
             if let notice = mcpManager.modelFacingNotice { sysContent += notice }
+            // 工具预算：工具定义每轮重发，MCP 挂几台就可能 40+ 条。只在有把握时裁——
+            // 没命中任何查询词就原样放行（见 AgentToolBudget 的约束说明）。
+            let budget = AgentToolBudget.select(tools: tools, query: userQuery)
+            if let notice = budget.notice { sysContent += notice }
+            tools = budget.tools
             await MainActor.run {
                 launchAgentRunner(sysContent: sysContent, config: config, context: context,
                                   tools: tools, checkpoint: checkpoint)
@@ -155,8 +162,15 @@ final class AIChatCoordinator {
         Task {
             var tools = BuiltinAgentTools.all
             tools.append(contentsOf: await state.mcpClientManager.refreshForAgentRun(workspaceURL: state.rootURL))
+            // 续跑也走工具预算（成本问题在续跑上一样存在），但**补不上提示文案**：
+            // system prompt 已在上面 makeMessages 时定型，要补就得重建消息列表。
+            // 这条差异是已知的，别当成两条路径一致。
+            let selected = AgentToolBudget.select(
+                tools: tools,
+                query: convo.messages.last(where: { $0.role == .user })?.text ?? ""
+            )
             startAgentRun(agentMessages: agentMessages, config: config, context: context,
-                          tools: tools, checkpoint: checkpoint)
+                          tools: selected.tools, checkpoint: checkpoint)
         }
     }
 
@@ -181,6 +195,8 @@ final class AIChatCoordinator {
         // 捕获发起会话：run 进行中用户可能切换 / 新建会话（cancelStreaming 停掉 runner，
         // 但 onChunk / onComplete 仍会触发），回调必须写回该会话而非当时的活跃会话
         let sessionID = convo.activeID
+        // 轨迹开关在 run 开始时取一次：run 中途用户改设置不该产生半条轨迹
+        let traceEnabled = settings.aiTraceEnabled
 
         // 上下文预算淘汰提示（每次 run 最多一次）：与超长截断提示同通道——transcript 里
         // 插一条 subtle 消息，不静默淘汰。按发起会话写回（插在流式占位 bubble 之前）。
@@ -260,6 +276,13 @@ final class AIChatCoordinator {
             // run 级文件快照一并挂入（仅当确有写入）：步骤面板据此提供「撤销本次运行的全部修改」
             if checkpoint.hasWrites {
                 runner?.state.checkpoint = checkpoint
+            }
+            // 运行轨迹（默认关）：只落元数据——工具序列/成败/耗时/token，不落正文。
+            // 见 AgentRunTrace 头注释。落盘放后台：收尾在主线程跑，别让磁盘 IO 卡住 UI；
+            // 写失败在 store 内部兜住（只记日志），不影响 run 结果。
+            if traceEnabled, let state = runner?.state {
+                let trace = AgentRunTrace.make(from: state, sessionID: sessionID)
+                Task.detached(priority: .utility) { _ = AgentTraceStore.shared.save(trace) }
             }
             convo.setLastRunState(runner?.state, sessionID: sessionID)
 

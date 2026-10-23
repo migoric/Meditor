@@ -111,7 +111,7 @@ extension LocalizationManager {
         "ai.accentStyle": ("Accent style", "强调色风格"),
         "ai.mode.local": ("Local", "本地"),
         "ai.mode.remote": ("Remote", "远程"),
-        "ai.section.mode": ("Mode", "模式"),
+        "ai.mode.remoteAnthropic": ("Remote · Anthropic", "远程 · Anthropic 直连"),        "ai.section.mode": ("Mode", "模式"),
         "ai.section.local": ("Local (Claude CLI)", "本地（Claude CLI）"),
         "ai.section.remote": ("Remote API (OpenAI-compatible)", "远程 API（OpenAI 兼容）"),
         "ai.section.appearance": ("Appearance", "外观"),
@@ -1254,6 +1254,9 @@ extension LocalizationManager {
         "settings.ai.autoApplyWrites": ("Auto-apply Agent Changes", "自动应用 Agent 改动"),
         "settings.ai.autoApplyWritesHint": ("Write files after a simple confirmation instead of reviewing each change in the diff view first",
                                             "写操作只弹确认条直接落盘，不先进入逐块 diff 审阅"),
+        "settings.ai.trace": ("Save run traces", "保存运行轨迹"),
+        "settings.ai.traceHint": ("After each run, write a metadata-only trace (tool sequence, success, duration, tokens) to Application Support/MEditor/traces. Document content is never included.",
+                                  "每次运行结束后把元数据轨迹（工具序列、成败、耗时、token）写到 应用支持/MEditor/traces。不含文档内容。"),
         "diff.totalCount": ("%d changes", "共 %d 处改动"),
 
         // Agent 断点续传（运行失败中断后从中断处继续）
