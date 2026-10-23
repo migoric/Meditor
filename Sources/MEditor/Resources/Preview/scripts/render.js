@@ -337,7 +337,8 @@
    * 解析，产物依然逐字节正确。所以需要出口：命中/重解析/整篇兜底/消毒各调用了几次。
    * 测试断言的是这组比值，不是耗时（耗时在 CI 机器上不稳定）。
    */
-  var renderStats = { fullParse: 0, blockParse: 0, blockHit: 0, sanitize: 0 };
+  var renderStats = { fullParse: 0, blockParse: 0, blockHit: 0, sanitize: 0,
+    patchGroupsCompared: 0, patchGroupsReplaced: 0, patchBail: 0 };
 
   /**
    * 顶层开栏判定：零缩进 + ≥3 个反引号或波浪号；反引号围栏的 info 里
@@ -618,8 +619,12 @@
    * and for indented fences (list-item containers we cannot reconstruct).
    *
    * 未闭合围栏**不再**回退整篇：见 splitBlocks 的说明。这条路径是打字时的每一帧。
+   *
+   * 命中分块路径时除了拼好的 HTML 还返回**组数组**（`{ key, html }`，key 即组原文），
+   * 让 renderInto 能做块对齐的 DOM patch——「哪些组没变」的信息走到 DOM 层，
+   * 未变化组零解析、零序列化、零比较。回退整篇解析时 groups 为 null。
    */
-  function renderMarkdownCached(content) {
+  function renderMarkdownBlocks(content) {
     // Fallback: link reference definitions are cross-block state.
     // 冒号后的空白不是必需的（`[bar]:https://x` 也是合法定义），此前要求 `\s`
     // 会把这种写法漏过去 ⇒ 定义块单独解析成空串、正文留 `[bar]`，链接静默丢失。
@@ -627,7 +632,7 @@
     // 同样是文档级生效——判据放宽到「任意前导空白/引用符」，宁可多回退
     // （代码块里写 `[a]: b` 会误触发整篇解析，只丢缓存），不可漏检丢链接。
     if (/^[ \t>]*\[[^\]\n]+\]:/m.test(content)) {
-      return renderMarkdown(content);
+      return { html: renderMarkdown(content), groups: null, totalLen: 0 };
     }
 
     // 围栏内部不切块 ⇒ 含代码块的文档也能命中块级缓存。
@@ -636,28 +641,43 @@
     // 每一轮防抖更新都要重付一次）。
     var blocks = splitBlocks(content);
     if (!blocks || blocks.length <= 2) {
-      return renderMarkdown(content);
+      return { html: renderMarkdown(content), groups: null, totalLen: 0 };
     }
 
-    var htmlParts = [];
+    var groups = new Array(blocks.length);
+    var totalLen = 0;
 
     for (var i = 0; i < blocks.length; i++) {
       var block = blocks[i];
-      if (!block.trim()) { htmlParts.push(''); continue; }
-
-      var cached = cacheGet(block);
-      if (cached !== null) {
-        renderStats.blockHit++;
-        htmlParts.push(cached);
-      } else {
-        renderStats.blockParse++;
-        var blockHTML = sanitizeHTML(marked.parse(fixTableSeparators(block), { gfm: true, breaks: false }));
-        cachePut(block, blockHTML);
-        htmlParts.push(blockHTML);
+      var html = '';
+      if (block.trim()) {
+        var cached = cacheGet(block);
+        if (cached !== null) {
+          renderStats.blockHit++;
+          html = cached;
+        } else {
+          renderStats.blockParse++;
+          html = sanitizeHTML(marked.parse(fixTableSeparators(block), { gfm: true, breaks: false }));
+          cachePut(block, html);
+        }
       }
+      groups[i] = { key: block, html: html };
+      totalLen += html.length + 1;
     }
 
-    return htmlParts.join('\n');
+    return { html: null, groups: groups, totalLen: totalLen };
+  }
+
+  /** 组 HTML 拼回整篇（与旧的 htmlParts.join('\n') 同口径）。 */
+  function joinGroupHTML(groups) {
+    var parts = new Array(groups.length);
+    for (var i = 0; i < groups.length; i++) parts[i] = groups[i].html;
+    return parts.join('\n');
+  }
+
+  function renderMarkdownCached(content) {
+    var rendered = renderMarkdownBlocks(content);
+    return rendered.groups ? joinGroupHTML(rendered.groups) : rendered.html;
   }
 
   /**
@@ -1003,18 +1023,34 @@
    *  Instead of innerHTML replacing the entire tree, we diff at the
    *  block level (top-level children of #content) and only replace
    *  changed nodes. This preserves hljs state on unchanged code blocks
-   *  and cuts DOM rebuild cost by 60-90% during typical editing. */
+   *  and cuts DOM rebuild cost by 60-90% during typical editing.
+   *
+   *  分块路径下走**块对齐 patch**（patchDOMGroups）：组数组带着「哪些组变了」
+   *  一直到 DOM 层，未变化组不再付出 temp.innerHTML 解析与 nodesEqual 的
+   *  innerHTML 序列化比较（885KB 文档无变化热更新 ~41ms 的主要构成）。 */
   function renderInto(targetEl, content) {
     try {
       var extracted = extractMermaid(content || '');
       // 数学在 mermaid 之后摘：mermaid 代码块此时已被换成占位 div，
       // 里面的 `$` 不会误入公式识别。
       var math = extractMath(extracted.processed);
-      var html = renderMarkdownCached(math.processed);
+      var rendered = renderMarkdownBlocks(math.processed);
+      var groups = rendered.groups;
+      var html = rendered.html;
 
-      // Incremental update: compare block-level nodes
-      if (targetEl.children.length > 0 && html.length < 500000) {
-        var updated = patchDOM(targetEl, html);
+      // Incremental update: 块对齐优先（对组信息可用的文档**不设体积上限**——
+      // 500KB 上限护的是整篇 temp.innerHTML + 全树比较，而块对齐的成本只随
+      // 变化组走，恰恰是大文档收益最大）；对齐失稳 / 无组信息回退全树 diff。
+      var totalLen = groups ? rendered.totalLen : html.length;
+      if (targetEl.children.length > 0) {
+        var updated = groups ? patchDOMGroups(targetEl, groups) : false;
+        if (!updated && totalLen < 500000) {
+          if (groups) html = joinGroupHTML(groups);
+          updated = patchDOM(targetEl, html);
+          // 全树 diff 成功后重建组范围记录，下一帧起恢复块对齐
+          if (updated && groups) recordGroupRanges(targetEl, groups);
+          if (!groups) lastGroupPatch = null;
+        }
         if (updated) {
           stampHeadingLines(targetEl, content || '');
           highlightCodeBlocks(targetEl);
@@ -1023,27 +1059,154 @@
           rewriteAbsoluteAssetPaths(targetEl);
           return;
         }
+        lastGroupPatch = null;   // 落到全量替换：范围记录作废
       }
 
       // Fallback: full replace (first render or very large docs)
+      if (groups && html === null) html = joinGroupHTML(groups);
       targetEl.innerHTML = html;
-      if (html.indexOf('<table') !== -1) {
-        var tables = targetEl.querySelectorAll('table');
-        for (var t = 0; t < tables.length; t++) {
-          var wrapper = document.createElement('div');
-          wrapper.className = 'table-wrapper';
-          tables[t].parentNode.insertBefore(wrapper, tables[t]);
-          wrapper.appendChild(tables[t]);
-        }
-      }
+      if (html.indexOf('<table') !== -1) wrapTablesIn(targetEl);
       stampHeadingLines(targetEl, content || '');
       highlightCodeBlocks(targetEl);
       renderMermaidDiagrams(extracted.diagrams);
       renderMath(math.items);
       rewriteAbsoluteAssetPaths(targetEl);
+      // 首帧就建立组范围记录（自校验，对不上就放弃），让第一次更新就能走块对齐
+      if (groups) recordGroupRanges(targetEl, groups);
+      else lastGroupPatch = null;
     } catch (e) {
       targetEl.innerHTML = '<div class="error-block">Render error: ' + String(e && e.message || e) + '</div>';
+      lastGroupPatch = null;
     }
+  }
+
+  /**
+   * 上一帧块对齐 patch 留下的「组 → #content 顶层子节点范围」记录：
+   * `{ target, groups: [{ key, start, count }] }`。count 以**包裹后**的 DOM
+   * 为准（table 先包 .table-wrapper 再计数），start 冗余存一份便于排查。
+   *
+   * 凡是绕过 renderInto 直接改写 #content 的入口（bridge 的缓存命中恢复）
+   * 都必须调 notifyExternalDOMReset 作废它——按过期范围替换会错位。
+   */
+  var lastGroupPatch = null;
+
+  /** 给 rootEl 下未包裹的 table 包一层 .table-wrapper（横向滚动容器）。 */
+  function wrapTablesIn(rootEl) {
+    var tables = rootEl.querySelectorAll('table:not(.table-wrapper table)');
+    for (var t = 0; t < tables.length; t++) {
+      if (tables[t].parentElement && tables[t].parentElement.className === 'table-wrapper') continue;
+      var wrapper = document.createElement('div');
+      wrapper.className = 'table-wrapper';
+      tables[t].parentNode.insertBefore(wrapper, tables[t]);
+      wrapper.appendChild(tables[t]);
+    }
+  }
+
+  /**
+   * 块对齐增量 patch：按组原文 key 做前后缀对齐（首个变化组之前的部分逐组
+   * 相等、尾部同理，中间一段视为变化区），只对变化组做 `temp.innerHTML`
+   * （单组体积）并替换对应 DOM 子区间；未变化组零解析、零序列化、零比较。
+   *
+   * - 文首插入 ⇒ 前缀 0、后缀全对上 ⇒ 只插一组，后续组的节点原样保留不错位；
+   * - mermaid/math 占位 div 在组 HTML 里，随组替换后由 patch 之后的
+   *   renderMermaidDiagrams / renderMath 重新填充；
+   * - 对齐失稳（无记录 / 记录的总子节点数与真实 DOM 对不上）⇒ 返回 false，
+   *   调用方回退全树 patchDOM——宁可慢一帧，不可按错范围替换。
+   */
+  function patchDOMGroups(targetEl, groups) {
+    var old = (lastGroupPatch && lastGroupPatch.target === targetEl) ? lastGroupPatch.groups : null;
+    if (!old) { renderStats.patchBail++; return false; }
+
+    var i;
+    var oldCount = 0;
+    for (i = 0; i < old.length; i++) oldCount += old[i].count;
+    if (oldCount !== targetEl.children.length) { renderStats.patchBail++; return false; }
+
+    // 前后缀对齐：key 是组原文，渲染对同一原文确定 ⇒ key 相等即 HTML 相等。
+    // 重复组（两处一样的段落）按位置对齐也安全——同 key 同产物，替换是恒等操作。
+    var p = 0;
+    while (p < old.length && p < groups.length && old[p].key === groups[p].key) p++;
+    var s = 0;
+    while (s < old.length - p && s < groups.length - p &&
+           old[old.length - 1 - s].key === groups[groups.length - 1 - s].key) s++;
+
+    renderStats.patchGroupsCompared += groups.length;
+    var midNew = groups.length - p - s;
+
+    // 变化区对应的 DOM 子节点区间 [start, end)
+    var start = 0;
+    for (i = 0; i < p; i++) start += old[i].count;
+    var end = start;
+    for (i = p; i < old.length - s; i++) end += old[i].count;
+    var refNode = end < targetEl.children.length ? targetEl.children[end] : null;
+
+    // 只解析变化组；表格在插入前就包好，保证「计数的结构 = 进 DOM 的结构」
+    var fragment = document.createDocumentFragment();
+    var midCounts = new Array(midNew);
+    var temp = document.createElement('div');
+    for (i = 0; i < midNew; i++) {
+      var g = groups[p + i];
+      temp.innerHTML = g.html;
+      if (g.html.indexOf('<table') !== -1) wrapTablesIn(temp);
+      midCounts[i] = temp.children.length;
+      while (temp.firstElementChild) fragment.appendChild(temp.firstElementChild);
+    }
+
+    // children 是 live 集合：逐个删 [start, end)，删完 refNode 仍指向后缀首节点
+    for (i = start; i < end; i++) targetEl.removeChild(targetEl.children[start]);
+    if (refNode) targetEl.insertBefore(fragment, refNode);
+    else targetEl.appendChild(fragment);
+
+    renderStats.patchGroupsReplaced += midNew;
+
+    // 记录新范围：前/后缀组沿用在位节点的 count（同 key ⇒ 同顶层结构），
+    // 变化组用刚数出的 count。
+    var recorded = new Array(groups.length);
+    var pos = 0;
+    for (i = 0; i < p; i++) {
+      recorded[i] = { key: groups[i].key, start: pos, count: old[i].count };
+      pos += old[i].count;
+    }
+    for (i = 0; i < midNew; i++) {
+      recorded[p + i] = { key: groups[p + i].key, start: pos, count: midCounts[i] };
+      pos += midCounts[i];
+    }
+    for (i = 0; i < s; i++) {
+      recorded[p + midNew + i] = {
+        key: groups[p + midNew + i].key,
+        start: pos,
+        count: old[old.length - s + i].count
+      };
+      pos += old[old.length - s + i].count;
+    }
+    lastGroupPatch = { target: targetEl, groups: recorded };
+    return true;
+  }
+
+  /**
+   * 全量替换 / 全树 diff 之后重建组范围记录：逐组解析数顶层元素
+   *（总量 ≈ 一次全文解析，只在建记录这一帧付出）。与真实 DOM 对不上
+   *（结构不确定）就放弃记录——宁可下一帧仍走全树 diff，不可按错范围替换。
+   */
+  function recordGroupRanges(targetEl, groups) {
+    var temp = document.createElement('div');
+    var recorded = new Array(groups.length);
+    var pos = 0;
+    for (var i = 0; i < groups.length; i++) {
+      var html = groups[i].html;
+      temp.innerHTML = html;
+      if (html.indexOf('<table') !== -1) wrapTablesIn(temp);
+      var count = temp.children.length;
+      recorded[i] = { key: groups[i].key, start: pos, count: count };
+      pos += count;
+    }
+    if (pos !== targetEl.children.length) {
+      renderStats.patchBail++;
+      lastGroupPatch = null;
+      return false;
+    }
+    lastGroupPatch = { target: targetEl, groups: recorded };
+    return true;
   }
 
   /** Block-level DOM diff. Returns true if patch was applied, false to fallback. */
@@ -1082,16 +1245,7 @@
     }
 
     // Wrap tables in new/replaced nodes
-    if (newHTML.indexOf('<table') !== -1) {
-      var tables = targetEl.querySelectorAll('table:not(.table-wrapper table)');
-      for (var t = 0; t < tables.length; t++) {
-        if (tables[t].parentElement.className === 'table-wrapper') continue;
-        var wrapper = document.createElement('div');
-        wrapper.className = 'table-wrapper';
-        tables[t].parentNode.insertBefore(wrapper, tables[t]);
-        wrapper.appendChild(tables[t]);
-      }
-    }
+    if (newHTML.indexOf('<table') !== -1) wrapTablesIn(targetEl);
 
     return true;
   }
@@ -1146,7 +1300,12 @@
         blockHit: renderStats.blockHit,
         sanitize: renderStats.sanitize,
         cacheEntries: paragraphCache.size,
-        cacheBytes: bytes
+        cacheBytes: bytes,
+        // 块对齐 patch：对齐时看了多少组 / 实际替换了多少组 / 回退全树 diff 几次。
+        // 「无变化更新 ⇒ patchGroupsReplaced === 0 且 patchBail === 0」可被测试断言。
+        patchGroupsCompared: renderStats.patchGroupsCompared,
+        patchGroupsReplaced: renderStats.patchGroupsReplaced,
+        patchBail: renderStats.patchBail
       };
     },
     resetRenderStats: function () {
@@ -1154,6 +1313,16 @@
       renderStats.blockParse = 0;
       renderStats.blockHit = 0;
       renderStats.sanitize = 0;
+      renderStats.patchGroupsCompared = 0;
+      renderStats.patchGroupsReplaced = 0;
+      renderStats.patchBail = 0;
+    },
+    // 绕过 renderInto 直接改写 #content 的入口（bridge 的缓存命中恢复）
+    // 必须调它作废组范围记录——按过期范围做块对齐替换会错位。
+    notifyExternalDOMReset: function (targetEl) {
+      if (lastGroupPatch && (!targetEl || lastGroupPatch.target === targetEl)) {
+        lastGroupPatch = null;
+      }
     },
     configureMermaidFromTheme: configureMermaidFromTheme,
     refreshMermaidForTheme: refreshMermaidForTheme,

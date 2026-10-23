@@ -191,6 +191,10 @@
     if (key && renderCache.has(key)) {
       var entry = renderCache.get(key);
       contentEl.innerHTML = entry.html;
+      // 直接覆写 #content 会让 render.js 的块对齐范围记录过期，必须作废
+      if (window.MEditorRender && window.MEditorRender.notifyExternalDOMReset) {
+        window.MEditorRender.notifyExternalDOMReset(contentEl);
+      }
       lruTouch(key, entry.html, entry.metadata);
       pendingCacheKey = null;
       applyDocumentMetadata(rehydrateCachedMetadata(entry.metadata));
