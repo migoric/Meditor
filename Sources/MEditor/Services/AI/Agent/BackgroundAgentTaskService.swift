@@ -118,12 +118,16 @@ final class BackgroundAgentTaskService {
             }
             // 取消竞态：MCP 懒连接期间用户已从任务列表取消——直接放弃启动
             guard let self, let task, task.isRunning else { return }
+            // 工具预算：定时任务常挂 MCP，而它的 prompt 是固定文本、命中率低，
+            // 所以这里裁掉的基本就是与本任务无关的远端工具（无信号时不裁）。
+            let budget = AgentToolBudget.select(tools: tools, query: prompt)
+            let effectivePrompt = budget.notice.map { systemPrompt + $0 } ?? systemPrompt
             runner.onComplete = { [weak self, weak task] in
                 guard let self, let task else { return }
                 self.handleFinish(task)
             }
-            runner.run(systemPrompt: systemPrompt, userMessage: prompt,
-                       tools: tools, config: config, context: context)
+            runner.run(systemPrompt: effectivePrompt, userMessage: prompt,
+                       tools: budget.tools, config: config, context: context)
         }
         return task
     }

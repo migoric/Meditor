@@ -12,8 +12,32 @@
 
 ## [Unreleased]
 
+### Added
+
+- **运行轨迹（默认关）**：设置 → AI → 高级里打开后，每次 agent run 结束会往
+  `~/Library/Application Support/MEditor/traces/` 写一条 JSON 轨迹——工具序列、
+  成败、耗时、token、停滞诊断。**只记元数据**：参数与结果只留字节数，正文一律不落盘
+  （轨迹是排障材料，不该变成第二份文档副本），保留最近 50 条。
+- **Agent 离线金标准**（`AgentEvalGoldenTests`）：把「模型说了什么 → 工具按什么顺序
+  被调用 → 落盘几次」写成一张场景表，改 agent harness 时先跑它。与单测的分工是
+  「整轮交互是否还是原样」，而不是某个函数对不对。
+
+### Changed
+
+- **工具定义有了预算（上限 32 条）**：MCP 挂几台就可能把工具表顶到 40+ 条，而工具
+  定义是每轮重发的。超过上限时按本轮原话给 MCP 工具打相关性分数，只保留命中的，
+  其余折叠并在系统提示里点名。**只在有把握时裁**：一个词都没命中（典型是中文提问
+  对英文工具描述）就原样放行——藏掉唯一能用的工具比多花 token 更糟。内置工具永不裁。
+
 ### Fixed
 
+- **选「Anthropic Claude」后发消息必 404**：预设下拉只写 baseURL 和 model，从不写
+  provider，于是线格式仍是 OpenAI（打 `api.anthropic.com/v1/chat/completions`，
+  那个端点不存在），而「测试连接」是按 baseURL 嗅探成 anthropic 的，所以测试通过、
+  一发就失败。连带后果是 prompt caching（`cache_control` 断点）一次都没生效过。
+  现在选预设会把 provider 一起切过去，设置里多一个「远程 · Anthropic 直连」选项；
+  老版本留下的「openai + anthropic baseURL」组合会在解析配置时自愈成 anthropic
+  （自建反代与「已关闭」不受影响）。守卫：`AIProviderWireTests`。
 - **预览可能显示上一个文件的内容**（切 tab 时）：`renderInto` 的 no-op 短路拿「上轮
   join 产物」和本次产物比字符串，而这个状态是**整个 WebView 的 JS 上下文级变量**；
   预览的 webview 又跨文档复用（切 tab 只换内容，不重建）。缓存命中恢复那条路径

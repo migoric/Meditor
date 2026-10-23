@@ -64,6 +64,34 @@ enum AIPresets {
         let b = baseURL.trimmingCharacters(in: .whitespaces)
         return all.first { $0.baseURL == b }
     }
+
+    /// 选中某个预设时，设置里**应当写入的三个字段**。
+    ///
+    /// 为什么要有这个函数：`AIProviderPreset.kind` 的注释写着「选中此 Preset 时自动
+    /// 设置 provider kind」，但设置页此前只写了 baseURL 和 model —— 于是选
+    /// 「Anthropic Claude」之后 provider 仍是 `.openai`，请求按 OpenAI 线格式打
+    /// `api.anthropic.com/v1/chat/completions`（不存在）⇒ 发送必然 404，而
+    /// 「测试连接」因为按 baseURL 嗅探反而通过。把「写哪些字段」抽成纯函数，
+    /// 才能被单测钉住（视图里内联的赋值没法测）。
+    ///
+    /// - Parameter currentModel: 当前模型名；命中预设列表就保留，否则回退首选。
+    static func apply(id: String, currentModel: String) -> AIProviderPresetApplied? {
+        guard let p = all.first(where: { $0.id == id }) else { return nil }
+        let keep = p.models.contains(currentModel)
+        return AIProviderPresetApplied(
+            kind: p.kind,
+            baseURL: p.baseURL,
+            model: keep ? currentModel : (p.models.first ?? currentModel)
+        )
+    }
+}
+
+/// `AIPresets.apply` 的结果。用 struct 而不是三元组：项目 SwiftLint 的
+/// `large_tuple` 是 error 级（≥3 成员即违规），命名元组也一样。
+struct AIProviderPresetApplied: Equatable {
+    let kind: AIProviderKind
+    let baseURL: String
+    let model: String
 }
 
 // MARK: - Message
@@ -149,6 +177,52 @@ struct AIConfig: Sendable {
         }
     }
 
+    /// 由设置里的原始字段解析出最终配置（纯函数，唯一口径）。
+    ///
+    /// 抽出来的理由与 `resolveModel` 相同：视图里内联的赋值没法测，而「provider
+    /// 字符串 + baseURL → 用哪种线格式」这条规则一旦散落就会各自漂移。
+    /// iOS 的 `MobileAISettings` 不经过这里——它的 provider 是 `AIProviderKind`
+    /// 枚举而非字符串，没有"设置里存了半个状态"的入口（见该方法注释）。
+    ///
+    /// ## 自愈：`openai` + Anthropic 预设 baseURL
+    ///
+    /// 历史版本选「Anthropic Claude」预设时只写了 baseURL 与 model，没写 provider
+    /// （见 `AIPresets.apply` 的注释）。这些用户的设置里就是 `openai` + 
+    /// `https://api.anthropic.com/v1` 这个组合，按 OpenAI 线格式打过去必然 404。
+    /// 我们没法要求他们手动改回来，所以在这里纠正一次：**baseURL 精确命中
+    /// 某个预设、且该预设的 kind 是 anthropic** 时改判 anthropic。
+    ///
+    /// 保守边界（都有测试钉住）：
+    /// - 只认**精确**命中预设的 baseURL。自建反代 / 中转站不改判，否则会把
+    ///   兼容层当官方端点用。
+    /// - `.disabled` 是显式意图，任何自愈都不越过它。
+    /// - 只纠正 openai → anthropic 这一个方向：反向没有对应的历史数据，
+    ///   而且把 anthropic 降成 openai 只会让本来能用的配置变坏。
+    nonisolated static func resolve(
+        providerRaw: String,
+        baseURL: String,
+        model: String,
+        cliPath: String,
+        cliModel: String,
+        apiKey: String,
+        requestTimeoutSeconds: TimeInterval
+    ) -> AIConfig {
+        let trimmedBase = baseURL.trimmingCharacters(in: .whitespaces)
+        var kind = AIProviderKind(rawValue: providerRaw) ?? .disabled
+        if kind == .openai, AIPresets.match(trimmedBase)?.kind == .anthropic {
+            kind = .anthropic
+        }
+        return AIConfig(
+            kind:                  kind,
+            baseURL:               trimmedBase,
+            model:                 model,
+            cliPath:               cliPath.trimmingCharacters(in: .whitespaces),
+            cliModel:              cliModel.trimmingCharacters(in: .whitespaces),
+            apiKey:                apiKey,
+            requestTimeoutSeconds: requestTimeoutSeconds
+        )
+    }
+
     @MainActor
     static func current(_ s: AppSettings, scene: AIScene = .chat) -> AIConfig {
         // 根据场景决定模型
@@ -158,12 +232,12 @@ struct AIConfig: Sendable {
             agent: s.aiAgentModel,
             inline: s.aiInlineModel
         )
-        return AIConfig(
-            kind:                  AIProviderKind(rawValue: s.aiProvider) ?? .disabled,
-            baseURL:               s.aiBaseURL.trimmingCharacters(in: .whitespaces),
+        return resolve(
+            providerRaw:           s.aiProvider,
+            baseURL:               s.aiBaseURL,
             model:                 model,
-            cliPath:               s.aiCLIPath.trimmingCharacters(in: .whitespaces),
-            cliModel:              s.aiCLIModel.trimmingCharacters(in: .whitespaces),
+            cliPath:               s.aiCLIPath,
+            cliModel:              s.aiCLIModel,
             apiKey:                AIAPIKeyStore.load() ?? "",
             requestTimeoutSeconds: s.aiRequestTimeout
         )
