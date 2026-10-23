@@ -17,7 +17,8 @@ final class EditorScrollSyncHandler {
               let layoutManager = textView.layoutManager,
               let textContainer = textView.textContainer else { return 0 }
 
-        highlighter?.ensureLineOffsets(for: textView.string)
+        // 只判长度就够（表由 textDidChange 显式维护），不必为读长度拷全串
+        highlighter?.ensureLineOffsets(length: textView.textStorage?.length ?? 0)
         let lineOffsets = highlighter?.lineOffsets ?? [0]
 
         let visibleRect = scrollView.contentView.bounds

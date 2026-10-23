@@ -33,42 +33,22 @@ final class EditorHighlightScheduler {
     }
 
     /// Rebuild the line offset cache from the current text content.
-    ///
-    /// 逐 UTF16 单元扫 `0x0A`，分块读进栈外的固定缓冲区（4,096 单元 = 8KB），
-    /// 避免逐次 `NSString.range(of:)` 的搜索上下文开销。实测（`-O`）：
-    /// 218KB 6.17→0.62ms、2.2MB 54.4→3.25ms、5.5MB 135.4→7.95ms ——
-    /// 小文件约 10×，**大文件 16.7–17.0×**（旧法每行一次 ICU 调用，行越长差越大）。
-    /// 12 例语料（CRLF / 代理对 / 零宽 / 尾换行）与旧实现输出逐项一致。
-    ///
-    /// 正确性前提：`0x0A` 不会出现在任何多单元编码里（UTF-16 代理对的高位是
-    /// 0xD800–0xDBFF、低位 0xDC00–0xDFFF），所以按单元比较不会切坏字符。
+    /// 扫描实现在 `LineOffsetScanner`（行号尺共用一份，消除「同一份文本每击键
+    /// 扫两遍、第二遍还是旧慢法」）；实测数据见扫描器的注释。
     func rebuildLineOffsets(for text: String) {
         let sid = PerformanceTracer.begin("RebuildLineOffsets", log: PerformanceTracer.editor)
-        let ns = text as NSString
-        let length = ns.length
-
-        var offsets: [Int] = [0]
-        offsets.reserveCapacity(length / 40 + 1)
-
-        let chunkSize = 4096
-        var buffer = [unichar](repeating: 0, count: chunkSize)
-        var position = 0
-        buffer.withUnsafeMutableBufferPointer { raw in
-            guard let base = raw.baseAddress else { return }
-            while position < length {
-                let count = min(chunkSize, length - position)
-                ns.getCharacters(base, range: NSRange(location: position, length: count))
-                for i in 0..<count where base[i] == 0x0A {
-                    offsets.append(position + i + 1)
-                }
-                position += count
-            }
-        }
-
-        lineOffsets = offsets
-        indexedLength = length
+        lineOffsets = LineOffsetScanner.build(for: text as NSString)
+        indexedLength = (text as NSString).length
         rebuildCount += 1
         PerformanceTracer.end("RebuildLineOffsets", log: PerformanceTracer.editor, id: sid)
+    }
+
+    /// 长度兜底版：调用方只有长度时不必为判断而拷全串（滚动回调每帧都走这里）。
+    /// 需要重建时仍从 textView 取原文。
+    func ensureLineOffsets(length: Int) {
+        if length != indexedLength, let textView {
+            rebuildLineOffsets(for: textView.string)
+        }
     }
 
     /// 表与文本长度不一致时重建（O(1) 判断）。
@@ -83,6 +63,17 @@ final class EditorHighlightScheduler {
 
     func lineIndex(for characterIndex: Int, in text: String) -> Int {
         ensureLineOffsets(for: text)
+        return lineIndexInCachedOffsets(for: characterIndex)
+    }
+
+    /// 不取文本的版本：表由 textDidChange 显式维护，这里只做 O(1) 长度兜底——
+    /// 光标移动每次都会走，为判长度而拷全串不划算。
+    func lineIndex(forCharacterAt characterIndex: Int, textLength: Int) -> Int {
+        ensureLineOffsets(length: textLength)
+        return lineIndexInCachedOffsets(for: characterIndex)
+    }
+
+    private func lineIndexInCachedOffsets(for characterIndex: Int) -> Int {
         var lo = 0
         var hi = lineOffsets.count
         while lo < hi {

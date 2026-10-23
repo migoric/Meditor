@@ -175,9 +175,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         // Skip auto-close for symmetric pairs when preceded by an alphanumeric
         // (avoids inserting a closing quote/backtick when the user is finishing a word).
         if char == close {
-            let ns = textView.string as NSString
-            if range.location > 0 {
-                let prev = ns.character(at: range.location - 1)
+            // 只取前一个字符：textStorage.mutableString 不拷全串（textView.string 会拷）
+            let ns = textView.textStorage?.mutableString
+            if range.location > 0, let prev = ns?.character(at: range.location - 1) {
                 if let scalar = Unicode.Scalar(prev), CharacterSet.alphanumerics.contains(scalar) {
                     return true
                 }
@@ -226,14 +226,18 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         let range = textView.selectedRange()
         onRangeChange?(range)
         if let onCursorChange = onCursorChange {
-            let lineIdx = highlighter.lineIndex(for: range.location, in: textView.string)
+            let lineIdx = highlighter.lineIndex(
+                forCharacterAt: range.location,
+                textLength: textView.textStorage?.length ?? 0
+            )
             let lineStart = highlighter.lineOffsets[safe: lineIdx] ?? 0
             let column = max(1, range.location - lineStart + 1)
             onCursorChange(lineIdx + 1, column)
         }
         if let onSelectionChange = onSelectionChange {
+            // 选区内容从 textStorage 的 live 字符串取，避免为截取选区拷全串
             let text = range.length > 0
-                ? (textView.string as NSString).substring(with: range)
+                ? (textView.textStorage?.mutableString.substring(with: range)) ?? ""
                 : ""
             onSelectionChange(text)
         }
