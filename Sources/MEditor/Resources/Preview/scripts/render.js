@@ -794,7 +794,10 @@
   }
 
   function highlightCodeBlocks(rootEl) {
-    var blocks = Array.prototype.slice.call(rootEl.querySelectorAll('pre code'));
+    // 幂等：已带 hljs 的块跳过。patchDOM 保留未变节点后，每帧重高亮全是
+    // 浪费；缓存命中恢复（bridge）也靠这个守卫让补高亮近零成本。
+    var blocks = Array.prototype.slice.call(rootEl.querySelectorAll('pre code'))
+      .filter(function (el) { return !el.classList.contains('hljs'); });
     if (blocks.length === 0) return;
     blocks.forEach(attachCopyButton);
     loadHighlightIfNeeded().then(function () {
@@ -1096,8 +1099,19 @@
   /** Fast shallow equality check for two DOM elements. */
   function nodesEqual(a, b) {
     if (a.tagName !== b.tagName) return false;
-    // For code blocks, compare textContent (cheaper than innerHTML)
+    // For code blocks, compare textContent (cheaper than innerHTML).
+    // Copy 按钮挂在 PRE 内（attachCopyButton），比 PRE 的 textContent 会带上
+    // 按钮文字（"Copy"）导致永不相等——含代码块的文档每次更新都整体重建所有
+    // PRE（随后被迫重高亮）。改比 code 子节点的 className + textContent。
     if (a.tagName === 'PRE') {
+      var ac = a.querySelector('code');
+      var bc = b.querySelector('code');
+      if (ac && bc) {
+        // 高亮过后 code 会多一个 hljs class——归一化掉再比，否则照样永不相等。
+        var ca = ac.className.replace(/(?:^|\s)hljs(?=\s|$)/g, '').replace(/\s+/g, ' ').trim();
+        var cb = bc.className.replace(/\s+/g, ' ').trim();
+        return ca === cb && ac.textContent === bc.textContent;
+      }
       return a.textContent === b.textContent;
     }
     // 含数学占位符的节点：DOM 里是 KaTeX 渲染结果、新 HTML 里是空占位符，
@@ -1144,6 +1158,9 @@
     configureMermaidFromTheme: configureMermaidFromTheme,
     refreshMermaidForTheme: refreshMermaidForTheme,
     renderAllDiagrams: renderAllDiagrams,
+    // bridge 的缓存命中恢复路径用：快照可能在 idle 高亮批跑完前落盘，
+    // 恢复页需幂等补高亮（已带 hljs 的块跳过）。
+    highlightCodeBlocks: highlightCodeBlocks,
     // 测试出口：DOM 里的占位元素会被异步换成 SVG 或错误块（mermaid 库缺失时
     // 直接变成 error-block），从页面结构上数不清「到底摘了几个、边界在哪」。
     // 这里直接给出最近一次 renderInto 的提取结果，让围栏配对的断言能精确到代码内容。
