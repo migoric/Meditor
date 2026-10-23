@@ -88,10 +88,15 @@ enum PreviewTestPage {
         var noopSkip = 0
         var cacheEntries = 0
         var cacheBytes = 0
+        var patchGroupsCompared = 0
+        var patchGroupsReplaced = 0
+        var patchBail = 0
 
         var description: String {
             "fullParse=\(fullParse) blockParse=\(blockParse) blockHit=\(blockHit) "
-            + "sanitize=\(sanitize) noopSkip=\(noopSkip) entries=\(cacheEntries) bytes=\(cacheBytes)"
+            + "sanitize=\(sanitize) noopSkip=\(noopSkip) entries=\(cacheEntries) bytes=\(cacheBytes) "
+            + "patchCompared=\(patchGroupsCompared) patchReplaced=\(patchGroupsReplaced) "
+            + "patchBail=\(patchBail)"
         }
     }
 
@@ -114,6 +119,9 @@ enum PreviewTestPage {
         stats.noopSkip = json["noopSkip"] as? Int ?? 0
         stats.cacheEntries = json["cacheEntries"] as? Int ?? 0
         stats.cacheBytes = json["cacheBytes"] as? Int ?? 0
+        stats.patchGroupsCompared = json["patchGroupsCompared"] as? Int ?? 0
+        stats.patchGroupsReplaced = json["patchGroupsReplaced"] as? Int ?? 0
+        stats.patchBail = json["patchBail"] as? Int ?? 0
         return stats
     }
 
