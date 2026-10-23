@@ -58,23 +58,28 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
 
     /// Load immediate children of a directory (one level only).
     func loadImmediateChildren(of directory: URL) -> [FileItem] {
+        // 不预取 localizedNameKey：全仓没有消费方（FileItem.name 用 lastPathComponent），
+        // 每个 URL 白付一次资源 key 填充。
         guard let urls = try? fm.contentsOfDirectory(
             at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey, .localizedNameKey],
+            includingPropertiesForKeys: [.isDirectoryKey],
             options: []
         ) else { return [] }
 
+        // supportedExtensions 每次访问都重建 Set，必须提出循环（同 loadAll 的取舍）。
+        let supported = FileTypeConfiguration.shared.supportedExtensions
         let items = urls.compactMap { url -> FileItem? in
             let name = url.lastPathComponent
             guard !Self.hiddenNames.contains(name) else { return nil }
             // iCloud Drive 占位符（.xxx.icloud）不进文件树，下载完成后真实文件才会出现
-            guard url.pathExtension.lowercased() != "icloud" else { return nil }
+            let ext = url.pathExtension.lowercased()
+            guard ext != "icloud" else { return nil }
 
             guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
                   let isDir = values.isDirectory
             else { return nil }
 
-            if !isDir && !FileTypeConfiguration.shared.supportedExtensions.contains(url.pathExtension.lowercased()) {
+            if !isDir && !supported.contains(ext) {
                 return nil
             }
 
@@ -93,10 +98,9 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
     /// 一次枚举同时产出「可搜索文件」与「@mention 全量项（含目录）」。
     ///
     /// 这两个列表的**筛选谓词完全相同**（隐藏名单 / iCloud 占位符 / 扩展名白名单），
-    /// 早先各写一遍、各枚举一遍整棵目录树。合并成一次枚举省掉的是**重复枚举**
-    /// 那一段，不是排序：本方法仍是「1 次枚举 + 2 次 `sortItems`」（两份列表各排一次），
-    /// 而 4,500 项的排序本身比枚举贵得多（见 `sortItems` 的注释）。
-    /// ⚠️ 别把「省 49%」当成本方法的收益 —— 那个数字只计了枚举。
+    /// 早先各写一遍、各枚举一遍整棵目录树。合并成一次枚举省掉的是**重复枚举**；
+    /// 排序也只排一次：`files` 从排好的 `items` 派生（目录恒排前、同类按 name，
+    /// 过滤保持相对顺序，与单独排序逐位一致），并重新 new 实例隔离可变字段。
     ///
     /// 调用方在 `FileTreeManager.rebuildIndex` 的 `Task.detached(priority: .utility)` 里，
     /// **不在主线程**，不会直接压住用户等待。
@@ -115,7 +119,6 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
 
         let keys = Set(indexedResourceKeys)
         let supported = FileTypeConfiguration.shared.supportedExtensions
-        var files: [FileItem] = []
         var items: [FileItem] = []
 
         for case let url as URL in enumerator {
@@ -125,18 +128,26 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
                 continue
             }
             // iCloud Drive 占位符（.xxx.icloud）不进索引，见 loadImmediateChildren
-            if url.pathExtension.lowercased() == "icloud" { continue }
+            let ext = url.pathExtension.lowercased()
+            if ext == "icloud" { continue }
             guard let values = try? url.resourceValues(forKeys: keys) else { continue }
 
             if values.isDirectory == true {
                 items.append(FileItem(url: url, isDirectory: true, childrenLoaded: true))
             } else if values.isRegularFile == true,
-                      supported.contains(url.pathExtension.lowercased()) {
+                      supported.contains(ext) {
                 items.append(FileItem(url: url, isDirectory: false, childrenLoaded: true))
-                files.append(FileItem(url: url, isDirectory: false, childrenLoaded: true))
             }
         }
-        return (sortItems(files), sortItems(items))
+        // 只排一次序：比较器目录恒在文件前、同类按 name，过滤保持相对顺序 ⇒
+        // files 直接从排好的 items 派生（顺序与单独 sortItems 逐位一致），
+        // 省掉一整次 ICU 排序（4.5k 项 ≈13ms，随规模线性涨）。
+        // files 侧重新 new 实例：与 items 隔离可变字段（见上文注释）。
+        let sortedItems = sortItems(items)
+        let sortedFiles = sortedItems.compactMap { item in
+            item.isDirectory ? nil : FileItem(url: item.url, isDirectory: false, childrenLoaded: item.childrenLoaded)
+        }
+        return (sortedFiles, sortedItems)
     }
 
     /// 递归返回所有文件 + 目录（供 @mention 搜索用）。
