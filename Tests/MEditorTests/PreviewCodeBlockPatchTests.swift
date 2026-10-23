@@ -114,4 +114,27 @@ final class PreviewCodeBlockPatchTests: XCTestCase {
         let final = highlightedLater ?? highlighted
         XCTAssertEqual(final, "8/8", "缓存恢复后所有代码块必须有高亮（实际 \(final ?? "nil")）")
     }
+
+    /// no-op 短路：内容与上轮完全一致时，patchDOM 及全部后续 pass 都必须跳过
+    /// （用计数钉住：产物正确性测试对「没跳过」同样是绿的）。
+    func testNoopUpdateSkipsEntirePipeline() async throws {
+        let (webView, _) = try await PreviewTestPage.makeWebView()
+        let doc = "第一段。\n\n```swift\nlet a = 1\n```\n\n结尾段。"
+        _ = try await PreviewTestPage.render(doc, in: webView)
+        try await PreviewTestPage.resetStats(webView)
+
+        _ = try await PreviewTestPage.render(doc, in: webView)
+        let stats = try await PreviewTestPage.stats(webView)
+        XCTAssertEqual(stats.noopSkip, 1, "同内容重渲染必须走 no-op 短路（\(stats)）")
+        XCTAssertEqual(stats.blockParse, 0, "短路后不得有块级解析")
+        XCTAssertEqual(stats.sanitize, 0, "短路后不得有消毒")
+
+        // 变更后必须照常渲染（短路不能把更新吃掉）
+        _ = try await PreviewTestPage.render(doc + "\n\n新段。", in: webView)
+        let after = try await PreviewTestPage.stats(webView)
+        XCTAssertTrue(after.blockParse > 0 || after.fullParse > 0, "真实变更必须照常解析")
+        let text = try await PreviewTestPage.eval(
+            "document.getElementById('content').textContent.indexOf('新段') >= 0 ? 'ok' : 'missing'", webView)
+        XCTAssertEqual(text, "ok")
+    }
 }

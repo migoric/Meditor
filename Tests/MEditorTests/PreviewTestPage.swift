@@ -76,12 +76,13 @@ enum PreviewTestPage {
         var blockParse = 0
         var blockHit = 0
         var sanitize = 0
+        var noopSkip = 0
         var cacheEntries = 0
         var cacheBytes = 0
 
         var description: String {
             "fullParse=\(fullParse) blockParse=\(blockParse) blockHit=\(blockHit) "
-            + "sanitize=\(sanitize) entries=\(cacheEntries) bytes=\(cacheBytes)"
+            + "sanitize=\(sanitize) noopSkip=\(noopSkip) entries=\(cacheEntries) bytes=\(cacheBytes)"
         }
     }
 
@@ -101,6 +102,7 @@ enum PreviewTestPage {
         stats.blockParse = json["blockParse"] as? Int ?? 0
         stats.blockHit = json["blockHit"] as? Int ?? 0
         stats.sanitize = json["sanitize"] as? Int ?? 0
+        stats.noopSkip = json["noopSkip"] as? Int ?? 0
         stats.cacheEntries = json["cacheEntries"] as? Int ?? 0
         stats.cacheBytes = json["cacheBytes"] as? Int ?? 0
         return stats
