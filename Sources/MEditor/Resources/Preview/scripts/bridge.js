@@ -196,6 +196,12 @@
       applyDocumentMetadata(rehydrateCachedMetadata(entry.metadata));
       reportPerf('PreviewJSCacheHitPaint');
       sendTOC();
+      // 快照是 idle 落盘的，可能在代码块高亮的 idle 批跑完前存下未高亮的
+      // HTML（idle starvation）——恢复页会永久缺高亮。幂等补一遍：已带
+      // hljs 的块在 highlightCodeBlocks 里被跳过，快照完整时近零成本。
+      if (window.MEditorRender && window.MEditorRender.highlightCodeBlocks) {
+        window.MEditorRender.highlightCodeBlocks(contentEl);
+      }
       return;
     }
 

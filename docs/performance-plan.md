@@ -22,7 +22,7 @@
 | 预览·热更新（无可见变化） | 885KB 41ms / 2000 项列表 62-87ms | 块缓存只省了 parse+sanitize；下游 join 全文 → patchDOM 全量解析 → 每节点 ~6 趟 innerHTML 序列化，仍是 O(全文) |
 | 编辑器·每击键 | 16MB ≈ 23ms | 行偏移表全量重建 O(n)；行号尺另维护一份且用慢 16.7× 的旧法（`Sources/MEditor/Views/Editor/LineNumberRulerView.swift:44`） |
 | 编辑器·滚动回调 | 每滚动帧拷全串 | `Sources/MEditor/Views/Editor/EditorScrollSyncHandler.swift:20` 只为读长度 |
-| 文件打开 / tab 切换 | 亚毫秒级 | 无碍 |
+| 文件打开 / tab 切换 | 亚毫秒级（Swift 侧 `selectTab` ≈5μs） | Swift 侧无碍；**JS 侧另有链路**：切 tab 的缓存命中恢复走 `innerHTML` 全量替换且 scrollY 不归位——用户报告的「切 tab 抖」在这里，与吞吐量无关，属 UX 缺陷（另有专项在钉） |
 | 启动 / 导出（PDF 以外） | — | 无碍（warmUp 已后台化；PDF 导出有 2 次多余整页重渲，见 §3.4） |
 
 ## 2. 文件树（唯一已实测落地的优化）
@@ -67,13 +67,21 @@ diff 决策不贵，**为 diff 付出的序列化贵**——`temp.innerHTML = �
 
 1. **no-op 短路 + 序列化降倍**：join 产物与上轮全等则跳过 patchDOM 及全部后续 pass；
    `nodesEqual` 的 innerHTML 各取一次存局部（6 趟→2 趟）。低风险，立竿见影。
+   实现陷阱：必须存**上轮的 join 产物**——存 DOM 的 innerHTML 是错的
+   （Copy 按钮 / hljs span / KaTeX 结果污染，永远不等，短路永不触发）。
 2. **块序号对齐 DOM 替代全树 diff**（最大单项）：`renderMarkdownCached` 已知哪些块变了，
    把变化信息透传到 DOM 层，按块下标定位 `#content` 顶层子区间做 replace/insert/delete；
    未变化块零解析零序列化。风险点：文首插入导致整体移位需块对齐（块原文是天然 key）、
    对齐单位是 mergeUnsafeBoundaries 合并后的组、table 包裹改变子节点结构。预期把
    「62ms 列表热更新」打到个位数毫秒。
-3. **小相位**：`extractMath` 加 `indexOf('$')` 快路径（无数学文档省 3 趟全文正则）；
-   highlight 幂等（跳过已带 hljs class 的块——patchDOM 保住了节点却又每帧重算）；
+   > 更正（2026-10-23 对拍复核）：PRE 节点**每帧必被替换**——Copy 按钮挂在 PRE 内，
+   > `nodesEqual` 比 textContent 带上按钮文字导致永不相等（render.js `attachCopyButton`
+   > + `nodesEqual` 的 PRE 分支）。重高亮是「节点没保住」的结果，不是「没加幂等守卫」；
+   > 正确修法是比较时剥掉按钮（比 code 子节点），已由本方案配套的修复 PR 落地。
+3. **小相位**：`extractMath` 加 `indexOf('$')` 快路径——量级纠偏：实测 420KB 上
+   该正则仅 ~0.2ms，收益是「省分配」而非「省时间」，优先级最低；
+   highlight 幂等（跳过已带 hljs class 的块——对 PRE 无效，因为 PRE 在更正前
+   每帧被替换；真正的修复见上条）；
    splitBlocks / padStructureLines / collectHeadingLines 三处 `split('\n')` 融合成一次
    行扫描（顺带收口三套围栏判定，与 #95 的同源风险）。
 4. **首屏虚拟化**（独立专项，不混入上面）：视口外块用估算高度占位。砍冷渲染
@@ -127,6 +135,13 @@ noopSkip / highlightApplied / blocksMounted`。每处优化落地时配一条计
 | 5 | 首屏虚拟化 | 冷渲染大头 | 独立专项，风险最高，最后做 |
 
 ## 附录：基准原始数据（2026-10-23，M 系列本机，中位数 ms）
+
+> 对拍注记（2026-10-23，另一组独立复测）：**冷渲染与热更新不能用同一套数字讲**——
+> 冷渲染的大头是 DOM 插入 + 布局（往空容器插数千节点触发完整样式匹配），
+> 热路径的大头是序列化与全量 parse。「DOM 是冷路径最大头」与「热路径瓶颈在
+> 序列化」各自成立，两段分开优化。另：`looseList2000` 语料的 `blocks=1`
+> （mergeUnsafeBoundaries 把整个松散列表并成一组）——#88 只优化了合并的成本，
+> 没优化合并的粒度，列表文档的块缓存实际不生效，是遗留项。
 
 Swift 侧（`MEDITOR_BENCH=1`）：
 
