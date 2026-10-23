@@ -67,8 +67,15 @@ diff 决策不贵，**为 diff 付出的序列化贵**——`temp.innerHTML = �
 
 1. **no-op 短路 + 序列化降倍**：join 产物与上轮全等则跳过 patchDOM 及全部后续 pass；
    `nodesEqual` 的 innerHTML 各取一次存局部（6 趟→2 趟）。低风险，立竿见影。
-   实现陷阱：必须存**上轮的 join 产物**——存 DOM 的 innerHTML 是错的
+   实现陷阱一：必须存**上轮的 join 产物**——存 DOM 的 innerHTML 是错的
    （Copy 按钮 / hljs span / KaTeX 结果污染，永远不等，短路永不触发）。
+   实现陷阱二（2026-10-23 review 实测，已修）：这个变量是**整个 WKWebView 的 JS 上下文级
+   状态**，而预览 webview 跨文档复用（切 tab 只换内容）。任何绕过 `renderInto` 直接改
+   DOM 的路径（当前唯一一处：bridge 的缓存命中恢复 `contentEl.innerHTML = entry.html`）
+   都必须调 `MEditorRender.invalidateLastRender()`，否则会停在**上一个文档**的产物上，
+   之后切回未缓存文档时短路误判 no-op ⇒ **预览显示的是别的文件**。触发面不小：
+   文档 >120KB 永不进缓存，或 `RENDER_CACHE_LIMIT=3` 被淘汰（开 4 个以上文件即可）。
+   守卫：`PreviewStalePreviewTests`。
 2. **块序号对齐 DOM 替代全树 diff**（最大单项）：`renderMarkdownCached` 已知哪些块变了，
    把变化信息透传到 DOM 层，按块下标定位 `#content` 顶层子区间做 replace/insert/delete；
    未变化块零解析零序列化。风险点：文首插入导致整体移位需块对齐（块原文是天然 key）、

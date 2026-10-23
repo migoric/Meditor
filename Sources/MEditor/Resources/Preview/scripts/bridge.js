@@ -191,6 +191,15 @@
     if (key && renderCache.has(key)) {
       var entry = renderCache.get(key);
       contentEl.innerHTML = entry.html;
+      // 这里绕过了 renderInto 直接改 DOM ⇒ 必须作废 no-op 短路状态。
+      // render.js 的 lastRenderedHTML 是整个 WKWebView 的上下文级变量，而本
+      // webview 跨文档复用：不清掉就会出现「DOM 是 B、last 是 A」，之后切回 A
+      // 时短路误判 no-op、什么都不画 —— 预览停在上一个文件上。
+      // （不能拿 entry.html 顶替：快照是 highlight 之后的 DOM 序列化，与 join
+      // 产物不是同一口径，那样会退化成永不短路。）
+      if (window.MEditorRender && window.MEditorRender.invalidateLastRender) {
+        window.MEditorRender.invalidateLastRender();
+      }
       lruTouch(key, entry.html, entry.metadata);
       pendingCacheKey = null;
       applyDocumentMetadata(rehydrateCachedMetadata(entry.metadata));

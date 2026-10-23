@@ -342,8 +342,18 @@
    * 测试断言的是这组比值，不是耗时（耗时在 CI 机器上不稳定）。
    */
   var renderStats = { fullParse: 0, blockParse: 0, blockHit: 0, sanitize: 0, noopSkip: 0 };
-  /** 上一次成功渲染的 join 产物（no-op 短路用，见 renderInto）。 */
+  /**
+   * 上一次成功渲染的 join 产物（no-op 短路用，见 renderInto）。
+   *
+   * ⚠️ 这是**整个 WKWebView 的 JS 上下文级状态**，而预览的 webview 跨文档复用
+   * （切 tab 只换内容，不重建 NSView）。所以任何**绕过 renderInto 直接改 DOM**
+   * 的路径都必须调 `invalidateLastRender()`，否则这里会停在别的文档的产物上。
+   * 目前唯一的这种路径是 bridge 的缓存命中恢复（直接写 `contentEl.innerHTML`）。
+   */
   var lastRenderedHTML = null;
+
+  /** 外部改写了 DOM 之后作废短路状态（见 lastRenderedHTML 的 ⚠️）。 */
+  function invalidateLastRender() { lastRenderedHTML = null; }
 
   /**
    * 顶层开栏判定：零缩进 + ≥3 个反引号或波浪号；反引号围栏的 info 里
@@ -1020,7 +1030,9 @@
 
       // no-op 短路：产物与上轮完全一致时跳过 patchDOM 及全部后续 pass。
       // 存的是 join 产物（**不是** DOM 的 innerHTML——Copy 按钮 / hljs span /
-      // KaTeX 结果会污染 DOM，那样比永远不等、短路永不触发）。
+      // KaTeX 结果会污染 DOM，那样比永远不等、短路永不触发）。前提是 DOM 仍等于
+      // 上轮画出来的那份：任何外部改写 DOM 的路径必须先 invalidateLastRender()，
+      // 否则这里会拿上一个文档的产物比，误判 no-op 后什么都不画（见该函数注释）。
       if (html === lastRenderedHTML) { renderStats.noopSkip++; return; }
 
       // Incremental update: compare block-level nodes
@@ -1109,6 +1121,18 @@
     return true;
   }
 
+  /**
+   * `code` 元素的 className 归一化：剥掉 hljs 加的那个 class、压掉多余空白。
+   * hljs 只加 `hljs` 一个 class（语言 class 是 marked 给的），所以剥掉它之后
+   * 高亮前后可比。两侧都走这里，避免「只归一化一侧」的隐含顺序依赖。
+   */
+  function normalizeCodeClass(codeEl) {
+    return codeEl.className
+      .replace(/(?:^|\s)hljs(?=\s|$)/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   /** Fast shallow equality check for two DOM elements. */
   function nodesEqual(a, b) {
     if (a.tagName !== b.tagName) return false;
@@ -1121,9 +1145,11 @@
       var bc = b.querySelector('code');
       if (ac && bc) {
         // 高亮过后 code 会多一个 hljs class——归一化掉再比，否则照样永不相等。
-        var ca = ac.className.replace(/(?:^|\s)hljs(?=\s|$)/g, '').replace(/\s+/g, ' ').trim();
-        var cb = bc.className.replace(/\s+/g, ' ').trim();
-        return ca === cb && ac.textContent === bc.textContent;
+        // 两边都归一化（不是只剥 live DOM 那侧）：新 HTML 目前来自 marked 输出、
+        // 天然没有 hljs，但「缓存里只存未高亮的 HTML」是个隐含前提——哪天高亮后
+        // 的片段进了块缓存，只剥一侧就会退化成永不相等。
+        return normalizeCodeClass(ac) === normalizeCodeClass(bc)
+          && ac.textContent === bc.textContent;
       }
       return a.textContent === b.textContent;
     }
@@ -1147,6 +1173,9 @@
 
   global.MEditorRender = {
     renderInto: renderInto,
+    // bridge 的缓存命中恢复会绕过 renderInto 直接写 contentEl.innerHTML；
+    // 写完必须调这个，否则 no-op 短路会拿上一个文档的产物做比较（见该函数注释）。
+    invalidateLastRender: invalidateLastRender,
     // 纯函数出口：测试要做「分块 vs 整篇」的出口等价性比对，只能拿到这两个
     // 中间层（renderInto 会顺带 patchDOM，差异被 DOM 归一化吃掉）。
     renderMarkdown: renderMarkdown,
