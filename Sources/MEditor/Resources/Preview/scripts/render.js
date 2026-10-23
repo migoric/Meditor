@@ -199,6 +199,10 @@
    */
   function extractMath(content) {
     var src = content || '';
+    // 快路径：没有 '$' 就不可能有公式——省掉三趟全长遮蔽正则（每趟都产生
+    // 一个与原文等长的新字符串）与全文扫描。收益主要是省分配（实测正则本身
+    // 仅 ~0.2ms/420KB），但这条路径每帧都跑。
+    if (src.indexOf('$') === -1) return { processed: src, items: [] };
     var masked = src
       .replace(/```[^]*?```/g, maskSameLength)
       .replace(/~~~[^]*?~~~/g, maskSameLength)
@@ -259,8 +263,8 @@
    *（inline 公式尤其致命，它会把所在段落整个拖下水）。
    * 这里克隆后只清空占位符内容，让两边可比；不含数学的节点返回 null 走快路径。
    */
-  function normalizedMathHTML(el) {
-    if (el.innerHTML.indexOf(MATH_ID_PREFIX) === -1) return null;
+  function normalizedMathHTML(el, html) {
+    if ((html || el.innerHTML).indexOf(MATH_ID_PREFIX) === -1) return null;
     var clone = el.cloneNode(true);
     var placeholders = clone.querySelectorAll('.' + MATH_INLINE_CLASS + ', .' + MATH_BLOCK_CLASS);
     for (var i = 0; i < placeholders.length; i++) {
@@ -337,7 +341,9 @@
    * 解析，产物依然逐字节正确。所以需要出口：命中/重解析/整篇兜底/消毒各调用了几次。
    * 测试断言的是这组比值，不是耗时（耗时在 CI 机器上不稳定）。
    */
-  var renderStats = { fullParse: 0, blockParse: 0, blockHit: 0, sanitize: 0 };
+  var renderStats = { fullParse: 0, blockParse: 0, blockHit: 0, sanitize: 0, noopSkip: 0 };
+  /** 上一次成功渲染的 join 产物（no-op 短路用，见 renderInto）。 */
+  var lastRenderedHTML = null;
 
   /**
    * 顶层开栏判定：零缩进 + ≥3 个反引号或波浪号；反引号围栏的 info 里
@@ -1012,10 +1018,16 @@
       var math = extractMath(extracted.processed);
       var html = renderMarkdownCached(math.processed);
 
+      // no-op 短路：产物与上轮完全一致时跳过 patchDOM 及全部后续 pass。
+      // 存的是 join 产物（**不是** DOM 的 innerHTML——Copy 按钮 / hljs span /
+      // KaTeX 结果会污染 DOM，那样比永远不等、短路永不触发）。
+      if (html === lastRenderedHTML) { renderStats.noopSkip++; return; }
+
       // Incremental update: compare block-level nodes
       if (targetEl.children.length > 0 && html.length < 500000) {
         var updated = patchDOM(targetEl, html);
         if (updated) {
+          lastRenderedHTML = html;
           stampHeadingLines(targetEl, content || '');
           highlightCodeBlocks(targetEl);
           renderMermaidDiagrams(extracted.diagrams);
@@ -1041,6 +1053,7 @@
       renderMermaidDiagrams(extracted.diagrams);
       renderMath(math.items);
       rewriteAbsoluteAssetPaths(targetEl);
+      lastRenderedHTML = html;
     } catch (e) {
       targetEl.innerHTML = '<div class="error-block">Render error: ' + String(e && e.message || e) + '</div>';
     }
@@ -1117,15 +1130,19 @@
     // 含数学占位符的节点：DOM 里是 KaTeX 渲染结果、新 HTML 里是空占位符，
     // 直接比 innerHTML 永不相等（每次编辑都整块重建 + 重渲染公式）。
     // 归一化后外层走同一套字符串比较；不含数学的节点返回 null 走下面的快路径。
-    var aNormalized = normalizedMathHTML(a);
-    var bNormalized = normalizedMathHTML(b);
+    // innerHTML 每读一次就把整棵子树重新序列化（JSC 不缓存）——各取一次存局部，
+    // 探测复用这份字符串（此前一轮比较要读 ~6 次）。
+    var aHTML = a.innerHTML;
+    var bHTML = b.innerHTML;
+    var aNormalized = normalizedMathHTML(a, aHTML);
+    var bNormalized = normalizedMathHTML(b, bHTML);
     if (aNormalized !== null || bNormalized !== null) {
       return aNormalized === bNormalized;
     }
     // For everything else, compare outerHTML length first (fast reject),
     // then full comparison only if lengths match
-    if (a.innerHTML.length !== b.innerHTML.length) return false;
-    return a.innerHTML === b.innerHTML;
+    if (aHTML.length !== bHTML.length) return false;
+    return aHTML === bHTML;
   }
 
   global.MEditorRender = {
@@ -1145,6 +1162,7 @@
         blockParse: renderStats.blockParse,
         blockHit: renderStats.blockHit,
         sanitize: renderStats.sanitize,
+        noopSkip: renderStats.noopSkip,
         cacheEntries: paragraphCache.size,
         cacheBytes: bytes
       };
@@ -1154,6 +1172,7 @@
       renderStats.blockParse = 0;
       renderStats.blockHit = 0;
       renderStats.sanitize = 0;
+      renderStats.noopSkip = 0;
     },
     configureMermaidFromTheme: configureMermaidFromTheme,
     refreshMermaidForTheme: refreshMermaidForTheme,
