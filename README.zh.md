@@ -38,6 +38,8 @@ MEditor 是 **macOS 上给技术人写文档的 Agent 工作台**。核心闭环
 - **三种后端** — OpenAI 兼容与 Anthropic（内置 9 家预设：Anthropic、OpenAI、DeepSeek、Kimi、GLM、通义千问、OpenRouter、Groq、Ollama），外加复用本机 Claude Code 登录态的 Claude CLI 后端
 - **自带密钥（BYOK）** — 兼容任何 OpenAI 格式端点，密钥只存在本机 Keychain 里
 - **全程流式** — 回复逐字流出；工具步骤内联展示，支持展开/折叠查看详情
+- **技能（Skills）** — 打包好的作业手册，Agent **按需加载**：系统提示里只有每个技能的名字加一句话摘要，任务真对上了才调 `load_skill` 取全文（渐进披露 —— 30 个技能占 30 行，不是 30 篇文档，也不进每轮请求的 token 账单）。内置一套随 App 发布，精选技能库另有 8 个可一键安装，自己写的放 `~/.meditor/skills` 或工作区的 `.meditor/skills`（一个目录里放 `SKILL.md` 加附属脚本/模板，Agent 要用时才去读）。导入导出就是一个 Markdown 文件
+- **MCP 双向** — 既能当 **server**（让外部 agent 驱动你的工作区），也能当 **client**（让应用内 Agent 用上你挂的外部 server 的工具）。详见下方 [MCP](#mcp-server-与-client)
 
 ### 🛡 敢让它动你的文件
 
@@ -169,7 +171,9 @@ open Package.swift
 
 没有 key？选 Claude CLI 后端，零配置跑起来。
 
-### MCP Server（Claude Desktop、Cursor 等）
+### MCP（Server 与 Client）
+
+**Server：让外部 agent 驱动 MEditor**
 
 MEditor 内置基于 stdio 的 [MCP](https://modelcontextprotocol.io) Server，外部 agent 可以借此操作工作区——复用的正是应用内 Agent 的同一套工具层（文件读写/补丁、列目录、全局搜索，共 11 个；`open_file` / `insert_at_cursor` 等依赖 UI 的工具不在无头模式暴露，shell 工具 `run_command` 默认关闭）。
 
@@ -187,6 +191,28 @@ Claude Desktop 配置（`~/Library/Application Support/Claude/claude_desktop_con
 ```
 
 不传 `--workspace` 时默认使用当前目录。shell 命令**默认不暴露**——加 `--allow-shell` 才会注册 `run_command`（共 12 个工具）。启用后走与应用内 Agent 相同的风险分级沙箱：blocked 级一律拒绝；warn 级（如 `git push`、`mv`）在无头模式下默认拒绝，可加 `--allow-warn-commands` 显式放开。无头模式没有确认弹窗，静态命令黑名单不构成安全边界——只对信任的工作区开启 `--allow-shell`。
+
+**Client：让 MEditor 用上外部 MCP server**
+
+反方向同样成立 —— 应用内 Agent 可以直接用你已有的工具（一个 SQLite server、一个 issue 追踪器、你自己的脚本）。配置沿用 Claude Code 的 `mcp.json` 格式，读两处；工作区条目按同名覆盖全局：
+
+- `~/.meditor/mcp.json` —— 全局
+- `<工作区>/.meditor/mcp.json` —— 跟随工作区
+
+```json
+{
+  "mcpServers": {
+    "sqlite": { "command": "uvx", "args": ["mcp-server-sqlite", "--db", "./data.db"] },
+    "remote": { "url": "https://example.com/mcp" }
+  }
+}
+```
+
+`command` 走 stdio 子进程，`url` 走 streamable HTTP。连接是**懒的**：一次 run 开始时才连，App 启动时不会拉起任何进程。连不上的 server 直接跳过、不阻塞本轮，并把它的名字写进系统提示，让模型知道这些工具本轮不可用，而不是瞎猜着调用。它们的工具注册成 `mcp__<server>__<tool>`，与应用内工具同处一个循环、同一套步数与工具预算——但活是在 server 那边干的，**不走** MEditor 的写文件确认与命令沙箱。要信就信那个 server 本身，别信它外面的壳。
+
+**工作区配置默认不被信任。** 否则，从别人仓库 clone 下来的一份 `.meditor/mcp.json` 就能在你机器上白捡一套工具调用能力。设置页会列出配置哈希与 server 名单，需要你逐工作区显式授权；改了文件，哈希就变，授权随即失效。坏条目会被跳过并给出可读原因，而不是让整个文件加载失败。
+
+**工具太多怎么办？** 工具定义是每轮重发的，挂几台 server 很容易把工具表顶到 40 条以上。超过 32 条时，MEditor 会按你这一轮的原话给 MCP 工具打相关性分数，把明显无关的折叠掉；一个都没命中（比如中文提问对英文工具描述）就原样全发，不猜。
 
 ---
 
@@ -208,6 +234,9 @@ MEditor/
     │   │   │   ├── AgentRunner.swift          # 多轮循环与状态
     │   │   │   ├── CommandSandbox.swift       # 风险分级的 Shell 沙盒
     │   │   │   ├── AgentHistoryBudget.swift   # 上下文 token 预算
+    │   │   │   ├── AgentRunCheckpoint.swift   # run 级快照，支持一键回滚
+    │   │   │   ├── AgentRunTrace.swift        # 可选的运行轨迹（只存元数据）
+    │   │   │   ├── AgentToolBudget.swift      # 工具表被 MCP 挤爆时的定义预算
     │   │   │   ├── Backends/
     │   │   │   │   ├── AgentBackend.swift     # 协议 + 默认流式回退
     │   │   │   │   ├── RestAgentBackend.swift # OpenAI 与 Anthropic SSE
@@ -216,10 +245,11 @@ MEditor/
     │   │   ├── InlineEditAction.swift         # 选区级修改 + diff 审阅（UI：Views/Editor/InlineEditBar、Views/Preview/PreviewInlineEditBar）
     │   │   ├── AIService.swift                # 对话补全与 provider 预设
     │   │   └── BeautifyAgent.swift            # 单发文档润色
-    │   ├── MCP/           # MCP Server（stdio）：JSON-RPC、工具桥接、无头上下文
+    │   ├── MCP/           # MCP Server（stdio）与 Client（stdio / streamable HTTP）
     │   ├── Core/          # AppSettings、Localization、MarkdownFormatter
     │   ├── File/          # FileService、FileWatcher、文件类型配置
     │   └── Calendar/      # CalendarService（EventKit）
+    ├── Skills/            # SKILL.md 技能库、内置技能、精选技能库、导入导出
     ├── Managers/          # Tab、FileTree、Share、Template、Todo…
     └── Views/
         ├── Agent/         # AgentStepView、AgentResultPanel
@@ -245,11 +275,13 @@ MEditor/
 - [x] 局域网分享 + Cloudflare 在线发布（免费档 + Pro）
 - [x] iOS 伴侣（iCloud 编辑 / 聊天 / 发布）
 - [x] 放映与专注模式、HTML 导出、预览主题、Sparkle 自动更新
-- [x] MCP Server —— 把 Agent 工具暴露给 Claude Desktop / Cursor
+- [x] MCP 双向 —— Server 暴露 Agent 工具给 Claude Desktop / Cursor，Client 挂外部 stdio 与 HTTP server
+- [x] 技能（Skills）—— `SKILL.md` 作业手册，渐进披露（内置 + 8 个精选可安装），导入导出为单个 Markdown 文件
 - [x] Onboarding —— 首启引导、零配置 Claude CLI、脚本化演示
 - [x] Agent 运行一键回滚（run 级检查点）
 - [x] Agent 写入默认 diff 审阅、连续微调、断点续传
 - [x] 写入后自动诊断自检、Prompt 缓存、单次运行成本透明
+- [x] 可选的运行轨迹（工具序列 / 成败 / 耗时 / token，只存元数据）与工具定义预算（给 MCP 挂满的场景）
 - [x] 预览支持 LaTeX 数学公式渲染（KaTeX，资源离线内置）
 
 **后续**

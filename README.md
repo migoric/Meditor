@@ -38,6 +38,8 @@ Pure SwiftUI + AppKit — **no Electron**. Bring-your-own-key — **your documen
 - **Three backends** — OpenAI-compatible and Anthropic (9 built-in presets: Anthropic, OpenAI, DeepSeek, Kimi, GLM, Qwen, OpenRouter, Groq, Ollama), plus a local Claude CLI backend that reuses your Claude Code login
 - **BYOK** — Any OpenAI-compatible endpoint works; keys stay in your local Keychain
 - **Streaming everywhere** — Responses stream token-by-token; tool steps render inline with expand/collapse detail
+- **Skills** — Packaged playbooks the Agent loads **on demand**: its prompt carries only each skill's name and one-liner, and it calls `load_skill` to pull the full text when a task actually matches (progressive disclosure — a shelf of 30 skills costs you 30 lines, not 30 documents). A built-in set ships with the app, a curated gallery adds 8 installable ones, and your own live in `~/.meditor/skills` or a workspace's `.meditor/skills` (a folder with `SKILL.md` plus scripts/templates the Agent reads only if needed). Import/export shares a skill as a single Markdown file
+- **MCP both ways** — MEditor speaks MCP as a **server** (external agents drive your workspace) and as a **client** (the in-app Agent gains tools from servers you point it at). See [MCP](#mcp--both-server-and-client) below
 
 ### 🛡 Built to be trusted with your files
 
@@ -182,7 +184,9 @@ Open **Settings (⌘,) → AI** and pick a backend:
 
 No key? The Claude CLI backend gets you running with zero configuration.
 
-### MCP server (Claude Desktop, Cursor, …)
+### MCP — both server and client
+
+#### Server: let other agents drive MEditor
 
 MEditor ships a built-in [MCP](https://modelcontextprotocol.io) server over stdio, so external agents can operate on a workspace through the same tool layer the in-app Agent uses (file read/write/patch, directory listing, workspace search — 11 tools; UI-dependent tools like `open_file` / `insert_at_cursor` are not exposed headlessly, and the shell tool `run_command` is off by default).
 
@@ -200,6 +204,28 @@ Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_conf
 ```
 
 `--workspace` defaults to the current directory if omitted. Shell commands are **not exposed by default** — pass `--allow-shell` to add `run_command` (12 tools). When enabled they go through the same risk-tiered sandbox as the in-app Agent: BLOCKED commands are always rejected; WARN-level commands (e.g. `git push`, `mv`) are rejected by default in headless mode — add `--allow-warn-commands` to opt in. In headless mode there is no confirmation dialog, so the static command blocklist is not a security boundary; only enable `--allow-shell` for workspaces you trust.
+
+#### Client: MEditor drives other MCP servers
+
+The other direction works too — the in-app Agent can use tools you already have (a SQLite server, an issue tracker, your own scripts). Config uses Claude Code's `mcp.json` format, read from two places; a workspace entry overrides a global one with the same name:
+
+- `~/.meditor/mcp.json` — global
+- `<workspace>/.meditor/mcp.json` — per workspace
+
+```json
+{
+  "mcpServers": {
+    "sqlite": { "command": "uvx", "args": ["mcp-server-sqlite", "--db", "./data.db"] },
+    "remote": { "url": "https://example.com/mcp" }
+  }
+}
+```
+
+`command` starts a stdio subprocess; `url` speaks streamable HTTP. Servers connect **lazily**, at the moment a run starts — nothing is spawned at app launch. A server that fails to connect is skipped rather than blocking the run, and its name goes into the system prompt so the model knows those tools are unavailable instead of inventing calls. Their tools register as `mcp__<server>__<tool>` and join the same loop, step budget and tool-definition budget as the built-in ones — but the work happens on the server's side, so MEditor's write confirmation and command sandbox do **not** apply to it. Trust the server, not the shell around it.
+
+**Workspace config is untrusted until you approve it.** A `.meditor/mcp.json` cloned from someone else's repo could otherwise grant itself tool-calling capability on your machine, so the settings page shows the config hash and its server names, and requires an explicit grant per workspace; editing the file revokes it again. Malformed entries are skipped with a readable reason instead of failing the whole file.
+
+**Too many tools?** Tool definitions are re-sent every turn, so a few servers can push the tool table past 40 entries. Above 32, MEditor scores MCP tools against your actual message and folds away the ones that clearly don't match; if nothing matches (a Chinese question against English tool descriptions, say) it sends everything rather than guessing.
 
 ---
 
@@ -221,6 +247,9 @@ MEditor/
     │   │   │   ├── AgentRunner.swift          # Multi-turn loop & state
     │   │   │   ├── CommandSandbox.swift       # Risk-tiered shell sandbox
     │   │   │   ├── AgentHistoryBudget.swift   # Context token budget
+    │   │   │   ├── AgentRunCheckpoint.swift   # Run-level snapshot for one-click rollback
+    │   │   │   ├── AgentRunTrace.swift        # Opt-in run trace (metadata only)
+    │   │   │   ├── AgentToolBudget.swift      # Tool-definition budget when MCP floods the table
     │   │   │   ├── Backends/
     │   │   │   │   ├── AgentBackend.swift     # Protocol + default streaming fallback
     │   │   │   │   ├── RestAgentBackend.swift # OpenAI & Anthropic SSE
@@ -229,10 +258,11 @@ MEditor/
     │   │   ├── InlineEditAction.swift         # Selection-scoped edits with diff review (UI: Views/Editor/InlineEditBar, Views/Preview/PreviewInlineEditBar)
     │   │   ├── AIService.swift                # Chat completions & provider presets
     │   │   └── BeautifyAgent.swift            # Single-shot document polish
-    │   ├── MCP/           # MCP server (stdio): JSON-RPC, tool bridging, headless context
+    │   ├── MCP/           # MCP server (stdio) and client (stdio / streamable HTTP)
     │   ├── Core/          # AppSettings, Localization, MarkdownFormatter
     │   ├── File/          # FileService, FileWatcher, FileType config
     │   └── Calendar/      # CalendarService (EventKit)
+    ├── Skills/            # SKILL.md store, built-in skills, curated gallery, import/export
     ├── Managers/          # Tab, FileTree, Share, Template, Todo…
     └── Views/
         ├── Agent/         # AgentStepView, AgentResultPanel
@@ -258,11 +288,13 @@ MEditor/
 - [x] LAN share + Cloudflare online publish (free tier + Pro)
 - [x] iOS companion (iCloud edit / chat / publish)
 - [x] Presentation & focus modes, HTML export, preview themes, Sparkle auto-update
-- [x] MCP server — expose the Agent's tools to Claude Desktop / Cursor
+- [x] MCP both ways — server for Claude Desktop / Cursor, client for external stdio & HTTP servers
+- [x] Skills — `SKILL.md` playbooks with progressive disclosure (built-in set + 8-skill curated gallery), import/export as one Markdown file
 - [x] Onboarding — first-launch guide, zero-config Claude CLI, scripted demo
 - [x] One-click rollback of an Agent run (run-level checkpoints)
 - [x] Diff review by default for Agent writes, refine loop, resume interrupted runs
 - [x] Post-write self-check diagnostics, prompt caching, per-run cost transparency
+- [x] Opt-in run traces (tool sequence / success / timing / tokens, metadata only) and a tool-definition budget for MCP-heavy setups
 - [x] LaTeX math rendering in the preview (KaTeX, offline-bundled)
 
 **Later**
