@@ -792,6 +792,46 @@
     }
   }
 
+  /**
+   * GitHub 风格的标题锚点 id。
+   *
+   * marked v12 早就不产出 header id 了（v5 起移除），而 markdown 预览的
+   * `<base href="meditor-asset://…">` 又让 `#fragment` 没法直接落地——两头都缺，
+   * 结果是文档里的 `[跳到某节](#某节)` 点了毫无反应。id 在这里统一补上，
+   * 点击由 HTMLAnchorGuard 接管（`scripts/anchor-guard.js`）。
+   *
+   * 规则对齐 GitHub：小写、去掉标点和 emoji、空白转 `-`；同名标题按出现顺序
+   * 追加 `-1`、`-2`。**必须在 DOM 上做而不是 marked renderer 里**：块缓存按
+   * 块独立 parse，跨块的去重计数在那边拿不到。
+   */
+  function slugifyHeading(text) {
+    return String(text || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+      .replace(/\s+/g, '-');
+  }
+
+  /** 给缺 id 的标题补 id（作者自己写了 id 的一律不动）。 */
+  function stampHeadingIDs(rootEl) {
+    var headings = rootEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    if (headings.length === 0) return;
+    var used = Object.create(null);
+    for (var i = 0; i < headings.length; i++) {
+      var el = headings[i];
+      // 作者显式写的 id 优先：markdown 里的原始 HTML、以及老文档里手工锚点都靠它。
+      // 标题文字改了怎么办？那种情况下 patchDOM 会换掉整个节点（innerHTML 不同），
+      // 新节点没有 id，自然重新生成——所以「不改已有 id」不会让 id 变陈旧。
+      if (el.id) { used[el.id] = true; continue; }
+      var base = slugifyHeading(el.textContent) || 'section';
+      var id = base;
+      var n = 1;
+      while (used[id]) { id = base + '-' + n; n++; }
+      used[id] = true;
+      el.setAttribute('id', id);
+    }
+  }
+
   function collectHeadingLines(content) {
     var lines = content.split('\n');
     var out = [];
@@ -1041,6 +1081,7 @@
         if (updated) {
           lastRenderedHTML = html;
           stampHeadingLines(targetEl, content || '');
+          stampHeadingIDs(targetEl);
           highlightCodeBlocks(targetEl);
           renderMermaidDiagrams(extracted.diagrams);
           renderMath(math.items);
@@ -1061,6 +1102,7 @@
         }
       }
       stampHeadingLines(targetEl, content || '');
+      stampHeadingIDs(targetEl);
       highlightCodeBlocks(targetEl);
       renderMermaidDiagrams(extracted.diagrams);
       renderMath(math.items);

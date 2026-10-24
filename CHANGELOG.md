@@ -12,6 +12,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **预览里点链接的两条死链**：
+  - **Markdown 预览的页内锚点点了毫无反应**：预览模板给页面设了
+    `<base href="meditor-asset://…">`，纯 `#小节` 链接被改写成 asset URL 后 WebKit
+    既不导航也不滚动（连 `decidePolicyFor` 都不回调）。HTML 预览早在 `HTMLAnchorGuard`
+    里修过，markdown 这份没装守卫。同时标题一直没有 `id`——marked v12 起不再产出
+    header id，所以 `[跳到某节](#某节)` 即便能跳也无处可落。现在标题按 GitHub 规则
+    生成 id（小写、去标点、空白转 `-`、重名加 `-1`），守卫以外部脚本
+    `scripts/anchor-guard.js` 注入（模板 CSP 是 `script-src 'self' file:`，内联会被拦）。
+  - **跨文档链接 `other.md#小节` 是死链**：同一个 `<base>` 改写后，`PreviewLinkNavigator`
+    把所有「带 fragment 的 asset URL」一律取消。现在按「去掉 fragment 后是否落在真实
+    文件上」区分：是文件就外开（`.md` 默认打开者为本应用 ⇒ 回 app 开 tab），是目录
+    （真正的页内锚点残渣）才取消。
+
 ## [0.13.7] - 2026-10-24
 
 ### Added
