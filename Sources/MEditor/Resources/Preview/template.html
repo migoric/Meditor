@@ -49,6 +49,11 @@
      动态注入 <script>，Swift 侧负责届时把文件复制进缓存目录。 -->
 
 <!-- MEditor scripts -->
+<!-- 锚点守卫：`<base href>` 会把 `#fragment` 一并改写成 asset URL，点击后 WebKit
+     既不导航也不滚动，连 decidePolicyFor 都不回调。守卫在页内接管这类点击。
+     文件由 PreviewAssetMirror 生成（源在 HTMLAnchorGuard.swift），必须是外链脚本，
+     内联会被上面的 CSP（script-src 'self' file:）拦掉。 -->
+<script src="scripts/anchor-guard.js"></script>
 <script src="scripts/render.js"></script>
 <script src="scripts/bridge.js"></script>
 <script src="scripts/boot.js"></script>

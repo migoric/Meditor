@@ -207,13 +207,18 @@ enum PreviewAssetMirror {
     ///
     /// 文件名固定为 preview.html，每次初始化重写覆盖；force-reload 通过
     /// 重新 loadFileURL 加载同一 URL 来绕过 WKWebView 的缓存。
+    ///
+    /// `resourcesRoot` / `templateURL` 可注入（同 `ensureMermaidProvisioned`
+    /// 的理由）：`swift test` 下 `PreviewResourceLocator` 解析为 nil，不注入的话
+    /// 这段逻辑在测试里一行都跑不到。
     @discardableResult
     static func prepareHTML(initialContent: String,
                             theme: PreviewTheme,
                             cacheDir: URL,
-                            fileManager fm: FileManager = .default) -> URL? {
-        guard let resourcesRoot = PreviewResourceLocator.resourcesRoot(),
-              let templateURL = PreviewResourceLocator.templateURL(),
+                            fileManager fm: FileManager = .default,
+                            resourcesRoot: URL? = PreviewResourceLocator.resourcesRoot(),
+                            templateURL: URL? = PreviewResourceLocator.templateURL()) -> URL? {
+        guard let resourcesRoot, let templateURL,
               let template = try? String(contentsOf: templateURL, encoding: .utf8) else {
             return nil
         }
@@ -233,6 +238,10 @@ enum PreviewAssetMirror {
             pruneCacheIfNeeded(at: cacheDir, fileManager: fm)
             // Symlink (or copy) the resources into cache dir so relative paths work.
             mirrorAssets(at: cacheDir, copyingFrom: resourcesRoot, fileManager: fm)
+            // 锚点守卫（markdown 预览）：单独写成脚本文件，因为模板的 CSP 是
+            // `script-src 'self' file:`——内联脚本会被拦掉。口径是 strict：
+            // 只接管纯 `#fragment`，跨文档链接交回 PreviewLinkNavigator。
+            writeAnchorGuard(into: cacheDir, fileManager: fm)
             // 镜像先于 preview.html 落盘：读侧看到 preview.html 时，相对资源一定已在。
             try? html.write(to: fileURL, atomically: true, encoding: .utf8)
 
@@ -242,6 +251,20 @@ enum PreviewAssetMirror {
             }
         }
         return fileURL
+    }
+
+    /// 把 markdown 预览用的锚点守卫写到 `<cacheDir>/scripts/anchor-guard.js`。
+    ///
+    /// 为什么是文件而不是 `WKUserScript`：markdown 预览的 webview 有两处构造
+    /// （`WebViewPool.warmUp` 的预热、`MarkdownWebPreview` 的冷启动），用户脚本得
+    /// 两处都加，漏一处就是「有时候点了没反应」。写进模板引用的资源文件则只有一份，
+    /// 预热与冷启动读到的是同一个页面。模板里必须用 `<script src>` 引（CSP 禁内联）。
+    private static func writeAnchorGuard(into cacheDir: URL, fileManager fm: FileManager) {
+        let scriptsDir = cacheDir.appendingPathComponent("scripts", isDirectory: true)
+        try? fm.createDirectory(at: scriptsDir, withIntermediateDirectories: true)
+        let url = scriptsDir.appendingPathComponent("anchor-guard.js")
+        try? HTMLAnchorGuard.script(interceptsFileNameLinks: false)
+            .write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// Run `prepareHTML` on a background queue; `completion` fires on the
