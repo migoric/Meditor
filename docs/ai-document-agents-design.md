@@ -393,7 +393,22 @@ OpenAI / ClaudeCLI 在序列化前把分段标记剥掉。
 
 - 新增 5 个测试文件、74 条用例（`MarkdownStructureTests` / `HTMLStructureTests` /
   `HTMLTemplateAssemblyTests` / `DocumentStructureToolTests` / `AuthoringPromptTests`）。
-- 全量 1791 条。
+- 全量 1792 例 0 失败（本机跑 `swift test --skip test_echoCommand_returnsOutput`：
+  该例本机必超时、CI 上通过，与本次改动无关）。
 - 变异验证 4/4 转红：整节替换连标题一起换、plain 不走预算截取、稳定段不打缓存断点、
   不重建侧边栏导航。
 - `plain` 的守卫是**把改造前那段代码原样抄进测试当参照实现**，逐字节比对 6 组输入。
+
+### 11.7 CI 闸门踩到的（本机看不出来的那类）
+
+本机没装 swiftlint，`Lint` 这一步只能在 CI 上验。第一次跑红了两类、共 6 条：
+
+- **`large_tuple` ×5**（默认规则，2 元上限；`.swiftlint.yml` 的 `disabled_rules` 里**没有**它）。
+  导航锚点原写成 `(id: String, title: String, level: Int)` 三元组，回调整体换成
+  具名 struct `HTMLSectionAnchor`。三个字段都删不掉——`level` 要一路传到 `navigationHTML`
+  做缩进——所以这不是「拆成两个二元组」能绕的。
+  **教训**：这个仓里写三元组就是红的，宁可先建个 struct。
+- **`trailing_whitespace` ×1**：`{` 之后多余一个空格。这条不受 `disabled_rules` 影响。
+  **核验方式**：本机 BSD `grep -E '[ \t]+$'` 里的 `\t` 不解释成制表符（会退化成字母 `t`，
+  把 `ExportFormat` 这类词尾也报出来，全是假阳），要用 Python 逐行 `line != line.rstrip()`。
+  另注：`.swiftlint.yml` 排除了 `Tests`，测试文件的行尾空格不会被这条抓。
