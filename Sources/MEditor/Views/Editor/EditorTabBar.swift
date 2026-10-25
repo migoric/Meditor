@@ -95,7 +95,14 @@ struct EditorTabBar: View {
     }
 
     private var dimmedOpacity: Double {
-        if state.aiUI.overlayShown { return 0.30 }
+        // 复用浮层自己的取值（而不是再写一个 0.30）：diff 审阅期间浮层让位、
+        // 遮罩已撤，tab 条不能还暗着；两处数字也必须始终一致，共用同一份来源。
+        let assistant = AIAssistantOverlayPlan.resolve(
+            panelMounted: state.showingAIAssistant,
+            expanded: state.aiUI.overlayShown,
+            diffReviewPresented: state.showingDiffReview
+        )
+        if assistant.dimOpacity > 0 { return assistant.dimOpacity }
         if state.settingsOverlayShown { return 0.28 }
         return 0
     }
