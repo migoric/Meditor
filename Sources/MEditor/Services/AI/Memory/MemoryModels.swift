@@ -194,4 +194,11 @@ struct MemoryRecord: Identifiable, Sendable, Equatable {
     var scope: MemoryScope
 
     var id: String { entry.id }
+
+    /// 面板与写操作要用的唯一键：`scope` + `id`。
+    ///
+    /// 光用 `entry.id` 不够 —— id 是**内容寻址**的，同一条正文既存在于工作区又存在于
+    /// 全局时两边的 id 一模一样。拿 id 当键会有两个后果：面板里两个视图撞 id，
+    /// 写操作按 id 定位会同时改到另一层（删一条等于删两条）。
+    var recordKey: String { "\(scope.rawValue):\(entry.id)" }
 }

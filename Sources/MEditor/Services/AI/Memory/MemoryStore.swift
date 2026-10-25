@@ -25,6 +25,12 @@ final class MemoryStore: @unchecked Sendable {
     private let lock = NSLock()
     private var document: MemoryDocument
     private var counters: [String: MemoryCounter]
+    /// 上次读到/写出这份 `MEDITOR.md` 时它的修改时间。
+    ///
+    /// 用来判「文件被外部改过」：用户在编辑器里改约定、`git pull` 拿到团队约定，
+    /// 都是在 App 之外改的文件。没有这个哨兵，内存里的副本会一直压着磁盘上的新内容，
+    /// 直到重启 —— 注入的约定和你眼前看到的文件不一致，而且没有任何报错。
+    private var loadedMTime: Date?
     /// 载入时遇到的问题（文件不可读 / 状态文件损坏）。面板用它提示，不静默吞。
     private(set) var loadWarning: String?
     /// 本进程内这条记忆被新增几条 —— 用于 `newEntriesPerRunLimit` 的 run 级限额。
@@ -44,6 +50,20 @@ final class MemoryStore: @unchecked Sendable {
         self.document = loaded.document
         self.counters = loaded.counters
         self.loadWarning = loaded.warning
+        self.loadedMTime = Self.modificationDate(of: fileURL)
+    }
+
+    /// 文件修改时间。文件不存在返回 nil —— 把「取不到」和「某个具体时间」分开，
+    /// 否则一条 stat 失败会被当成「文件刚被改过」而无限重读。
+    private static func modificationDate(of url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+    }
+
+    /// 磁盘上的 `MEDITOR.md` 是否已经和内存里的副本不一致。
+    func isStaleOnDisk() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return Self.modificationDate(of: fileURL) != loadedMTime
     }
 
     // MARK: - 载入
@@ -291,6 +311,9 @@ final class MemoryStore: @unchecked Sendable {
         guard let data = document.render().data(using: .utf8) else { return }
         do {
             try data.write(to: fileURL, options: .atomic)
+            // 自己写完要同步哨兵，否则下一轮会把自己的写入误判成「外部改动」而重读，
+            // 白做一次 parse 还会把 run 级限额计数清零。
+            loadedMTime = Self.modificationDate(of: fileURL)
         } catch {
             loadWarning = "记忆文件写不进去：\(error.localizedDescription)"
         }

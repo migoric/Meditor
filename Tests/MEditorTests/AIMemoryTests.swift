@@ -29,6 +29,14 @@ final class AIMemoryTests: XCTestCase {
         )
     }
 
+    /// 全局层也指到临时目录：测试不能碰用户真实的 `Application Support`。
+    private func makeService() -> MemoryService {
+        MemoryService(
+            globalFileURL: tmpDir.appendingPathComponent("global/MEDITOR.global.md"),
+            globalStateURL: tmpDir.appendingPathComponent("global/state.json")
+        )
+    }
+
     private func record(
         _ text: String,
         kind: MemoryKind = .fact,
@@ -237,6 +245,116 @@ final class AIMemoryTests: XCTestCase {
         XCTAssertEqual(records.count, 1)
         XCTAssertEqual(records.first?.entry.kind, .term, "种类必须能从 Markdown 还原")
         XCTAssertEqual(records.first?.counter.source, "docs/spec.md L42", "出处走旁挂 JSON，不进 Markdown")
+    }
+
+    // MARK: - 外部改动（#110）
+
+    /// 用户在编辑器里改 `MEDITOR.md`、或 `git pull` 拿到团队约定，都是在 App 之外改的文件。
+    /// 同一个工作区再 `activate` 必须看到新内容 —— 否则注入的约定和你眼前看到的文件不一致，
+    /// 而且没有任何报错。
+    func test_activate_rereads_whenFileChangedExternally() throws {
+        let service = makeService()
+        service.activate(workspaceRoot: tmpDir)
+        _ = service.record(kind: .convention, text: "章节标题只用两级", now: now)
+
+        // 模拟外部改动：直接往文件里追加一段人写的条目。
+        let file = MemoryService.workspaceFileURL(root: tmpDir)
+        var text = try String(contentsOf: file, encoding: .utf8)
+        text += "\n- [约定] 外部编辑器加进来的一条约定\n"
+        try text.write(to: file, atomically: true, encoding: .utf8)
+
+        service.activate(workspaceRoot: tmpDir)
+
+        let texts = service.records().map(\.entry.text)
+        XCTAssertTrue(
+            texts.contains { $0.contains("外部编辑器加进来") },
+            "外部改动后必须重读，实际条目：\(texts)"
+        )
+    }
+
+    /// 自己写文件不能被误判成「外部改动」。
+    ///
+    /// 误判的代价不只是白做一次 parse：重建 store 会把 run 级限额计数清零，
+    /// 于是「单 run 最多记 8 条」这道防提示注入刷屏的闸门被自己的写入冲开了。
+    func test_activate_doesNotResetRunLimit_afterOwnWrites() {
+        let service = makeService()
+        service.activate(workspaceRoot: tmpDir)
+        // 主题必须彼此不相似：相似度 ≥ 0.8 会被判重而不计入新增。
+        let topics = ["封面配色", "导出文件名规范", "iOS 部署目标", "预览刷新通道",
+                      "构建产物体积", "签名方式", "发布流程", "依赖管理"]
+        for topic in topics {
+            let outcome = service.record(kind: .fact, text: "关于\(topic)的一条结论", now: now)
+            guard case .added = outcome else { return XCTFail("主题「\(topic)」不该被判重，实际 \(outcome)") }
+        }
+
+        // 自己的写入刚刚落盘。这一步必须是空操作 —— 说明 mtime 哨兵同步了。
+        service.activate(workspaceRoot: tmpDir)
+
+        let overLimit = service.record(kind: .fact, text: "关于代码注释风格的一条结论", now: now)
+        guard case .rejected = overLimit else {
+            return XCTFail("自己的写入不该重置 run 限额，实际 \(overLimit)")
+        }
+    }
+
+    // MARK: - 作用域隔离（#110）
+
+    /// 写操作必须只作用于一层。
+    ///
+    /// id 是内容寻址的：同一条正文既在工作区又在全局时，两层 id 一模一样。
+    /// 曾经的做法是「按 id 遍历两层」，于是「在工作区删掉这条」会顺手删掉全局那条，
+    /// 而且面板里两条是一起消失的 —— 用户看不出发生了什么。
+    func test_delete_isScopedToSingleLayer() throws {
+        let service = makeService()
+
+        // 没有工作区时记录落在全局层。
+        service.activate(workspaceRoot: nil)
+        _ = service.record(kind: .preference, text: "不写赋能这类词", now: now)
+
+        // 打开工作区后记同一条正文：两层各一条，id 相同。
+        service.activate(workspaceRoot: tmpDir)
+        _ = service.record(kind: .preference, text: "不写赋能这类词", now: now)
+
+        let before = service.records()
+        XCTAssertEqual(before.count, 2, "两层应各有一条")
+        XCTAssertEqual(Set(before.map(\.entry.id)).count, 1, "内容寻址 ⇒ 两层同 id")
+
+        let workspaceRecord = try XCTUnwrap(before.first { $0.scope == .workspace })
+        service.delete(id: workspaceRecord.entry.id, scope: .workspace)
+
+        let after = service.records()
+        XCTAssertEqual(after.count, 1, "只该删掉工作区那条")
+        XCTAssertEqual(after.first?.scope, .global, "全局那条必须还在")
+    }
+
+    // MARK: - 工具与遗忘的联动（#110）
+
+    /// 主动 `recall_memory` 命中的条目也必须记一次使用。
+    ///
+    /// 遗忘判据是「90 天没用 **且** 一次都没被检索到」。漏记这一笔，被 agent 反复
+    /// recall 的条目 `useCount` 永远是 0，90 天后会被归档 —— 最该留的反倒先走。
+    ///
+    /// 这条会用 `MemoryService.shared`（工具内部就取它），所以收尾必须把工作区还原，
+    /// 否则会把临时目录的副本留给后面的用例。
+    @MainActor
+    func test_recallTool_countsHitsAsUsage() async throws {
+        MemoryService.shared.activate(workspaceRoot: tmpDir)
+        defer { MemoryService.shared.activate(workspaceRoot: nil) }
+        _ = MemoryService.shared.record(kind: .preference, text: "不写赋能这类词")
+
+        let recorded = try XCTUnwrap(MemoryService.shared.records().first)
+        XCTAssertEqual(recorded.counter.useCount, 0, "刚记下时不该有使用记录")
+
+        let ctx = MockAgentContext()
+        ctx.workspaceURL = tmpDir
+        let output = try await RecallMemoryTool().execute(
+            arguments: ["query": .string("赋能")],
+            context: ctx
+        )
+        XCTAssertTrue(output.contains("赋能"), "查询应命中这条，实际：\(output)")
+
+        let after = try XCTUnwrap(MemoryService.shared.records().first)
+        XCTAssertEqual(after.counter.useCount, 1, "recall 命中要记一次使用")
+        XCTAssertNotNil(after.counter.lastUsedAt, "最近使用时间也要写，否则老化判据仍按旧时间算")
     }
 
     // MARK: - 遗忘（判据 6）
