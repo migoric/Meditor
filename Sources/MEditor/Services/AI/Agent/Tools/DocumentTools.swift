@@ -5,25 +5,125 @@ import Foundation
 //   - 传 filename   → 直接作用于指定文件（文件名 / 工作区相对路径 / 绝对路径），
 //                     无需先 open_file 激活 tab。
 
-// MARK: - 当前文档写回校验（tab 锁定 + 取消检查）
+// 写回「当前文档」前的 tab 锁定校验统一放在 AuthoringWrite（结构化工具有同一份需求，
+// 复制两遍迟早走形）。
 
-/// 写回「当前文档」前的双重校验（对齐 SlashAICommandExecutor 的 sourceTabID 锁定模式）。
-/// diff 审阅 / 确认条把工具挂起在 continuation 上（不响应 Task 取消），期间用户可能：
-///   - 切到别的 tab → 写回目标已变，直接把内容写进去就是数据损坏；
-///   - 点了 Stop    → run 已取消，审阅随后被批准也不得落盘。
-/// - Returns: 校验失败时给模型的错误文案（不落盘）；nil = 校验通过可写入。
-/// - Throws:  run 已取消时抛 CancellationError（Runner 按取消走向收尾，
-///            不包装成误导性的 tool error 回灌历史）。
-private func validateCurrentDocWriteTarget(
-    sourceTabID: UUID?,
-    docName: String,
-    context: any AgentContextProtocol
-) async throws -> String? {
-    if Task.isCancelled { throw CancellationError() }
-    guard await context.currentTabID == sourceTabID else {
-        return "[!] 已放弃写入 \(docName)：审阅期间活动文档已切换，为避免写进错误文档本次未落盘。请切回目标文档后重新发起。"
+// MARK: - AuthoringWrite
+
+/// 结构化工具有一个统一的读写入口。
+///
+/// 存在的理由：`rewrite_section` / `patch_style` / `set_node_class` /
+/// `write_html_with_template` 都要做同一件事——「取当前内容 → 改一段 → 走审阅 → 落盘」。
+/// 这几步里最容易漏的是**审阅**与**tab 锁定**，各复制一遍必然走形（历史上 iOS 就因为
+/// 某条写入路径漏了确认，AI 可以静默改文件）。所以只剩这一份。
+enum AuthoringWrite {
+
+    enum Target: Sendable, Equatable {
+        /// 当前激活的编辑器文档：写入走 `writeDocument`，并且必须在写前校验 tab 没被切走。
+        case currentDocument(name: String, tabID: UUID?)
+        /// 磁盘上的具体文件：写入走 `writeFile`。
+        case file(String)
     }
-    return nil
+
+    enum Loaded: Sendable {
+        case ok(name: String, content: String, target: Target)
+        /// 直接回灌给模型的文案（找不到文件 / 没有激活文档等）。
+        case message(String)
+    }
+
+    /// 读目标文档。**当前 tab 优先用内存内容**（与 `patch_document` 一致）——
+    /// 用磁盘内容会把用户还没保存的编辑覆盖掉。
+    static func load(filename: String?, context: any AgentContextProtocol) async throws -> Loaded {
+        if let filename, !filename.isEmpty {
+            let resolved = await context.resolveFile(filename)
+            guard case .found(let url) = resolved else {
+                if let message = resolved.promptMessage(forQuery: filename) { return .message(message) }
+                return .message("未找到文件：\(filename)")
+            }
+            do {
+                let content = try await context.fileContentFull(at: url)
+                return .ok(name: url.lastPathComponent, content: content, target: .file(url.path))
+            } catch {
+                return .message("[!] 读取 \(url.lastPathComponent) 失败：\(error.localizedDescription)")
+            }
+        }
+        guard let content = await context.currentDocument else {
+            return .message("[!] 当前没有打开的文档。请先 open_file，或给工具传 filename。")
+        }
+        let name = await context.currentDocumentName ?? "untitled"
+        let tabID = await context.currentTabID
+        return .ok(name: name, content: content, target: .currentDocument(name: name, tabID: tabID))
+    }
+
+    /// 审阅后落盘。返回给模型的 `[OK]` / `[!]` 文案。
+    static func commit(_ content: String,
+                       to target: Target,
+                       summary: String,
+                       context: any AgentContextProtocol) async throws -> String {
+        switch target {
+        case .file(let path):
+            var finalContent = content
+            if !(await context.isFileWritePreApproved(path: path)) {
+                let base: WriteBaseContent
+                if let old = try? await context.fileContentFull(at: URL(fileURLWithPath: path)) {
+                    base = .existing(old)
+                } else {
+                    base = .newFile
+                }
+                let preview = WriteDiffPreviewBuilder.make(
+                    path: path, summary: summary, base: base, newContent: content)
+                guard let merged = await context.reviewFileWrite(preview, base: base, newContent: content) else {
+                    return "[!] 用户已拒绝写入：\(path)（未落盘）"
+                }
+                finalContent = merged
+            }
+            do {
+                let url = try await context.writeFile(name: path, content: finalContent)
+                return "[OK] 已写入 \(url.lastPathComponent)（\(finalContent.count) 字符）"
+            } catch {
+                return "[!] 写入失败：\(error.localizedDescription)"
+            }
+
+        case .currentDocument(let name, let tabID):
+            var finalContent = content
+            if !(await context.isFileWritePreApproved(path: name)) {
+                let base: WriteBaseContent =
+                    (await context.currentDocument).map { .existing($0) } ?? .newFile
+                let preview = WriteDiffPreviewBuilder.make(
+                    path: name, summary: summary, base: base, newContent: content)
+                guard let merged = await context.reviewFileWrite(preview, base: base, newContent: content) else {
+                    return "[!] 用户已拒绝写入：\(name)（未落盘）"
+                }
+                finalContent = merged
+            }
+            // 审阅把工具挂起在 continuation 上，期间用户可能切 tab / 点 Stop
+            if let refusal = try await validateCurrentDocumentTarget(
+                sourceTabID: tabID, docName: name, context: context) {
+                return refusal
+            }
+            do {
+                try await context.writeDocument(finalContent)
+                return "[OK] 已更新 \(name)（\(finalContent.count) 字符）"
+            } catch {
+                return "[!] 写入失败：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// 写回「当前文档」前的双重校验（对齐 `SlashAICommandExecutor` 的 sourceTabID 锁定模式）。
+    /// - Returns: 校验失败时给模型的错误文案（不落盘）；nil = 通过。
+    /// - Throws:  run 已取消时抛 `CancellationError`（按取消收尾，不包装成误导性的工具错误）。
+    static func validateCurrentDocumentTarget(
+        sourceTabID: UUID?,
+        docName: String,
+        context: any AgentContextProtocol
+    ) async throws -> String? {
+        if Task.isCancelled { throw CancellationError() }
+        guard await context.currentTabID == sourceTabID else {
+            return "[!] 已放弃写入 \(docName)：审阅期间活动文档已切换，为避免写进错误文档本次未落盘。请切回目标文档后重新发起。"
+        }
+        return nil
+    }
 }
 
 // MARK: - Read Document
@@ -182,7 +282,7 @@ struct WriteDocumentTool: AgentTool {
             finalContent = approved   // 逐块审阅后的合并结果，可能与原内容不同
         }
         // 审阅返回后、实际写入前：run 已被取消（Stop）或 tab 已切换则绝不落盘
-        if let refusal = try await validateCurrentDocWriteTarget(
+        if let refusal = try await AuthoringWrite.validateCurrentDocumentTarget(
             sourceTabID: sourceTabID, docName: docName, context: context) {
             return refusal
         }
@@ -310,7 +410,7 @@ struct PatchDocumentTool: AgentTool {
                     preview, base: base, newContent: applied.updated)
                 else { return "[!] 用户已拒绝写入：\(docName)（未落盘）" }
                 // 审阅返回后、实际写入前：run 已被取消（Stop）或 tab 已切换则绝不落盘
-                if let refusal = try await validateCurrentDocWriteTarget(
+                if let refusal = try await AuthoringWrite.validateCurrentDocumentTarget(
                     sourceTabID: sourceTabID, docName: docName, context: context) {
                     return refusal
                 }
@@ -329,7 +429,7 @@ struct PatchDocumentTool: AgentTool {
             guard approved else { return "[!] 用户已拒绝写入：\(docName)" }
         }
         // 确认条返回后、实际 patch 前同样校验（确认条也会把工具挂起）
-        if let refusal = try await validateCurrentDocWriteTarget(
+        if let refusal = try await AuthoringWrite.validateCurrentDocumentTarget(
             sourceTabID: sourceTabID, docName: docName, context: context) {
             return refusal
         }

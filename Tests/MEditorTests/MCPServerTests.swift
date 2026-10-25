@@ -179,21 +179,28 @@ final class MCPServerTests: XCTestCase {
         let tools = result?["tools"] as? [[String: Any]]
         let names = Set(tools?.compactMap { $0["name"] as? String } ?? [])
 
+        // 结构工具只放**只读**的那 5 个：外部 agent 定位文档需要大纲/结构树/节点读取，
+        // 而这几个不产生写入。写类（rewrite_section / patch_style / set_node_class /
+        // write_html_with_template）进 MCPToolCatalog.excludedToolNames —— 无头模式
+        // 没有 diff 审阅，不该顺手把写入面从 2 个变成 6 个。
         let expected: Set<String> = [
             "read_document", "write_document", "patch_document", "search_document",
             "list_files", "read_file", "create_file", "write_file",
             "create_directory", "search_workspace",
             "run_command", "get_html_template",
+            "outline_document", "read_section",
+            "html_outline", "read_node", "read_style",
         ]
         XCTAssertEqual(names, expected, "tools/list should expose exactly the headless-safe tool set")
         XCTAssertFalse(names.contains("insert_at_cursor"), "cursor-dependent tool must not be exposed")
         XCTAssertFalse(names.contains("open_file"), "editor-tab tool must not be exposed")
+        XCTAssertFalse(names.contains("rewrite_section"), "write tools stay out of headless mode")
     }
 
     func test_toolsList_entriesCarryGeneratedInputSchema() async {
         let resp = await handle(requestJSON("tools/list", id: 5))
         let tools = (resp?["result"] as? [String: Any])?["tools"] as? [[String: Any]]
-        XCTAssertEqual(tools?.count, 12)
+        XCTAssertEqual(tools?.count, 17)
         for tool in tools ?? [] {
             XCTAssertNotNil(tool["name"] as? String)
             XCTAssertFalse((tool["description"] as? String ?? "").isEmpty, "description should come from AgentToolSpec")

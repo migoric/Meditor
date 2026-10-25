@@ -368,7 +368,14 @@ struct RestAgentBackend: AgentBackend {
         var payload: [String: Any] = [
             "model":    config.model,
             "stream":   stream,
-            "messages": messages.map { $0.openAIDict }
+            // 分段标记只服务 Anthropic 的显式断点，OpenAI 侧靠自然前缀命中缓存 ⇒ 发出前剥掉
+            "messages": messages.map { message -> [String: Any] in
+                var dict = message.openAIDict
+                if message.role == .system, let text = dict["content"] as? String {
+                    dict["content"] = SystemPromptSegments.strippingDelimiter(text)
+                }
+                return dict
+            }
         ]
         if !tools.isEmpty {
             payload["tools"]        = tools.map { $0.spec.openAIDict }
@@ -400,7 +407,9 @@ struct RestAgentBackend: AgentBackend {
         req.setValue("2023-06-01",        forHTTPHeaderField: "anthropic-version")
 
         // system 单独提取，其余按 Anthropic 多轮格式组装
-        let system = messages.first(where: { $0.role == .system })?.content ?? ""
+        let systemRaw = messages.first(where: { $0.role == .system })?.content ?? ""
+        let systemSegments = SystemPromptSegments.split(systemRaw)
+        let system = SystemPromptSegments.strippingDelimiter(systemRaw)
         var convo  = buildAnthropicMessages(from: messages)
         // prompt caching 只对 Anthropic 官方端点开启：自定义 baseURL 可能是
         // 严格校验的第三方中转（one-api/new-api 等），对未知字段直接 400。
@@ -420,10 +429,29 @@ struct RestAgentBackend: AgentBackend {
         if stream       { payload["stream"] = true }
         // prompt caching（cache_control: ephemeral，规范上限 4 个断点，这里用 3 个）：
         // ① tools 末尾：工具定义体积大且每次 run 固定，是最稳的可复用前缀
-        // ② system 末尾：系统提示含文档全文/技能注入，同会话内稳定
+        // ② system **稳定前缀**的末尾：见下方分块说明
         // ③ 消息列表末尾：见上。
         if !system.isEmpty {
-            if cacheEnabled {
+            if cacheEnabled, let segments = systemSegments, !segments.stable.isEmpty {
+                // system 拆两块：稳定段打断点、易变段挂在断点之后。
+                //
+                // 旧写法把整段 system 当成「同会话内稳定」——这是错的：选区每拖一下就变、
+                // 记忆每轮按本轮原话重检索、首轮才有文档全文。缓存是顺序前缀，断点落在
+                // 一段会变的东西之后就等于没打，所以断点必须落在那段**之前**。
+                //
+                // 已知边界：易变段仍在 system 里 ⇒ 它之后的全部消息（断点 ③）照样每轮失效。
+                // 彻底的解法是把易变内容挪到本轮 user 消息里，那要改 systemContext 的返回
+                // 形态与历史口径，留到后续（见 docs/ai-document-agents-design.md §4）。
+                var blocks: [[String: Any]] = [[
+                    "type": "text",
+                    "text": segments.stable,
+                    "cache_control": ["type": "ephemeral"],
+                ]]
+                if !segments.volatile.isEmpty {
+                    blocks.append(["type": "text", "text": segments.volatile])
+                }
+                payload["system"] = blocks
+            } else if cacheEnabled {
                 payload["system"] = [[
                     "type": "text",
                     "text": system,

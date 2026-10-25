@@ -12,6 +12,35 @@
 
 ## [Unreleased]
 
+### Added
+
+- **文档类型分档：Markdown 与 HTML 不再是同一种上下文**。以前不管你在写什么，agent 首轮
+  都拿到整篇文档：改 HTML 里的一句话，也要为那 1,500 token 的 `<style>` 每轮付费；
+  改 Markdown 的某一节，也要先读全文再拼一篇新的回去。现在按扩展名分两副眼镜：
+  - **Markdown**：首轮注入**大纲**（每节标题 + 行区间 + 字数，压缩比 1/13 ~ 1/16），
+    配 `outline_document` / `read_section` / `rewrite_section`。改一节不再需要
+    「读全文 → 拼全文 → 写全文」，结构上也不可能碰到别的节。标题重名时工具会把候选的
+    完整路径列出来要求消歧，不猜。正文 ≤ 500 token 的短文档仍直接给全文——
+    为 200 字的笔记多付一次工具往返不划算。
+  - **HTML**：**CSS 折叠**（一个字都不进上下文），配 `html_outline` / `read_node` /
+    `read_style` / `patch_style` / `set_node_class`。新建文档改用
+    `write_html_with_template(template:body:)`——只写语义 body，模板与 `<style>` 由宿主
+    展开，侧边栏导航按 body 的 `section`/标题重新生成（不会再留下模板里的「章节二」占位）。
+    `get_html_template` 保留但降级为「只看模板」。
+  - 其余类型（`.txt` 等）走 `plain` 档案 = **改造前逐字节不变**，也是回滚开关。
+- 新增 `AuthoringWrite`：五处文档写入共用一个入口（取当前内容 → diff 审阅 → tab 锁定 →
+  落盘），`write_document` / `patch_document` 也改调它——写入纪律只剩一份实现。
+
+### Changed
+
+- **system prompt 拆成「稳定前缀 + 易变尾部」**，Anthropic 的 prompt cache 断点改落在
+  稳定段末尾。旧注释写「system 同会话内稳定」是错的：选区、按本轮原话检索出的记忆、
+  首轮才有的文档全文都在 system 里，断点落在它们之后等于每轮全废。
+  **收益边界**：只保住「tools + system 稳定段」的前缀缓存；易变段仍在 system 里，
+  它之后的全部历史消息照样每轮失效（彻底解法见 `docs/ai-document-agents-design.md` §11.3）。
+- MCP 无头工具集新增 5 个**只读**结构工具；4 个写类结构工具不进无头（新增写入面要单独决策）。
+- 新增 `docs/ai-document-agents-design.md`（设计稿 + 实施记录：三处落地修正与未做项）。
+
 ## [0.13.8] - 2026-10-25
 
 ### Added

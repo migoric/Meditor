@@ -18,12 +18,23 @@ enum MCPToolCatalog {
     /// - save_memory / recall_memory：记忆是**用户的**长期资产，写入没有 diff 审阅可看、
     ///   也没有工作区记忆面板可撤销；经 MCP 暴露等于让远程 agent 往用户的 MEDITOR.md 里
     ///   写任意条目。无头模式的 `confirmFileWrite` 恒放行，这里不能再多开一个自动写入面。
+    /// - rewrite_section / patch_style / set_node_class / write_html_with_template：
+    ///   同为「改用户文档」的写入面。这里要如实说明一处不一致——`write_document` /
+    ///   `patch_document` 早在无头工具集里（历史决定），并非因为它们更安全。新增的
+    ///   这 4 个先按最小暴露处理：一次性把无头写入面从 2 个扩到 6 个，属于「顺手」而不是
+    ///   「决策」。等真的有 MCP 使用场景需要结构化改写，再连同审阅问题一起评估。
+    ///   只读的结构工具（outline_document / read_section / html_outline / read_node /
+    ///   read_style）保留：给外部 agent 定位用，不产生写入。
     static let excludedToolNames: Set<String> = [
         "insert_at_cursor",
         "open_file",
         "load_skill",
         "save_memory",
         "recall_memory",
+        "rewrite_section",
+        "patch_style",
+        "set_node_class",
+        "write_html_with_template",
     ]
 
     /// 无头模式默认禁用的高危工具：`run_command` 只有字符串黑名单 + safe 自动批准，

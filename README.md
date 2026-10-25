@@ -34,7 +34,7 @@ Pure SwiftUI + AppKit — **no Electron**. Bring-your-own-key — **your documen
 
 ### 🤖 A real Agent, not a chat box
 
-- **15 tools on macOS (14 cross-platform), multi-turn loop** — The Agent reads, writes, patches, and searches documents; operates workspace files; drives the editor; and runs sandboxed shell commands — reasoning across tool calls until the job is done
+- **26 tools on macOS (14 cross-platform), multi-turn loop** — The Agent reads, writes, patches, and searches documents; locates content by outline/structure tree (Markdown headings, HTML structure with folded CSS); operates workspace files; drives the editor; and runs sandboxed shell commands — reasoning across tool calls until the job is done
 - **Three backends** — OpenAI-compatible and Anthropic (9 built-in presets: Anthropic, OpenAI, DeepSeek, Kimi, GLM, Qwen, OpenRouter, Groq, Ollama), plus a local Claude CLI backend that reuses your Claude Code login
 - **BYOK** — Any OpenAI-compatible endpoint works; keys stay in your local Keychain
 - **Streaming everywhere** — Responses stream token-by-token; tool steps render inline with expand/collapse detail
@@ -278,7 +278,7 @@ MEditor/
 ## 🗺 Roadmap
 
 **Delivered**
-- [x] Real Agent: 15 tools on macOS (14 cross-platform), multi-turn loop, three backends (OpenAI-compatible / Anthropic / Claude CLI), BYOK
+- [x] Real Agent: 26 tools on macOS (14 cross-platform), multi-turn loop, three backends (OpenAI-compatible / Anthropic / Claude CLI), BYOK
 - [x] Agent hardening: write confirmation, risk-tiered sandbox, context budget, stall detection, parallel read-only tools, usage display
 - [x] Inline edit diff review, `@mention` context, multi-session history
 - [x] Slash command library, selection action bar, auto-attached document context

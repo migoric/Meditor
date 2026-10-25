@@ -84,6 +84,10 @@ final class AgentRunner {
         "read_document", "search_document",
         "list_files", "read_file", "search_workspace",
         "get_html_template", "load_skill",
+        // 文档结构查询：只读、无副作用（写类工具 rewrite_section / patch_style /
+        // set_node_class / write_html_with_template 永不加入——它们会弹审阅）
+        "outline_document", "read_section",
+        "html_outline", "read_node", "read_style",
     ]
 
     /// 运行代际计数：cancel() 会同步放行 isRunning，但旧 _run 可能仍卡在不可取消点
