@@ -66,12 +66,6 @@ struct MemoryEntry: Identifiable, Codable, Sendable, Equatable {
     var kind: MemoryKind
     var text: String
 
-    init(id: String, kind: MemoryKind, text: String) {
-        self.id = id
-        self.kind = kind
-        self.text = text
-    }
-
     /// 内容寻址 id：取归一化文本的 FNV-1a 前 6 位。
     ///
     /// 为什么不用 UUID：文件里已经有显式 id 时这条用不上；只在**人写进文件但没写 id**
