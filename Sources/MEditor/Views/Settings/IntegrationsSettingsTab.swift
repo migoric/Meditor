@@ -325,8 +325,10 @@ extension SettingsView {
 
     // MARK: - Pro key
 
-    /// Pro 购买入口（官网同款 GitHub Sponsors 链接；key 线下发放）
-    private static let proPurchaseURL = URL(string: "https://github.com/sponsors/retrychx")
+    /// Pro 购买入口（官网同款 GitHub Sponsors 链接；key 线下发放）。
+    /// 账号已从 `retrychx` 改名为 `migoric` —— 旧 handle 靠 GitHub 的重定向兜着，
+    /// 改对之外没有别的选择。
+    private static let proPurchaseURL = URL(string: "https://github.com/sponsors/migoric")
 
     /// Pro 徽标（橙底小字，与 autoApprove 徽标同族；非 Pro 状态下标注付费边界）
     private var proBadge: some View {

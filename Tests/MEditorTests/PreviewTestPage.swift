@@ -26,7 +26,11 @@ enum PreviewTestPage {
     }
 
     /// 建一个已注入完整渲染管线、并等到可用的页面。
-    static func makeWebView() async throws -> (WKWebView, NSWindow) {
+    ///
+    /// `includeBridge` 额外注入 `scripts/bridge.js`（暴露 `window.MEditor`）：
+    /// 只有测「缓存命中恢复路径」时才需要它 —— 那条路径住在 bridge 里，render.js
+    /// 自己的入口（`renderInto`）永远走的是整篇渲染。
+    static func makeWebView(includeBridge: Bool = false) async throws -> (WKWebView, NSWindow) {
         let config = WKWebViewConfiguration()
         let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         let webView = WKWebView(frame: frame, configuration: config)
@@ -42,10 +46,15 @@ enum PreviewTestPage {
         try await waitUntil(webView, "document.getElementById('content') ? 'ok' : 'pending'", timeout: 20)
 
         // mermaid / katex 不注入：语料里没有对应语法，render.js 对缺失库有 typeof 守卫。
-        for name in ["marked.min.js", "purify.min.js", "highlight.min.js", "scripts/render.js"] {
+        var scripts = ["marked.min.js", "purify.min.js", "highlight.min.js", "scripts/render.js"]
+        if includeBridge { scripts.append("scripts/bridge.js") }
+        for name in scripts {
             try await eval(previewScript(named: name) + "\n;\n1;\n", webView)
         }
         try await waitUntil(webView, "typeof MEditorRender === 'object' ? 'ok' : 'pending'", timeout: 20)
+        if includeBridge {
+            try await waitUntil(webView, "typeof MEditor === 'object' ? 'ok' : 'pending'", timeout: 20)
+        }
         return (webView, window)
     }
 

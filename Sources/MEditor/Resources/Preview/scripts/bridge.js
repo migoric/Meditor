@@ -211,6 +211,12 @@
       if (window.MEditorRender && window.MEditorRender.highlightCodeBlocks) {
         window.MEditorRender.highlightCodeBlocks(contentEl);
       }
+      // mermaid 是视口懒渲染：快照里没滚到的图还是占位 div，而 innerHTML 整体替换
+      // 让上一轮挂的 IntersectionObserver 失效 —— 不重新挂，这些图永远不会画出来
+      // （「切走再切回，图空白」）。已渲染的图没有占位 div，重挂是幂等的。
+      if (window.MEditorRender && window.MEditorRender.restoreMermaid) {
+        window.MEditorRender.restoreMermaid(content);
+      }
       return;
     }
 

@@ -121,6 +121,37 @@ struct AIAssistantButton: View {
 
 // MARK: - Hero overlay
 
+/// 浮层可见性取值：谁该被看见、谁该接收点击。
+///
+/// diff 审阅是 HITL 唯一的确认入口（逐块接受/跳过），但它挂在文档区内部
+/// （`AppShell`），而本浮层是 `ContentView` 级的 overlay —— 420×620 的面板
+/// 叠上 30% 全窗遮罩，会把整个确认界面盖住：用户只看到一句话说完、界面没变，
+/// 于是「AI 说改好了」等于「什么也没发生」。
+///
+/// 审阅期间让位，但**不卸载视图**：`AIAssistantPanel` 的 `@State` 里有输入草稿、
+/// 待发图片、滚动位置，卸载就丢。所以只把视觉与命中测试一起关掉 —— 面板还在、
+/// 状态还在，审阅结束后原样回来。
+struct AIAssistantOverlayPlan: Equatable {
+    /// 面板背后暗化遮罩的不透明度。
+    static let backgroundDim: Double = 0.30
+
+    var dimOpacity: Double
+    var panelOpacity: Double
+    /// 为 false 时整层不接收点击/键盘，事件穿透到下面的 diff 审阅。
+    var isInteractive: Bool
+
+    static func resolve(panelMounted: Bool, expanded: Bool, diffReviewPresented: Bool) -> Self {
+        guard panelMounted, !diffReviewPresented else {
+            return .init(dimOpacity: 0, panelOpacity: 0, isInteractive: false)
+        }
+        return .init(
+            dimOpacity: expanded ? backgroundDim : 0,
+            panelOpacity: expanded ? 1 : 0,
+            isInteractive: true
+        )
+    }
+}
+
 /// In-app "hero" presentation of the assistant panel. The panel scales + fades
 /// out of the launcher's location with a spring and dims the rest of the window
 /// behind it (matches `SettingsHeroOverlay`).
@@ -150,10 +181,25 @@ struct AIAssistantHeroOverlay: View {
         )
     }
 
+    private var plan: AIAssistantOverlayPlan {
+        AIAssistantOverlayPlan.resolve(
+            panelMounted: state.showingAIAssistant,
+            expanded: shown,
+            diffReviewPresented: state.showingDiffReview
+        )
+    }
+
+    /// 让位期间传 `nil` 而不是「挂上闭包再判空」：`onExitCommand` 一旦挂上就**吃掉**
+    /// 事件，Esc 就只能落空。传 nil 才真正把它从响应链里摘掉，让审阅界面自己处理。
+    private var exitCommandAction: (() -> Void)? {
+        guard plan.isInteractive else { return nil }
+        return { dismiss() }
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Rectangle()
-                .fill(Color.black.opacity(shown ? 0.30 : 0))
+                .fill(Color.black.opacity(plan.dimOpacity))
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { dismiss() }
@@ -174,10 +220,13 @@ struct AIAssistantHeroOverlay: View {
                 .compositingGroup()
                 .dsElevation(.hero)
                 .scaleEffect(shown ? 1 : 0.16, anchor: anchorPoint)
-                .opacity(shown ? 1 : 0)
+                .opacity(plan.panelOpacity)
                 .padding(.trailing, 16)
                 .padding(.bottom, 16)
         }
+        // diff 审阅期间整层让位：不接收点击，也不吞 Esc（否则按 Esc 关掉的是
+        // 背后那个看不见的面板，审阅界面反而留在原地）。
+        .allowsHitTesting(plan.isInteractive)
         .task {
             // Commit the collapsed state for one frame, then spring open — so the
             // animation isn't coalesced into the initial insert (which skips it).
@@ -191,7 +240,7 @@ struct AIAssistantHeroOverlay: View {
         //    onEscapeWithoutPicker 回调到 AIAssistantPanel.onClose（与本 modifier 同一个
         //    dismiss 闭包）；焦点不在输入框时由这里的 onExitCommand 处理。
         // 专注模式的 Esc（FocusEscapeMonitor / AppShell 隐藏快捷键）在面板打开时主动放行。
-        .onExitCommand { dismiss() }
+        .onExitCommand(perform: exitCommandAction)
     }
 
     private func dismiss() {

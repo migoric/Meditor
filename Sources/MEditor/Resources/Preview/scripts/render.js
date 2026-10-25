@@ -994,6 +994,22 @@
     });
   }
 
+  /**
+   * bridge 的缓存命中恢复路径用：快照里的 mermaid 是「视口懒渲染」之前的形态。
+   *
+   * `renderMermaidDiagrams` 给每个占位挂 IntersectionObserver，只画滚进视口的图；
+   * 而缓存命中会把 `contentEl.innerHTML` 整体换掉 —— 上一轮挂的观察器随旧节点一起
+   * 失效，没滚到的那几张就再也没人管：表现为「切走再切回，图永久空白」。
+   *
+   * 这里按源码重新提取一次（id 由围栏顺序决定，与生成快照时同一份源码 ⇒ 编号一致），
+   * 把观察器挂回占位。已经渲染过的图在 DOM 里是 `.mermaid-container`（占位 div 被
+   * outerHTML 整个换掉、id 也一并没了），`getElementById` 取不到 ⇒ 天然幂等。
+   */
+  function restoreMermaid(content) {
+    var extracted = extractMermaid(content || '');
+    renderMermaidDiagrams(extracted.diagrams);
+  }
+
   /** 立即渲染所有仍是占位的 mermaid 图（导出/发布前调用），全部完成后 resolve。 */
   function renderAllDiagrams() {
     return loadMermaidIfNeeded().then(function () {
@@ -1251,6 +1267,8 @@
     // bridge 的缓存命中恢复路径用：快照可能在 idle 高亮批跑完前落盘，
     // 恢复页需幂等补高亮（已带 hljs 的块跳过）。
     highlightCodeBlocks: highlightCodeBlocks,
+    // 同上，补的是 mermaid 的懒渲染观察器（不补 = 没滚到的图永久空白）。
+    restoreMermaid: restoreMermaid,
     // 测试出口：DOM 里的占位元素会被异步换成 SVG 或错误块（mermaid 库缺失时
     // 直接变成 error-block），从页面结构上数不清「到底摘了几个、边界在哪」。
     // 这里直接给出最近一次 renderInto 的提取结果，让围栏配对的断言能精确到代码内容。
