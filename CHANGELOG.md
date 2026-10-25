@@ -12,6 +12,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **「设置 → 记忆」在文件完全可写时误报「MEDITOR.md 只读」**。判据读的是
+  `MemoryService.hasWorkspaceStore`，而 store 由 `activate` 创建、`activate` 挂在
+  `.onAppear` 上：**首次渲染读到的一定是假值**，空态下又没有任何 `@State` 变化
+  触发重绘，于是那条橙色警告一直挂在那里。现在判据换成真实文件系统可写性
+  （`MEDITOR.md` 本身 + 旁挂 state 的目录），放进 `@State` 且**初始为「未知」——
+  未知不报警**，不必靠某次刷新来纠正。同屏文案也不再自相矛盾：原来说文件「只读」，
+  下面又提示「你也可以直接改 MEDITOR.md」。
+- 记忆为 0 条时不再显示筛选框（筛不到任何东西的输入框只是把卡片撑高）。
+- 记忆面板的路径把家目录缩成 `~`。原先 `.truncationMode(.head)` 会切在任意字符处，
+  `/Users/…/Documents` 变成 `...s/`——`Documents` 只剩一个 `s`，读起来像乱码。
+
 ## [0.13.9] - 2026-10-25
 
 ### Added

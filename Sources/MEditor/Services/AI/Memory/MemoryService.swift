@@ -36,6 +36,40 @@ final class MemoryService: @unchecked Sendable {
             .appendingPathComponent("memory-state.json")
     }
 
+    /// 面板显示用的路径：把家目录缩成 `~`。
+    ///
+    /// `Text.truncationMode(.head)` 是在**任意字符**处截断的：`/Users/me/Documents/...`
+    /// 会被切成 `...s/shein/...`——`Documents` 只剩一个 `s`，看起来像乱码。缩掉家目录
+    /// 前缀后完整路径通常放得下，不必截断；真放不下时由 SwiftUI 收尾，此时丢的是尾部。
+    static func displayPath(_ path: String, home: String = NSHomeDirectory()) -> String {
+        guard !home.isEmpty else { return path }
+        if path == home { return "~" }
+        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
+        return path
+    }
+
+    /// 工作区记忆到底能不能写。判据是**文件系统权限**，不是「store 有没有建出来」。
+    ///
+    /// 旧判据 `hasWorkspaceStore` 只在 `activate` 之前为假，而 `activate` 挂在
+    /// `.onAppear` 上：面板首次渲染读到的一定是假值，空态下又没有任何 `@State` 变化
+    /// 触发重绘，于是橙色「只读」横幅一直挂着——而文件其实完全可写。真正决定
+    /// 「agent 记不记得住」的是两处落盘位置：`MEDITOR.md` 本身，以及旁挂 state 的目录。
+    static func isWorkspaceWritable(root: URL) -> Bool {
+        let fm = FileManager.default
+        let file = workspaceFileURL(root: root)
+        if fm.fileExists(atPath: file.path) {
+            if !fm.isWritableFile(atPath: file.path) { return false }
+        } else if !fm.isWritableFile(atPath: root.path) {
+            // 文件还不存在，能不能写就看能不能在根目录里创建它。
+            return false
+        }
+        let stateDir = workspaceStateURL(root: root).deletingLastPathComponent()
+        if fm.fileExists(atPath: stateDir.path) {
+            return fm.isWritableFile(atPath: stateDir.path)
+        }
+        return true
+    }
+
     private let lock = NSLock()
     private var workspaceRoot: URL?
     private var workspaceStore: MemoryStore?
