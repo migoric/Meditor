@@ -52,12 +52,16 @@ final class MemoryService: @unchecked Sendable {
 
     // MARK: - 工作区
 
-    /// 切换工作区。同一个根重复调用是空操作（避免每次开面板都重读文件）。
+    /// 切换工作区，或在同一个工作区里发现 `MEDITOR.md` 被外部改过后重读。
+    ///
+    /// 短路条件是「同一个根 **且** 磁盘文件没变」。只按根判会让内存副本一直压着磁盘：
+    /// 用户在编辑器里改约定、`git pull` 拉下团队约定，都是在 App 之外改的文件。
+    /// 重读会丢掉 run 级限额计数，但那一刻文件确实被动过了，重置是合理的。
     func activate(workspaceRoot root: URL?) {
         let standardized = root?.standardizedFileURL
         lock.lock()
         defer { lock.unlock() }
-        if standardized == workspaceRoot, workspaceStore != nil { return }
+        if standardized == workspaceRoot, let store = workspaceStore, !store.isStaleOnDisk() { return }
         workspaceRoot = standardized
         guard let standardized else {
             workspaceStore = nil
@@ -181,20 +185,29 @@ final class MemoryService: @unchecked Sendable {
         return target.record(kind: kind, text: text, source: source, now: now)
     }
 
-    func setPinned(_ pinned: Bool, id: String) {
-        for (_, store) in stores() { store.setPinned(pinned, id: id) }
+    /// 四个写操作都**必须**带 `scope`。
+    ///
+    /// 曾经是「按 id 遍历两层」，但 id 是内容寻址的 —— 同一条正文既在工作区又在全局时
+    /// 两边 id 相同，于是「在工作区删掉这条」会顺手把全局那条也删了，而且面板里
+    /// 两条是一起消失的，用户看不出发生了什么。scope 必填把这件事顶到编译期。
+    func setPinned(_ pinned: Bool, id: String, scope: MemoryScope) {
+        store(for: scope)?.setPinned(pinned, id: id)
     }
 
-    func update(id: String, text: String?, kind: MemoryKind?) {
-        for (_, store) in stores() { store.update(id: id, text: text, kind: kind) }
+    func update(id: String, text: String?, kind: MemoryKind?, scope: MemoryScope) {
+        store(for: scope)?.update(id: id, text: text, kind: kind)
     }
 
-    func delete(id: String) {
-        for (_, store) in stores() { store.delete(id: id) }
+    func delete(id: String, scope: MemoryScope) {
+        store(for: scope)?.delete(id: id)
     }
 
-    func restore(id: String) {
-        for (_, store) in stores() { store.restore(id: id) }
+    func restore(id: String, scope: MemoryScope) {
+        store(for: scope)?.restore(id: id)
+    }
+
+    private func store(for scope: MemoryScope) -> MemoryStore? {
+        stores().first(where: { $0.scope == scope })?.store
     }
 
     /// 运行结束时跑一次：先合并同义条目，再把又老又没用过的归档。返回 (合并数, 归档数)。

@@ -28,7 +28,9 @@ extension SettingsView {
                     if memoryAll.isEmpty {
                         memoryEmptyRow
                     } else {
-                        ForEach(Array(memoryVisible.enumerated()), id: \.element.id) { index, record in
+                        // 键用 recordKey（scope + id）而不是 id：id 是内容寻址的，两层里
+                        // 同一条正文的 id 一样，用它做键会让两个视图撞 id。
+                        ForEach(Array(memoryVisible.enumerated()), id: \.element.recordKey) { index, record in
                             memoryRow(record)
                             if index != memoryVisible.count - 1 { rowDivider }
                         }
@@ -37,7 +39,7 @@ extension SettingsView {
 
                 if !memoryArchived.isEmpty {
                     settingsGroup(title: L("memory.group.archive", memoryArchived.count)) {
-                        ForEach(Array(memoryArchived.enumerated()), id: \.element.id) { index, record in
+                        ForEach(Array(memoryArchived.enumerated()), id: \.element.recordKey) { index, record in
                             archivedRow(record)
                             if index != memoryArchived.count - 1 { rowDivider }
                         }
@@ -56,7 +58,9 @@ extension SettingsView {
 
     @MainActor
     private func reloadMemory() {
-        memoryService.activate(workspaceRoot: state.rootURL)
+        // 走 `reload` 而不是 `activate`：`activate` 在「根没变且文件没被改过」时是空操作，
+        // 用它当「重新载入」按钮会让按钮看起来毫无反应（这正是 #110 修的 bug）。
+        memoryService.reload(root: state.rootURL)
         memoryAll = memoryService.records()
         memoryArchived = memoryService.archivedRecords()
         memoryWarnings = memoryService.loadWarnings
@@ -194,7 +198,7 @@ extension SettingsView {
                     .foregroundStyle(.secondary)
                     .frame(width: 34, alignment: .leading)
 
-                if memoryEditingID == record.id {
+                if memoryEditingID == record.recordKey {
                     TextField("", text: $memoryDraft, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(DS.Font.label(12))
@@ -239,9 +243,9 @@ extension SettingsView {
 
     private func memoryRowActions(_ record: MemoryRecord) -> some View {
         HStack(spacing: DS.Space.sm) {
-            if memoryEditingID == record.id {
+            if memoryEditingID == record.recordKey {
                 Button(L("memory.save")) {
-                    memoryService.update(id: record.id, text: memoryDraft, kind: nil)
+                    memoryService.update(id: record.id, text: memoryDraft, kind: nil, scope: record.scope)
                     memoryEditingID = nil
                     reloadMemory()
                 }
@@ -252,7 +256,7 @@ extension SettingsView {
                     .font(DS.Font.caption)
             } else {
                 Button {
-                    memoryService.setPinned(!record.counter.pinned, id: record.id)
+                    memoryService.setPinned(!record.counter.pinned, id: record.id, scope: record.scope)
                     reloadMemory()
                 } label: {
                     Image(systemName: record.counter.pinned ? "pin.fill" : "pin")
@@ -262,7 +266,7 @@ extension SettingsView {
                 .help(record.counter.pinned ? L("memory.unpin") : L("memory.pin"))
 
                 Button {
-                    memoryEditingID = record.id
+                    memoryEditingID = record.recordKey
                     memoryDraft = record.entry.text
                 } label: {
                     Image(systemName: "pencil")
@@ -272,7 +276,7 @@ extension SettingsView {
                 .help(L("memory.edit"))
 
                 Button {
-                    memoryService.delete(id: record.id)
+                    memoryService.delete(id: record.id, scope: record.scope)
                     reloadMemory()
                 } label: {
                     Image(systemName: "trash")
@@ -292,13 +296,13 @@ extension SettingsView {
                 .strikethrough(false)
             Spacer(minLength: DS.Space.xs)
             Button(L("memory.restore")) {
-                memoryService.restore(id: record.id)
+                memoryService.restore(id: record.id, scope: record.scope)
                 reloadMemory()
             }
             .buttonStyle(.link)
             .font(DS.Font.caption)
             Button(L("memory.delete")) {
-                memoryService.delete(id: record.id)
+                memoryService.delete(id: record.id, scope: record.scope)
                 reloadMemory()
             }
             .buttonStyle(.link)

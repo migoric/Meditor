@@ -149,6 +149,11 @@ struct RecallMemoryTool: AgentTool {
             out += "\n- [#\(record.id)] (\(record.entry.kind.displayName)\(pin)\(used)) \(record.entry.text)"
             if let source = record.counter.source { out += "\n  来源：\(source)" }
         }
+        // 主动检索到也算「用过」。遗忘判据是「90 天没用 + 一次都没被检索到」——
+        // 漏记这一笔，被 agent 反复 recall 的条目 useCount 永远是 0，
+        // 90 天后会被归档，而它恰恰是最该留的那条。
+        // 只记实际返回的这 `limit` 条：模型看不到的部分不算被检索到。
+        MemoryService.shared.markUsed(ids: matched.prefix(Self.limit).map(\.id))
         return out
     }
 }
