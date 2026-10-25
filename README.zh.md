@@ -303,6 +303,8 @@ MEditor/
 - **[AGENTS.md](AGENTS.md)** —— 代码约定（分层依赖、iOS 共享内核、Swift 6 并发规则、版本单源），
   同时也是 AI 编码助手的入口。
 - **[docs/engineering-practices.md](docs/engineering-practices.md)** —— 四道质量闸门为什么存在、本地怎么跑。
+- **[docs/ai-roadmap.md](docs/ai-roadmap.md)** —— AI 这块**刻意不做什么**、已经有什么、里程碑顺序。
+  想提功能前先看这份。
 - **[CHANGELOG.md](CHANGELOG.md)** —— 各版本的对外变更。
 - **[SECURITY.md](SECURITY.md)** —— 安全漏洞走私有通道上报，别开公开 issue。
 

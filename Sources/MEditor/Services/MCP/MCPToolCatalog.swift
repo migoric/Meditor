@@ -15,10 +15,15 @@ enum MCPToolCatalog {
     /// - open_file：语义是「在编辑器里打开 tab」（退化为读文件，read_file 已覆盖）；
     /// - load_skill：配套的技能目录只注入 App 内 agent 的系统提示，MCP 无头模式
     ///   没有该提示，外部 agent 无从得知可用技能名，暴露出去是孤儿工具。
+    /// - save_memory / recall_memory：记忆是**用户的**长期资产，写入没有 diff 审阅可看、
+    ///   也没有工作区记忆面板可撤销；经 MCP 暴露等于让远程 agent 往用户的 MEDITOR.md 里
+    ///   写任意条目。无头模式的 `confirmFileWrite` 恒放行，这里不能再多开一个自动写入面。
     static let excludedToolNames: Set<String> = [
         "insert_at_cursor",
         "open_file",
         "load_skill",
+        "save_memory",
+        "recall_memory",
     ]
 
     /// 无头模式默认禁用的高危工具：`run_command` 只有字符串黑名单 + safe 自动批准，

@@ -1333,6 +1333,38 @@ extension LocalizationManager {
                                        "定时任务是 Pro 功能——未激活 Pro 密钥时不会发起运行。"),
     ]
 
+    /// 记忆面板（设置 → 记忆）。中文列是面向用户的正式文案，
+    /// 英文列不是直译而是同义的简洁英文——两列都要能单独读懂。
+    static let table6: [String: (en: String, zh: String)] = [
+        "settings.tab.memory": ("Memory", "记忆"),
+        "memory.group.convention": ("Project conventions (written by you)", "项目约定（人写的）"),
+        "memory.convention.empty": ("No conventions yet. Add a `## 约定` section to MEDITOR.md and the agent follows it on every turn.",
+                                    "还没有约定。在 MEDITOR.md 里加一段「## 约定」，agent 每轮都会遵守。"),
+        "memory.group.entries": ("Memories (%d)", "记忆（%d）"),
+        "memory.group.archive": ("Archived (%d)", "已归档（%d）"),
+        "memory.search": ("Filter by text, id or kind…", "按正文、编号或种类筛选…"),
+        "memory.empty": ("Nothing remembered yet", "还没有记忆"),
+        "memory.empty.hint": ("The agent records durable rules and terms with save_memory. You can also edit MEDITOR.md directly — it is plain Markdown.",
+                              "agent 会用 save_memory 记下长期成立的规则与术语；你也可以直接改 MEDITOR.md —— 它就是普通 Markdown。"),
+        "memory.noWorkspace": ("Open a folder to use project memory. Global memory still applies.",
+                               "打开一个文件夹才能用项目记忆；全局记忆仍然生效。"),
+        "memory.notWritable": ("MEDITOR.md is read-only — existing memories can be recalled, new ones cannot be saved.",
+                               "MEDITOR.md 只读 —— 已有记忆能被检索，新的记不进去。"),
+        "memory.reveal": ("Show in Finder", "在 Finder 中显示"),
+        "memory.refresh": ("Reload", "重新载入"),
+        "memory.pin": ("Pin — always injected", "固定 —— 每轮都注入"),
+        "memory.unpin": ("Unpin", "取消固定"),
+        "memory.edit": ("Edit", "编辑"),
+        "memory.save": ("Save", "保存"),
+        "memory.cancel": ("Cancel", "取消"),
+        "memory.delete": ("Delete", "删除"),
+        "memory.restore": ("Restore", "恢复"),
+        "memory.used": ("used %d×", "用过 %d 次"),
+        "memory.scope.global": ("global", "全局"),
+        "memory.footer": ("Each turn the agent injects only the entries that match your request, within a token budget. Pinned entries always go first. Entries unused for 90 days are archived, never deleted.",
+                          "每轮只注入与当前请求相关的条目，且受 token 预算约束；固定的条目优先。90 天没用过的条目会归档，不会被删除。"),
+    ]
+
     static let table: [String: (en: String, zh: String)] = {
         var t = table0
         t.merge(table1) { _, new in new }
@@ -1340,6 +1372,7 @@ extension LocalizationManager {
         t.merge(table3) { _, new in new }
         t.merge(table4) { _, new in new }
         t.merge(table5) { _, new in new }
+        t.merge(table6) { _, new in new }
         return t
     }()
 }

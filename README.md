@@ -314,6 +314,8 @@ PRs welcome. `main` is protected — CI must be green to merge.
   Swift 6 concurrency rules, version sources). Also the entry point for AI coding agents.
 - **[docs/engineering-practices.md](docs/engineering-practices.md)** — why the four
   quality gates exist and how to run them locally.
+- **[docs/ai-roadmap.md](docs/ai-roadmap.md)** — what the AI side deliberately does *not*
+  do, what already works, and the milestone order. Read this before proposing a feature.
 - **[CHANGELOG.md](CHANGELOG.md)** — released changes.
 - **[SECURITY.md](SECURITY.md)** — report vulnerabilities privately, not in a public issue.
 
