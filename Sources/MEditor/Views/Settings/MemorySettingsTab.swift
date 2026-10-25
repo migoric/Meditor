@@ -23,8 +23,12 @@ extension SettingsView {
                 }
 
                 settingsGroup(title: L("memory.group.entries", memoryAll.count)) {
-                    memorySearchField
-                    rowDivider
+                    // 0 条时不给筛选框：一个筛不到任何东西的输入框只是把卡片撑高，
+                    // 还会让人以为下面本该有列表。
+                    if !memoryAll.isEmpty {
+                        memorySearchField
+                        rowDivider
+                    }
                     if memoryAll.isEmpty {
                         memoryEmptyRow
                     } else {
@@ -65,6 +69,9 @@ extension SettingsView {
         memoryArchived = memoryService.archivedRecords()
         memoryWarnings = memoryService.loadWarnings
         memoryConvention = memoryService.conventionText
+        // 可写性只在 root 变了或这一轮重新载入时才算：`isWritableFile` 要发 stat/access，
+        // 放进 body 等于每次重绘都问一遍文件系统。
+        memoryWritable = state.rootURL.map(MemoryService.isWorkspaceWritable(root:))
     }
 
     private var memoryVisible: [MemoryRecord] {
@@ -92,7 +99,8 @@ extension SettingsView {
             if state.rootURL == nil {
                 memoryNote(L("memory.noWorkspace"), icon: "folder.badge.questionmark", tint: .secondary)
             }
-            if let root = state.rootURL, !memoryService.hasWorkspaceStore {
+            // `== false` 而不是 `!memoryWritable`：`nil`（还没算过）不该报警。
+            if memoryWritable == false {
                 memoryNote(L("memory.notWritable"), icon: "lock", tint: .orange)
             }
             ForEach(Array(memoryWarnings.enumerated()), id: \.offset) { _, warning in
@@ -103,11 +111,13 @@ extension SettingsView {
                     Image(systemName: "doc.text")
                         .font(DS.Font.caption)
                         .foregroundStyle(.secondary)
-                    Text(MemoryService.workspaceFileURL(root: root).path)
+                    Text(MemoryService.displayPath(MemoryService.workspaceFileURL(root: root).path))
                         .font(DS.Font.mono(10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .truncationMode(.head)
+                        // 缩掉家目录后一般放得下；真放不下要保住尾部文件名，
+                        // `.head` 会把 `Documents` 切成 `s`。
+                        .truncationMode(.middle)
                     Spacer(minLength: DS.Space.sm)
                     Button(L("memory.reveal")) {
                         let url = MemoryService.workspaceFileURL(root: root)

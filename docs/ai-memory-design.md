@@ -172,6 +172,10 @@ score = 3·关键词命中 + 种类权重 + 新鲜度 + 使用频次 + pinned �
 ## 7. 失败模式
 
 - **写盘失败**（只读工作区）：`save_memory` 返回明确错误，不假装成功；面板显示「记忆不可写」。
+  - 判据必须是**文件系统可写性**（`MEDITOR.md` 本身 + 旁挂 state 的 `.meditor/`），
+    不能是「store 有没有建出来」——store 在 root 非 nil 时恒存在，判不出不可写。
+    实现见 `MemoryService.isWorkspaceWritable`，面板侧放进 `@State Bool?`，
+    **初始 nil = 未知不报警**（首帧读不到真实状态时宁可不说，也不能先报一条假的）。
 - **没有工作区**（单文件打开）：只启用全局记忆，工作区记忆层为空。
 - **并发写**：串行队列 + 400ms 防抖（照 `AIConversationStore` 范式），读走内存快照。
 

@@ -38,6 +38,10 @@ struct SettingsView: View {
     @State var memoryQuery: String = ""
     @State var memoryEditingID: String? = nil
     @State var memoryDraft: String = ""
+    /// `nil` = 还没算过。必须走 `@State` 而不是现读 `MemoryService`：现读发生在 body
+    /// 求值期，那时 `.onAppear` 还没跑，拿到的是激活前的空值——空态下又没有任何
+    /// `@State` 变化触发重绘，横幅会一直错着挂在那里。
+    @State var memoryWritable: Bool? = nil
 
         /// When true, the view is presented as an in-app hero overlay (not a window),
         /// so it must not mutate any NSWindow chrome.

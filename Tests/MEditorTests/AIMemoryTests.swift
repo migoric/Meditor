@@ -461,4 +461,69 @@ final class AIMemoryTests: XCTestCase {
                        "- [约定] 代码块必须带语言标记 [#\(record.id)]",
                        "文件里的行格式必须能被模型引用")
     }
+
+    // MARK: - 面板判据
+    //
+    // 这两组守的是「设置 → 记忆」上那条橙色警告的真实性。它曾经在**文件完全可写**时
+    // 也亮着：判据读的是 `MemoryService.hasWorkspaceStore`，而 store 由 `activate` 创建、
+    // `activate` 挂在 `.onAppear` 上——首次渲染读到的一定是假值，空态下又没有任何
+    // `@State` 变化触发重绘，横幅就一直错挂在那里。
+
+    /// 家目录缩成 `~`。不缩的话 `.truncationMode(.head)` 会切在任意字符处，
+    /// `~/Documents` 变成 `...s/shein`，读起来像乱码。
+    func test_displayPath_abbreviatesHomeDirectory() {
+        let home = "/Users/someone"
+        XCTAssertEqual(
+            MemoryService.displayPath("/Users/someone/Documents/shein/MEDITOR.md", home: home),
+            "~/Documents/shein/MEDITOR.md"
+        )
+        XCTAssertEqual(MemoryService.displayPath("/Users/someone", home: home), "~")
+        XCTAssertEqual(MemoryService.displayPath("/tmp/MEDITOR.md", home: home), "/tmp/MEDITOR.md")
+        // 前缀相似但不是它的子目录。按裸前缀替换会把路径改坏成 `~else/x`。
+        XCTAssertEqual(
+            MemoryService.displayPath("/Users/someoneelse/x", home: home),
+            "/Users/someoneelse/x"
+        )
+        XCTAssertEqual(MemoryService.displayPath("/x", home: ""), "/x")
+    }
+
+    /// 可写 ⇒ 不报警。这条同时也是「正常路径下横幅不该出现」的回归守卫。
+    func test_isWorkspaceWritable_trueForWritableDirectory() {
+        XCTAssertTrue(MemoryService.isWorkspaceWritable(root: tmpDir))
+    }
+
+    /// 根目录不可写：`MEDITOR.md` 都建不出来，agent 当然记不住新东西。
+    func test_isWorkspaceWritable_falseWhenDirectoryIsReadOnly() throws {
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o555], ofItemAtPath: tmpDir.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: tmpDir.path
+            )
+        }
+        // root 无视权限位，那种环境下这条判据测不出来，如实跳过而不是假装通过。
+        guard !FileManager.default.isWritableFile(atPath: tmpDir.path) else {
+            throw XCTSkip("当前身份无视权限位（多半是 root），无法构造只读目录")
+        }
+        XCTAssertFalse(MemoryService.isWorkspaceWritable(root: tmpDir))
+    }
+
+    /// `MEDITOR.md` 已经存在但本身只读：目录可写也没用，写回会失败。
+    func test_isWorkspaceWritable_falseWhenFileIsReadOnly() throws {
+        let file = MemoryService.workspaceFileURL(root: tmpDir)
+        try "# 记忆\n".write(to: file, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o444], ofItemAtPath: file.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644], ofItemAtPath: file.path
+            )
+        }
+        guard !FileManager.default.isWritableFile(atPath: file.path) else {
+            throw XCTSkip("当前身份无视权限位（多半是 root），无法构造只读文件")
+        }
+        XCTAssertFalse(MemoryService.isWorkspaceWritable(root: tmpDir))
+    }
 }

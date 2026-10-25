@@ -1348,8 +1348,10 @@ extension LocalizationManager {
                               "agent 会用 save_memory 记下长期成立的规则与术语；你也可以直接改 MEDITOR.md —— 它就是普通 Markdown。"),
         "memory.noWorkspace": ("Open a folder to use project memory. Global memory still applies.",
                                "打开一个文件夹才能用项目记忆；全局记忆仍然生效。"),
-        "memory.notWritable": ("MEDITOR.md is read-only — existing memories can be recalled, new ones cannot be saved.",
-                               "MEDITOR.md 只读 —— 已有记忆能被检索，新的记不进去。"),
+        // 说的是「app 写不进去」，不是「这个文件只读」：同一屏下面还提示用户
+        // 自己去编辑 MEDITOR.md，写成「只读」就自相矛盾了。
+        "memory.notWritable": ("The agent can't write to MEDITOR.md here (no write permission) — earlier memories are still recalled, new ones won't stick. Editing the file yourself still works.",
+                               "agent 写不进 MEDITOR.md（目录没有写权限）—— 已有记忆照常检索，新记忆存不下来；你自己编辑这个文件仍然有效。"),
         "memory.reveal": ("Show in Finder", "在 Finder 中显示"),
         "memory.refresh": ("Reload", "重新载入"),
         "memory.pin": ("Pin — always injected", "固定 —— 每轮都注入"),
