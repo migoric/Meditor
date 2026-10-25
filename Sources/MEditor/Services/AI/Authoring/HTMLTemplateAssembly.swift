@@ -108,25 +108,26 @@ enum HTMLTemplateAssembly {
     // MARK: 导航
 
     /// body 里的锚点：`section#id` 优先；没有则取标题并给标题补 id。
-    static func anchorsForBody(_ body: String) -> (anchors: [(id: String, title: String, level: Int)], body: String) {
+    static func anchorsForBody(_ body: String) -> (anchors: [HTMLSectionAnchor], body: String) {
         let document = HTMLScanner.scan(body)
         let sections = document.sectionAnchors()
         if !sections.isEmpty { return (sections, body) }
 
-        var anchors: [(id: String, title: String, level: Int)] = []
+        var anchors: [HTMLSectionAnchor] = []
         var edits: [(range: Range<Int>, text: String)] = []
         for element in document.elements where HTMLDocument.headingTags.contains(element.name) {
             guard element.id == nil else {
                 let title = HTMLDocument.collapse(document.slice(element.contentStart..<element.contentEnd))
-                anchors.append((element.id ?? "", title.isEmpty ? element.id ?? "" : title,
-                                Int(element.name.dropFirst()) ?? 2))
+                anchors.append(HTMLSectionAnchor(id: element.id ?? "",
+                                                 title: title.isEmpty ? element.id ?? "" : title,
+                                                 level: Int(element.name.dropFirst()) ?? 2))
                 continue
             }
             guard element.contentStart <= element.contentEnd else { continue }
             let title = HTMLDocument.collapse(document.slice(element.contentStart..<element.contentEnd))
             guard !title.isEmpty else { continue }
             let id = uniqueSlug(for: title, existing: Set(anchors.map(\.id)))
-            anchors.append((id, title, Int(element.name.dropFirst()) ?? 2))
+            anchors.append(HTMLSectionAnchor(id: id, title: title, level: Int(element.name.dropFirst()) ?? 2))
             // 在标签名之后补 id：`<h2>` → `<h2 id="…">`
             edits.append((element.startOffset + 1 + element.name.count..<element.startOffset + 1 + element.name.count,
                           " id=\"\(id)\""))
@@ -140,7 +141,7 @@ enum HTMLTemplateAssembly {
         return (anchors, String(chars))
     }
 
-    private static func navigationHTML(_ anchors: [(id: String, title: String, level: Int)]) -> String {
+    private static func navigationHTML(_ anchors: [HTMLSectionAnchor]) -> String {
         var lines: [String] = []
         for (offset, anchor) in anchors.enumerated() {
             let active = offset == 0 ? " class=\"active\"" : ""

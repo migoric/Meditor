@@ -37,6 +37,16 @@ struct HTMLElement: Equatable, Sendable {
 
 // MARK: - HTMLDocument
 
+/// 一个导航锚点：`<section id>`（或补过 id 的标题）。
+///
+/// 独立成 struct 而非三元组：SwiftLint `large_tuple` 默认上限是 2 元，
+/// 而这里三个字段都要往下传（`navigationHTML` 用 level 做缩进）。
+struct HTMLSectionAnchor: Equatable, Sendable {
+    let id: String
+    let title: String
+    let level: Int
+}
+
 /// 一次扫描的结果。不建 DOM，只留「够用于定位与折叠」的信息。
 struct HTMLDocument: Sendable {
     let source: [Character]
@@ -135,8 +145,8 @@ struct HTMLDocument: Sendable {
     }
 
     /// `<section id>` → 侧边栏导航条目（`write_html_with_template` 用它重建导航）。
-    func sectionAnchors() -> [(id: String, title: String, level: Int)] {
-        var anchors: [(id: String, title: String, level: Int)] = []
+    func sectionAnchors() -> [HTMLSectionAnchor] {
+        var anchors: [HTMLSectionAnchor] = []
         for (index, element) in elements.enumerated() where element.name == "section" {
             guard let id = element.id, !id.isEmpty else { continue }
             // 取该 section 内第一个标题的文本作为导航文案
@@ -151,7 +161,7 @@ struct HTMLDocument: Sendable {
                 }
             }
             if title.isEmpty { title = id }
-            anchors.append((id, title, level))
+            anchors.append(HTMLSectionAnchor(id: id, title: title, level: level))
         }
         return anchors
     }
@@ -470,7 +480,7 @@ enum HTMLScanner {
         guard !tokenChars.isEmpty, start >= 0 else { return nil }
         var i = start
         while i + tokenChars.count <= chars.count {
-            if chars[i] == tokenChars[0] { 
+            if chars[i] == tokenChars[0] {
                 var matched = true
                 for offset in 1..<tokenChars.count where chars[i + offset] != tokenChars[offset] {
                     matched = false
