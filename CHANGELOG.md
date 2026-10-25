@@ -41,6 +41,18 @@
 - MCP 无头工具集新增 5 个**只读**结构工具；4 个写类结构工具不进无头（新增写入面要单独决策）。
 - 新增 `docs/ai-document-agents-design.md`（设计稿 + 实施记录：三处落地修正与未做项）。
 
+### Fixed
+
+- **预览里点链接不会打开浏览器（点了"没反应"）**。三处 `decidePolicyFor` 的
+  `decisionHandler` 参数少了 `@MainActor @Sendable`，与 WebKit 的 requirement 差一点，
+  编译器只报一条 `nearly matches optional requirement` 的**警告**，编译通过、纯函数测试
+  全绿——但这样的方法不算协议实现，不会导出成
+  `webView:decidePolicyForNavigationAction:decisionHandler:`。WebKit 问 delegate 时得到
+  「未实现」，直接按默认策略放行，链接于是在预览里原地导航；目标若是内网或不可达地址，
+  表现出来就是「点了毫无反应，浏览器没动」。Markdown 预览、HTML 预览、diff 审阅面三处
+  同病。现在闭包类型与 WebKit 逐字一致，并加 `PreviewLinkDelegateWiringTests` 用运行时
+  `instancesRespond(to:)` 钉住——「签名写错只会警告」这类失效，纯逻辑测试永远抓不到。
+
 ## [0.13.8] - 2026-10-25
 
 ### Added
