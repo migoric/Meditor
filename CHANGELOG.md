@@ -12,6 +12,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **项目记忆**：agent 现在会记住跨会话仍然成立的东西（约定 / 术语 / 偏好 / 决策 / 事实），
+  不再每轮从零猜口径。落在工作区根的 `MEDITOR.md`——纯 Markdown，能直接手改、能进 git：
+  `## 约定` 段是你写的散文（原样注入），`## 记忆` 段由 agent 通过 `save_memory` 追加，
+  每条带 `[#id]` 便于在回答里引用与回溯。每轮只注入**与当前请求相关**的几条，
+  受 800 token 预算约束，pinned 条目优先；计数器（用过几次、最近使用、出处）旁挂在
+  `.meditor/memory-state.json`，不进正文。90 天没用过且一次都没被检索到的条目会**归档**
+  （不是删除），可在 `设置 → 记忆` 里恢复。没有 `MEDITOR.md` 时 system prompt
+  与之前逐字节一致。
+- 新增工具 `save_memory` / `recall_memory`（仅 macOS；iOS 的记忆层尚未进共享源码清单）。
+- 新增 `设置 → 记忆` 面板：分组、筛选、行内编辑、固定、删除、恢复归档。
+- 新增 `docs/ai-roadmap.md`（AI 能力边界 + 里程碑）与 `docs/ai-memory-design.md`（记忆设计稿）。
+
 ### Fixed
 
 - **预览里点链接的两条死链**：

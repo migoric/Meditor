@@ -12,6 +12,13 @@ final class AIChatCoordinator {
     private let convo: AIConversation
     private let state: AppState
 
+    /// 上一轮 system prompt 里实际注入了哪些记忆条目。
+    ///
+    /// 为什么不在注入那一刻就把计数写盘：注入每轮都发生，而「是否真的用上」只能在
+    /// run 收尾时才知道一个大概。攒到收尾一次回写，少一轮磁盘写，也让「用过几次」
+    /// 的口径与「这个 run」对齐。
+    private(set) var lastInjectedMemoryIDs: [String] = []
+
     init(settings: AppSettings, conversation: AIConversation, appState: AppState) {
         self.settings = settings
         self.convo = conversation
@@ -39,10 +46,11 @@ final class AIChatCoordinator {
         let wsFiles    = Array(state.fileItemMap.values)
 
         let userTurnCount = convo.messages.filter { $0.role == .user }.count
-        let baseSys = systemContext(includeFullDoc: userTurnCount == 1 && includeAutoContext)
         let mcpManager = state.mcpClientManager
-        // 工具预算的相关性打分输入：本轮用户原话（不进 Task 里读，避免跨 actor 取状态）
+        // 工具预算的相关性打分输入：本轮用户原话（不进 Task 里读，避免跨 actor 取状态）。
+        // 同一份原话也用于检索项目记忆——两处都要「按这轮问什么」来裁。
         let userQuery = convo.messages.last(where: { $0.role == .user })?.text ?? ""
+        let baseSys = systemContext(includeFullDoc: userTurnCount == 1 && includeAutoContext, memoryQuery: userQuery)
 
         Task {
             // @mention IO 在后台执行
@@ -286,6 +294,14 @@ final class AIChatCoordinator {
             }
             convo.setLastRunState(runner?.state, sessionID: sessionID)
 
+            // 记忆收尾：把这一轮注入过的条目计数回写，再顺手巩固/老化一次。
+            // 放后台：这一步是磁盘 IO，没理由让它在主线程上跟 UI 抢。
+            let injected = self.lastInjectedMemoryIDs
+            Task.detached(priority: .utility) {
+                MemoryService.shared.markUsed(ids: injected)
+                MemoryService.shared.maintain()
+            }
+
             // 仅当全局 runner 仍是本次运行时才复位：切换会话后用户可能已发起新 run，
             // 旧 run 迟到的收尾不得清掉新 run 的进行状态
             if let runner, convo.agentRunner === runner {
@@ -296,6 +312,9 @@ final class AIChatCoordinator {
             convo.persist()
         }
 
+        // 每次 run 重置「本次已记几条」的限额：限额是防一次 run 刷屏，
+        // 不是防整个会话，所以必须在 run 边界清零而不是在 system prompt 拼装处。
+        MemoryService.shared.beginRun()
         runner.run(messages: agentMessages, tools: tools, config: config, context: context)
     }
 
@@ -308,9 +327,11 @@ final class AIChatCoordinator {
     ///   it of the document name to avoid re-paying the token cost every round.
     ///   Selected text (and its containing paragraph) is always included because
     ///   it's user-initiated and small.
+    ///   - memoryQuery: 用于检索项目记忆的查询文本（一般是本轮用户原话）。
+    ///     传空串时退化为「pinned + 种类权重 + 新鲜度」排序，仍然只注入预算内的几条。
     /// internal（非 private）：后台任务发起路径（AIAssistantPanel.sendInBackground）
     /// 复用同一份 grounding，不另写一套 system prompt。
-    func systemContext(includeFullDoc: Bool = true) -> String {
+    func systemContext(includeFullDoc: Bool = true, memoryQuery: String = "") -> String {
         var ctx = """
 You are a helpful writing assistant embedded in a native macOS Markdown editor.
 Rules:
@@ -359,6 +380,15 @@ Rules:
         } else if let tab = state.selectedTab {
             // Subsequent turns: just name — full content is already in conversation history.
             ctx += "\n\nThe user is editing a document named \"\(tab.name)\"."
+        }
+        // 项目记忆（MEDITOR.md）：按本轮请求检索，只注入相关的几条，不吃整篇。
+        // 没有记忆文件时 promptSection 返回空串 ⇒ 这一段整体不追加，prompt 逐字节不变
+        // （旧用户不应因为我们加了记忆功能就看到 system prompt 变了）。
+        MemoryService.shared.activate(workspaceRoot: state.rootURL)
+        let memory = MemoryService.shared.promptSection(query: memoryQuery)
+        lastInjectedMemoryIDs = memory.injectedIDs
+        if !memory.text.isEmpty {
+            ctx += memory.text
         }
         let userSkills = state.pluginManager.userSkillsPrompt()
         if !userSkills.isEmpty {

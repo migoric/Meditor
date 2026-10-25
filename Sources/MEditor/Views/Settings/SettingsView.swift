@@ -29,6 +29,16 @@ struct SettingsView: View {
     @State var aiCLIProbing = true
     @State var aiCLIDetectedPath: String? = nil
 
+    // 记忆面板（MemorySettingsTab）：数据从 MemoryService 现取，不放 AppState ——
+    // 记忆不是文档状态，塞进 AppState 会让「打开设置」变成全局刷新。
+    @State var memoryAll: [MemoryRecord] = []
+    @State var memoryArchived: [MemoryRecord] = []
+    @State var memoryWarnings: [String] = []
+    @State var memoryConvention: String = ""
+    @State var memoryQuery: String = ""
+    @State var memoryEditingID: String? = nil
+    @State var memoryDraft: String = ""
+
         /// When true, the view is presented as an in-app hero overlay (not a window),
         /// so it must not mutate any NSWindow chrome.
         var embedded: Bool = false
@@ -47,7 +57,7 @@ struct SettingsView: View {
     private static let tagline      = "Let the agent write. You review, then keep."
 
     enum SettingsTab: String, CaseIterable {
-        case general, ai, integrations, sharing, plugins, about
+        case general, ai, integrations, sharing, plugins, memory, about
 
         var label: String {
             switch self {
@@ -56,6 +66,7 @@ struct SettingsView: View {
             case .integrations: return L("settings.tab.integrations")
             case .sharing:      return L("settings.tab.sharing")
             case .plugins:      return L("settings.tab.plugins")
+            case .memory:       return L("settings.tab.memory")
             case .about:        return L("settings.tab.about")
             }
         }
@@ -67,6 +78,7 @@ struct SettingsView: View {
             case .integrations: return "puzzlepiece.extension"
             case .sharing:      return "square.and.arrow.up"
             case .plugins:      return "wand.and.stars"
+            case .memory:       return "brain"
             case .about:        return "info.circle"
             }
         }
@@ -109,6 +121,7 @@ struct SettingsView: View {
                     case .integrations: integrationsContent
                     case .sharing:      sharingContent
                     case .plugins:      pluginsContent
+                    case .memory:       memoryContent
                     case .about:        aboutContent
                     }
                 }
