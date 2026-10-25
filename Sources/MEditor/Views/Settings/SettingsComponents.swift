@@ -32,6 +32,12 @@ extension SettingsView {
             VStack(spacing: 0) {
                 content()
             }
+            // 卡片宽度必须由容器决定，不能由内容撑。
+            // 反例（0.13.10 的记忆面板）：节里只有一行「还没有约定」时，Text 只取
+            // 固有宽度 ⇒ 卡片跟着缩窄 ⇒ 外层 `VStack(spacing: 0)` 的默认对齐是
+            // `.center`，窄卡片被居中 ⇒ 同一栏里两张卡片宽度不同、左边线差出
+            // 一百多点。截图量出来中心线重合、宽度一为 774 一为 993。
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous).fill(cardFill)
             )
@@ -41,6 +47,8 @@ extension SettingsView {
             )
             .dsElevation(.floatingBar)
         }
+        // 组本身也撑满：即便将来外层换成 `.center` 对齐，标题也不会跑偏。
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, 22)
     }
 
