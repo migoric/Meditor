@@ -130,6 +130,42 @@ struct AgentMessage: Sendable, Codable {
     }
 }
 
+// MARK: - System Prompt Segments
+
+/// system prompt 的「稳定前缀 / 易变部分」分段标记。
+///
+/// 为什么需要它：prompt cache 是**顺序前缀**匹配。system prompt 里只要有一处每轮都变
+/// （选区、按本轮原话检索出的记忆、首轮才有的文档全文），从那一处往后的一切就都失效——
+/// 包括紧跟着的全部历史消息。把易变内容统一挪到 system 的**尾部**，并在稳定前缀的
+/// 末尾打一个 `cache_control` 断点，至少保住「规则 + 策略 + 技能」这一段。
+///
+/// 标记用 NUL 包裹：正文里不可能出现，且**永远不会被发到线上**——
+/// Anthropic 侧在序列化前按它切块，OpenAI / ClaudeCLI 侧在序列化前把它剥掉。
+enum SystemPromptSegments {
+
+    /// 稳定块与易变块的分界。两侧各带一个 NUL，避免与正文里的同名字符串混淆。
+    static let delimiter = "\u{0}meditor:volatile\u{0}"
+
+    /// 拼接：稳定段在前，易变段在后。易变段为空时不插标记（保持单块 prompt）。
+    static func join(stable: String, volatile: String) -> String {
+        guard !volatile.isEmpty else { return stable }
+        return stable + delimiter + volatile
+    }
+
+    /// 切块。没有标记时返回 nil（= 整段都是稳定前缀，无需分块）。
+    static func split(_ text: String) -> (stable: String, volatile: String)? {
+        guard let range = text.range(of: delimiter) else { return nil }
+        return (String(text[text.startIndex..<range.lowerBound]),
+                String(text[range.upperBound...]))
+    }
+
+    /// 剥掉标记（非 Anthropic wire 用）。两侧不加分隔符——`join` 只是拼接，
+    /// 各段自带前导换行，补一个分隔符会让 prompt 里凭空多出空行。
+    static func strippingDelimiter(_ text: String) -> String {
+        text.replacingOccurrences(of: delimiter, with: "")
+    }
+}
+
 // MARK: - Factory
 
 /// 根据 AIConfig 创建对应 backend，外部只需调用这一个入口

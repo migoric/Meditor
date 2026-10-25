@@ -32,6 +32,16 @@ enum BuiltinAgentTools {
         // Shell (script-based skills; gated by per-session user confirmation)
 #if os(macOS)
         tools.append(RunCommandTool())   // iOS 无 Process 子进程能力，不注册 shell 工具
+        // 文档结构工具（Markdown 标题树 / HTML 结构树与 CSS 折叠）。
+        // 只在 macOS 注册：iOS 是「单文档 + AI 改文阅读器」，工具面刻意收窄，
+        // 且 iOS 端零自动化测试——这 9 个里 4 个是新的写入面，放过去没有对应的验证能力。
+        // 与 RunCommandTool 同一取舍（见 docs/ai-document-agents-design.md §11.2）。
+        let structureTools: [any AgentTool] = [
+            OutlineDocumentTool(), ReadSectionTool(), RewriteSectionTool(),
+            HTMLOutlineTool(), ReadNodeTool(), ReadStyleTool(),
+            PatchStyleTool(), SetNodeClassTool(), WriteHTMLWithTemplateTool(),
+        ]
+        tools.append(contentsOf: structureTools)
         // 项目记忆：跨会话的约定/术语/决策。落盘到工作区的 MEDITOR.md，
         // 注入侧见 AIChatCoordinator.systemContext。iOS 端暂不注册——
         // 记忆文件与检索层还没进共享源码清单（见 docs/ai-roadmap.md M1 的边界）。

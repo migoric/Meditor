@@ -153,7 +153,11 @@ struct ClaudeCLIBackend: AgentBackend {
         messages: [AgentMessage],
         tools: [any AgentTool],
         onTextChunk: (@Sendable (String) -> Void)?
-    ) async throws -> AgentCompletionResponse {        var systemPrompt = messages.first(where: { $0.role == .system })?.content ?? ""
+    ) async throws -> AgentCompletionResponse {
+        // 稳定/易变分段标记只对 Anthropic 的 cache_control 有意义；CLI 是纯文本管道，
+        // 标记留着会把控制字符写进子进程的 system prompt，模型看到的是乱码。
+        var systemPrompt = SystemPromptSegments.strippingDelimiter(
+            messages.first(where: { $0.role == .system })?.content ?? "")
 
         if !tools.isEmpty {
             let intent   = inferIntent(from: messages)

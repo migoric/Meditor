@@ -331,8 +331,15 @@ final class AIChatCoordinator {
     ///     传空串时退化为「pinned + 种类权重 + 新鲜度」排序，仍然只注入预算内的几条。
     /// internal（非 private）：后台任务发起路径（AIAssistantPanel.sendInBackground）
     /// 复用同一份 grounding，不另写一套 system prompt。
+    ///
+    /// **结构**：稳定段（规则 / 工作区 / 工具策略 / 档案 guidance）→ `SystemPromptSegments`
+    /// 分界 → 易变段（选区或文档上下文 / 项目记忆）→ 尾部稳定段（技能 / 自定义指令）。
+    /// 分界的唯一目的是让 Anthropic 的缓存断点落在**不会变**的那段末尾；字符串本身
+    /// 与「没有任何档案」时的旧输出逐字节一致（去掉标记后），见
+    /// `AuthoringPromptTests/test_plainContext_isByteIdenticalToLegacyImplementation`。
     func systemContext(includeFullDoc: Bool = true, memoryQuery: String = "") -> String {
-        var ctx = """
+        let profile = DocumentAuthoringProfile.resolve(fileName: state.selectedTab?.name)
+        var stable = """
 You are a helpful writing assistant embedded in a native macOS Markdown editor.
 Rules:
 - Always format code in fenced code blocks with the correct language tag.
@@ -345,62 +352,92 @@ Rules:
 """
         // 注入工作区路径，帮助 AI 正确使用文件/目录工具
         if let rootURL = state.rootURL {
-            ctx += "\n\nThe current workspace root is: \(rootURL.path)"
-            ctx += "\n- File and directory tools (create_file, write_file, create_directory, etc.) accept EITHER a path relative to the workspace root (e.g. \"docs/api\") OR an absolute path (e.g. \"\(rootURL.path)/docs/api\"). Both forms work."
-            ctx += "\n- When the user provides an absolute path, use it directly with the appropriate tool — do NOT refuse or ask the user to run a terminal command."
+            stable += "\n\nThe current workspace root is: \(rootURL.path)"
+            stable += "\n- File and directory tools (create_file, write_file, create_directory, etc.) accept EITHER a path relative to the workspace root (e.g. \"docs/api\") OR an absolute path (e.g. \"\(rootURL.path)/docs/api\"). Both forms work."
+            stable += "\n- When the user provides an absolute path, use it directly with the appropriate tool — do NOT refuse or ask the user to run a terminal command."
         }
-        // 注入 HTML 主题元信息（简短，不含完整 CSS）
-        let themeName = state.themeStore.current.rawValue
-        ctx += "\n\n## 创建 / 改版 HTML 文件"
-        ctx += "\nWhen the user asks to create a NEW HTML file, or to restyle/redesign an existing one, you MUST FIRST call the get_html_template tool to fetch MEditor's built-in HTML template, and use it as the base."
-        ctx += "\n- get_html_template styles: 'doc' (default — MEditor's standard styled document), 'craft' (modern cards), 'tufte' (serif academic), 'dark' (dark code style). If the user doesn't specify, use 'doc'."
-        ctx += "\n- Keep the template's <style> block and overall structure; just fill in / replace the body content. Do NOT invent your own CSS from scratch, and do NOT strip the template's styles into a bare semantic-HTML page unless the user explicitly asks for that."
-        ctx += "\n- Keep all CSS inlined in a <style> block; never reference external .css files."
-        ctx += "\n(Note: \(themeName) is the current PREVIEW theme — that's separate from these file templates.)"
+        stable += htmlToolingSection(profile: profile)
+        // 档案策略（稳定段）：讲这类文档该怎么定位、怎么改。
+        if !profile.guidance.isEmpty {
+            stable += "\n" + profile.guidance
+        }
+
+        // ── 易变段开始：以下内容每轮都可能不同 ─────────────────────────────
+        var volatile = ""
         let selection = state.editorSelectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !selection.isEmpty {
-            // Selected text is cheap and always relevant — include regardless of turn.
-            let sel = selection.count > 4000 ? String(selection.prefix(4000)) + "…" : selection
-            let name = state.selectedTab?.name ?? "document"
-            ctx += "\n\nThe user selected this text in \"\(name)\":\n\n\(sel)"
-            // 选区所在段落一并带上并标注：选区只是片段时，模型需要段落语境
-            // （段落不长于选区上限才注入，避免大段落放大成本）
-            if let tab = state.selectedTab,
-               let paraRange = ParagraphTargeting.paragraphRange(
-                   containing: state.editorSelectedRange, in: tab.content) {
-                let para = String(tab.content[paraRange])
-                if para.count > selection.count, para.count <= 4000 {
-                    ctx += "\n\nThe selection is part of this paragraph in \"\(tab.name)\":\n\n\(para)"
-                }
+        var selectionParagraph: String?
+        if !selection.isEmpty, let tab = state.selectedTab,
+           let paraRange = ParagraphTargeting.paragraphRange(
+               containing: state.editorSelectedRange, in: tab.content) {
+            let para = String(tab.content[paraRange])
+            if para.count > selection.count, para.count <= AuthoringContextBuilder.selectionLimit {
+                selectionParagraph = para
             }
-        } else if includeFullDoc, let tab = state.selectedTab {
-            // 预算感知截取：超预算时保留首部 + 光标附近段落 + 尾部，而非整篇硬截断
-            let body = DocumentContextExcerpt.excerpt(content: tab.content, cursorLine: state.cursorLine)
-            ctx += "\n\nThe current document is \"\(tab.name)\":\n\n\(body)"
-        } else if let tab = state.selectedTab {
-            // Subsequent turns: just name — full content is already in conversation history.
-            ctx += "\n\nThe user is editing a document named \"\(tab.name)\"."
+        }
+        if let tab = state.selectedTab {
+            volatile += AuthoringContextBuilder.context(
+                for: profile,
+                input: AuthoringContextBuilder.Input(
+                    name: tab.name,
+                    content: tab.content,
+                    selection: selection,
+                    selectionParagraph: selectionParagraph,
+                    cursorLine: state.cursorLine),
+                includeFullDocument: includeFullDoc)
+        } else if !selection.isEmpty {
+            volatile += AuthoringContextBuilder.context(
+                for: profile,
+                input: AuthoringContextBuilder.Input(name: "document", content: "", selection: selection),
+                includeFullDocument: includeFullDoc)
         }
         // 项目记忆（MEDITOR.md）：按本轮请求检索，只注入相关的几条，不吃整篇。
-        // 没有记忆文件时 promptSection 返回空串 ⇒ 这一段整体不追加，prompt 逐字节不变
-        // （旧用户不应因为我们加了记忆功能就看到 system prompt 变了）。
+        // 没有记忆文件时 promptSection 返回空串 ⇒ 这一段整体不追加。
         MemoryService.shared.activate(workspaceRoot: state.rootURL)
         let memory = MemoryService.shared.promptSection(query: memoryQuery)
         lastInjectedMemoryIDs = memory.injectedIDs
         if !memory.text.isEmpty {
-            ctx += memory.text
+            volatile += memory.text
         }
+
+        // ── 尾部：内容稳定，但排在易变段之后（保持旧顺序，缓存前缀保不到这一段）──
+        var trailing = ""
         let userSkills = state.pluginManager.userSkillsPrompt()
         if !userSkills.isEmpty {
-            ctx += "\n\n---\n\n# 用户自定义技能\n\n" + userSkills
+            trailing += "\n\n---\n\n# 用户自定义技能\n\n" + userSkills
         }
         // 用户在设置里填的自定义系统提示词：始终注入（最高优先级的个人偏好）
         // 走注入的 settings（与 runCompletion 的 AIConfig.current(settings, ...) 一致），
         // 不直接读 AppSettings.shared，保持 DI 可测
         let custom = settings.aiCustomSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         if !custom.isEmpty {
-            ctx += "\n\n---\n\n# 用户自定义指令（务必遵守）\n\n" + custom
+            trailing += "\n\n---\n\n# 用户自定义指令（务必遵守）\n\n" + custom
         }
+        return SystemPromptSegments.join(stable: stable, volatile: volatile + trailing)
+    }
+
+    /// 「怎么处理 HTML 文件」这段稳定指令。
+    ///
+    /// plain 档案保留**原文**（含「必须先调 get_html_template」）：那条指令与其配套的
+    /// 用法至今仍然可用，改掉它会让「什么都没变的文档」拿到不同的 prompt——而 plain
+    /// 的全部意义就是「老用户不受影响」。md / html 档案换成模板引用式的说法，
+    /// 否则会与新 guidance 直接矛盾（一个说必须抄模板，一个说不要抄）。
+    private func htmlToolingSection(profile: DocumentAuthoringProfile) -> String {
+        let themeName = state.themeStore.current.rawValue
+        if profile.kind == .plain {
+            var ctx = "\n\n## 创建 / 改版 HTML 文件"
+            ctx += "\nWhen the user asks to create a NEW HTML file, or to restyle/redesign an existing one, you MUST FIRST call the get_html_template tool to fetch MEditor's built-in HTML template, and use it as the base."
+            ctx += "\n- get_html_template styles: 'doc' (default — MEditor's standard styled document), 'craft' (modern cards), 'tufte' (serif academic), 'dark' (dark code style). If the user doesn't specify, use 'doc'."
+            ctx += "\n- Keep the template's <style> block and overall structure; just fill in / replace the body content. Do NOT invent your own CSS from scratch, and do NOT strip the template's styles into a bare semantic-HTML page unless the user explicitly asks for that."
+            ctx += "\n- Keep all CSS inlined in a <style> block; never reference external .css files."
+            ctx += "\n(Note: \(themeName) is the current PREVIEW theme — that's separate from these file templates.)"
+            return ctx
+        }
+        var ctx = "\n\n## 创建 / 改版 HTML 文件"
+        ctx += "\nTo create an HTML file, call write_html_with_template(template:body:): pass ONLY the semantic body (sections / headings / tables), and the host fills it into the template and regenerates the sidebar navigation. Never hand-copy a template."
+        ctx += "\n- templates: 'doc' (default), 'craft', 'tufte', 'dark', 'landing', 'report', 'resume'."
+        ctx += "\n- Restyling: patch_style appends CSS rules, set_node_class swaps a class. Never carry the <style> block through the conversation to change one rule."
+        ctx += "\n- Keep all CSS inlined in a <style> block; never reference external .css files."
+        ctx += "\n(Note: \(themeName) is the current PREVIEW theme — that's separate from these file templates.)"
         return ctx
     }
 }

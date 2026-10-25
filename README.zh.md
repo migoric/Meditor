@@ -34,7 +34,7 @@ MEditor 是 **macOS 上给技术人写文档的 Agent 工作台**。核心闭环
 
 ### 🤖 真 Agent，不是聊天框
 
-- **macOS 上 15 个工具（14 个跨平台），多轮循环** — Agent 读写、补丁式修改、搜索文档，操作工作区文件，驱动编辑器，执行沙盒 Shell 命令 —— 在多轮工具调用中持续推理，直到把活干完
+- **macOS 上 26 个工具（14 个跨平台），多轮循环** — Agent 读写、补丁式修改、搜索文档，按大纲/结构树定位（Markdown 标题树、HTML 结构与 CSS 折叠），操作工作区文件，驱动编辑器，执行沙盒 Shell 命令 —— 在多轮工具调用中持续推理，直到把活干完
 - **三种后端** — OpenAI 兼容与 Anthropic（内置 9 家预设：Anthropic、OpenAI、DeepSeek、Kimi、GLM、通义千问、OpenRouter、Groq、Ollama），外加复用本机 Claude Code 登录态的 Claude CLI 后端
 - **自带密钥（BYOK）** — 兼容任何 OpenAI 格式端点，密钥只存在本机 Keychain 里
 - **全程流式** — 回复逐字流出；工具步骤内联展示，支持展开/折叠查看详情
@@ -265,7 +265,7 @@ MEditor/
 ## 🗺 路线图
 
 **已交付**
-- [x] 真 Agent：macOS 上 15 个工具（14 个跨平台）、多轮循环、三种后端（OpenAI 兼容 / Anthropic / Claude CLI）、BYOK
+- [x] 真 Agent：macOS 上 26 个工具（14 个跨平台）、多轮循环、三种后端（OpenAI 兼容 / Anthropic / Claude CLI）、BYOK
 - [x] Agent 加固：写文件确认、命令沙盒风险分级、上下文预算、停滞检测、只读工具并行、用量显示
 - [x] 行内编辑 diff 审阅、`@mention` 上下文、多会话历史
 - [x] 斜杠命令库、选区浮动操作条、文档上下文自动附带

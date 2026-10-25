@@ -103,31 +103,60 @@ struct OpenFileTool: AgentTool {
 
 // MARK: - Get HTML Template
 
+/// 模板「查看」工具。
+///
+/// 自 0.13.9 起**创建/改版 HTML 不再用它**——用 `write_html_with_template` 只写语义
+/// body，模板由宿主展开（模板的 2,699 token 不进历史，也不会被模型逐字抄错）。
+/// 保留这个工具只为「用户想看模板长什么样」和它自带模板库的完整清单。
 struct GetHTMLTemplateTool: AgentTool {
     let spec = AgentToolSpec(
         name: "get_html_template",
-        description: "Get MEditor's built-in HTML document template (a complete HTML document with inlined <style>). Call this first when creating or restyling an HTML file, and use the returned template as the base — do not invent your own CSS or strip the template's styles. Styles: 'doc' (default — styled document), 'craft' (modern cards), 'tufte' (serif academic), 'dark' (dark code style).",
+        description: "View MEditor's built-in HTML template source (a complete HTML document with inlined <style>). ONLY for showing the template to the user. To create or restyle an HTML file use write_html_with_template(template:body:) instead — copying this template by hand wastes ~2.7K tokens per call and tends to break the layout.",
         parameters: ToolParameterSchema(
             properties: [
-                "style": ToolPropertySchema(type: "string", description: "Template style: doc | craft | tufte | dark. Default: doc.")
+                "style": ToolPropertySchema(type: "string", description: "Template style: doc | craft | tufte | dark | landing | report | resume. Default: doc.")
             ],
             required: []
         )
     )
 
     func execute(arguments: [String: AnySendableValue], context: any AgentContextProtocol) async throws -> String {
-        let style = (arguments["style"]?.stringValue ?? "doc").lowercased()
-        let id: String
-        switch style {
-        case "craft": id = "html-craft"
-        case "tufte": id = "html-tufte"
-        case "dark":  id = "html-dark"
-        default:       id = "html-doc"
+        let style = arguments["style"]?.stringValue ?? "doc"
+        let names = await BuiltinHTMLTemplates.availableNames()
+        guard let template = await BuiltinHTMLTemplates.content(for: style) else {
+            return "未找到 HTML 模板：\(style)（可用：\(names.joined(separator: " / "))）"
         }
-        let content = await MainActor.run { TemplateStore.builtins.first { $0.id == id }?.content }
-        guard let content, !content.isEmpty else {
-            return "未找到 HTML 模板：\(style)（可用：doc / craft / tufte / dark）"
+        return "# MEditor 内建 HTML 模板（\(template.id)）\n\n仅供查看。新建/改版请用 write_html_with_template(template:body:)：\n\n```html\n\(template.content)\n```"
+    }
+}
+
+// MARK: - 内建 HTML 模板解析
+
+/// 模板名 → 内建模板。工具与 `get_html_template` 共用这一份映射，避免两处漂移。
+enum BuiltinHTMLTemplates {
+
+    /// 接受 `doc` / `html-doc` / `craft` / `report` 等写法，规范成内建 id 候选。纯函数。
+    static func candidateID(for name: String) -> String? {
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !cleaned.isEmpty else { return nil }
+        return cleaned.hasPrefix("html-") ? cleaned : "html-" + cleaned
+    }
+
+    /// 只在主线程取（`TemplateStore.builtins` 读 Bundle + 本地化）；跨 actor 只传字符串。
+    static func content(for name: String) async -> (id: String, content: String)? {
+        guard let candidate = candidateID(for: name) else { return nil }
+        return await MainActor.run {
+            guard let template = TemplateStore.builtins.first(where: { $0.id == candidate }) else { return nil }
+            return (template.id, template.content)
         }
-        return "# MEditor 内建 HTML 模板（\(style)）\n\n用它作为基底，保留其 <style> 与结构，把用户内容填进去：\n\n```html\n\(content)\n```"
+    }
+
+    /// 可用的模板名（错误文案里列给模型）。
+    static func availableNames() async -> [String] {
+        await MainActor.run {
+            TemplateStore.builtins
+                .filter { $0.id.hasPrefix("html-") }
+                .map { String($0.id.dropFirst(5)) }
+        }
     }
 }

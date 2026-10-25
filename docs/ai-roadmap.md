@@ -1,8 +1,8 @@
 # MEditor AI 路线图
 
-> 状态：living document，随版本更新。最后修订 2026-10-25（对应 0.13.7 之后）。
+> 状态：living document，随版本更新。最后修订 2026-10-25（对应 0.13.9 之后）。
 > 姊妹文档：`product-roadmap-prd.zh.md`（产品主线，V1–V3 是 AI 之前定的）、
-> `ai-memory-design.md`（M1 的设计稿）。
+> `ai-memory-design.md`（M1 的设计稿）、`ai-document-agents-design.md`（M1.5 的设计稿与实施记录）。
 
 ## 0. 这份文档补的是什么
 
@@ -37,11 +37,11 @@ AI 这块的取舍可以压成一句话：**agent 是编辑器的一部分，不
 
 ---
 
-## 2. 已经有的（截至 0.13.7）
+## 2. 已经有的（截至 0.13.9）
 
 | 能力 | 落点 | 备注 |
 |---|---|---|
-| Agent 多轮循环 + 15 个内置工具（macOS）/ 14 个（iOS） | `AgentRunner` / `BuiltinAgentTools` | 只读工具可并行，写工具串行（确认弹框依赖串行语义） |
+| Agent 多轮循环 + 26 个内置工具（macOS）/ 14 个（iOS） | `AgentRunner` / `BuiltinAgentTools` | 只读工具可并行，写工具串行（确认弹框依赖串行语义） |
 | 三种后端：OpenAI 兼容 / Anthropic / Claude CLI | `Backends/` | BYOK，无内置额度 |
 | 写前 diff 审阅 + run 级回滚 | `WriteDiffPreview` / `AgentRunCheckpoint` | 回滚目前只在当次进程内有效，见 M4 |
 | 上下文预算裁剪 | `AgentHistoryBudget` | **只有裁剪与丢弃，没有摘要压缩**，见 M2 |
@@ -50,7 +50,8 @@ AI 这块的取舍可以压成一句话：**agent 是编辑器的一部分，不
 | MCP 双向 | `MCPServer`（stdio）/ `MCPClient`（stdio + HTTP） | 客户端 `2025-03-26`、服务端 `2025-06-18`，两端版本不一致，见 M5 |
 | 运行轨迹（默认关） | `AgentRunTrace` | 只记元数据，不含正文 |
 | 工具定义预算（MCP 相关性裁剪） | `AgentToolBudget` | 门槛 32 条而内置只有 15 ⇒ **当前永不触发**，见 M2 |
-| 项目记忆（捕获 / 巩固 / 检索 / 遗忘 / 审计） | `Services/AI/Memory/` | 本次新增，见 M1 |
+| 项目记忆（捕获 / 巩固 / 检索 / 遗忘 / 审计） | `Services/AI/Memory/` | 0.13.8，见 M1 |
+| 文档类型分档（MD 大纲 / HTML 结构树与 CSS 折叠 / 模板引用式） | `Services/AI/Authoring/` | 0.13.9，见 M1.5 |
 
 ---
 
@@ -84,7 +85,38 @@ AI 这块的取舍可以压成一句话：**agent 是编辑器的一部分，不
 
 ---
 
-### M2 · 上下文工程：压缩与工具裁剪（下一个）
+### M1.5 · 文档类型分档（已交付，0.13.9）
+
+**为什么不是 M2**：它不解决「上下文超预算」，解决的是「上下文里一半是没用的东西」——
+HTML 的 `<style>` 占模板 60%，而模型改一句话也得为它每轮付费。
+
+**交付**
+
+- `DocumentAuthoringProfile`（纯值）：按扩展名分派 markdown / html / plain。
+  **plain = 改造前逐字节不变**（参照实现抄进测试做比对），也是回滚开关。
+- Markdown 侧：`outline_document` / `read_section` / `rewrite_section`。首轮注入大纲
+  （每节 11–16 token，实测压缩比 1/13 ~ 1/16），整节替换不再需要「读全文 → 拼全文 → 写全文」。
+- HTML 侧：`html_outline` / `read_node` / `read_style` / `patch_style` /
+  `set_node_class` / `write_html_with_template`。CSS 折叠（不进上下文）+ 语义 body 交给
+  模板展开，`get_html_template` 降级为「只看」。
+- `AuthoringWrite`：五处写入路径共用一份「取内容 → 审阅 → tab 锁定 → 落盘」，
+  `write_document` / `patch_document` 也改调它。
+- system prompt 分「稳定前缀 / 易变尾部」，Anthropic 的缓存断点落在稳定前缀末尾
+  （只修了一半，见设计稿 §11.3）。
+
+**显式边界**
+
+- 结构工具**只在 macOS 注册**（iOS 14 个工具不变）：iOS 端零自动化测试，不接新的写入面。
+- 档案**不裁剪工具集**：文档工具都带 `filename`，作用对象与 tab 类型无关
+  （`.md` tab 里「导出成 HTML」很常见），按类型藏工具会让这类请求无解。
+- 选择器只支持简单形态（`#id` / `.class` / `tag` / `:nth(n)`），不做后代选择器。
+
+**验收**：`MarkdownStructureTests` / `HTMLStructureTests` / `HTMLTemplateAssemblyTests` /
+`DocumentStructureToolTests` / `AuthoringPromptTests`，74 条；关键 4 处做过变异验证。
+
+---
+
+### M2 · 上下文工程：压缩与工具裁剪
 
 这两件事共同点是**机制已经存在，但没真正生效**——成本低、收益直接。
 
@@ -206,5 +238,5 @@ safe 级命令也直接 `true`。这是「确认职责在宿主」的显式取�
 
 - 每条「不做」都必须带出处（PRD 章节 / 设计稿 / 提交）。**没有出处的「不做」是待办。**
 - 每条里程碑都必须带**验收判据**，判据必须是能跑的东西（用例名 / 命令 / 可观测指标）。
-- 能力表里的数字（15 个工具、800 token、32 条门槛）都在代码里有唯一出处；
+- 能力表里的数字（26 个工具、800 token、32 条门槛）都在代码里有唯一出处；
   改代码时同步改这里，`scripts/check_docs_consistency.py` 会盯一部分。
