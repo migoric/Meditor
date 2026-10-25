@@ -173,9 +173,13 @@ extension WebPreviewView.Coordinator {
 
 extension WebPreviewView.Coordinator {
     /// 链接点击不替换预览内容：锚点放行，外部链接交给系统浏览器打开。
+    ///
+    /// ⚠️⚠️ 闭包上的 `@MainActor @Sendable` 一个字都不能少（见 `PreviewLinkNavigator`
+    /// 里的长注释：缺了它只会得到一条 nearly-matches 警告，方法却不被导出成
+    /// delegate selector，链接于是在预览内导航）。
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         PreviewLinkNavigator.decidePolicy(for: navigationAction, webView: webView, decisionHandler: decisionHandler)
     }
 

@@ -28,10 +28,23 @@ enum PreviewLinkNavigator {
     }
 
     /// 供 `WKNavigationDelegate.webView(_:decidePolicyFor:decisionHandler:)` 调用。
+    ///
+    /// ⚠️⚠️ `decisionHandler` 的类型必须和 WebKit 声明的
+    /// `@escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void` **逐字一致**。
+    /// 少写 `@MainActor @Sendable` 时编译器只报一条
+    /// `nearly matches optional requirement` 的**警告**，看不出后果：
+    /// 带 `nearly` 的方法不算协议实现，因而不会以 `@objc` 导出成
+    /// `webView:decidePolicyForNavigationAction:decisionHandler:`——WebKit 问
+    /// `respondsToSelector` 得到 false，直接按默认策略 `.allow` 放行，
+    /// 链接就在预览里原地导航了。目标若是内网/不可达地址，表现出来就是
+    /// 「点链接毫无反应，浏览器没动」（2026-10-25 实测：0.13.8 之前的版本一直如此）。
+    ///
+    /// 这条不靠单测抓：纯函数逻辑全绿，坏的只是「方法有没有挂上」。
+    @MainActor
     static func decidePolicy(
         for navigationAction: WKNavigationAction,
         webView: WKWebView,
-        decisionHandler: (WKNavigationActionPolicy) -> Void
+        decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
     ) {
         guard navigationAction.navigationType == .linkActivated,
               let url = navigationAction.request.url else {

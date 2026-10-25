@@ -70,7 +70,13 @@ struct TOCItem: Identifiable, Equatable {
 
 // MARK: - WKWebView wrapper
 
-private struct MarkdownWebView: NSViewRepresentable {
+/// 供 `MarkdownWebPreview` 使用的 NSViewRepresentable。
+///
+/// 不是 `private`：`PreviewLinkDelegateWiringTests` 要在运行时检查它的
+/// `Coordinator` 是否把 `webView:decidePolicyForNavigationAction:decisionHandler:`
+/// 导出成了 @objc selector——这个检查是唯一能抓住「签名 nearly matches ⇒
+/// delegate 静默失效」的手段（见 `PreviewLinkNavigator.decidePolicy` 的注释）。
+struct MarkdownWebView: NSViewRepresentable {
     let content: String
     let contentRevision: Int
     let theme: PreviewTheme
@@ -480,9 +486,13 @@ extension MarkdownWebView {
 
 extension MarkdownWebView.Coordinator: WKNavigationDelegate {
     /// 链接点击不替换预览内容：锚点放行，外部链接交给系统浏览器打开。
+    ///
+    /// ⚠️⚠️ 闭包上的 `@MainActor @Sendable` 一个字都不能少：与 WebKit 的 requirement
+    /// 不一致时只会得到 "nearly matches optional requirement" 警告，方法却**不会**
+    /// 被导出成 delegate selector，WebKit 于是按默认策略放行——链接在预览内导航。
     func webView(_ webView: WKWebView,
                  decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         PreviewLinkNavigator.decidePolicy(for: navigationAction, webView: webView, decisionHandler: decisionHandler)
     }
 

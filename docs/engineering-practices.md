@@ -116,3 +116,43 @@
    没做过反向验证的守卫很可能是**永远绿的空断言** —— 它不产生任何保护，却让人以为有。
 
 守卫跑在 ubuntu runner 上（纯文本检查，不依赖编译产物），秒级完成。
+
+## 6. 「只报警告、语义已错」的编译期陷阱
+
+编译器有一部分诊断是 **warning 但后果等于功能失效**。这类问题最危险：构建绿、测试绿、
+代码看着也对，只有用户点下去才发现没反应。已踩过的第一个：
+
+**`@objc optional` 协议方法签名差一点点**。`WKNavigationDelegate` 的 requirement 是
+
+```swift
+@MainActor optional func webView(_ webView: WKWebView,
+                                 decidePolicyFor navigationAction: WKNavigationAction,
+                                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void)
+```
+
+实现里把闭包写成 `@escaping (WKNavigationActionPolicy) -> Void`（少了 `@MainActor @Sendable`）
+时，编译器给的是：
+
+```
+warning: instance method 'webView(_:decidePolicyFor:decisionHandler:)' nearly matches
+         optional requirement ... (nearly matches)
+note: candidate has non-matching type '(WKWebView, WKNavigationAction, @escaping (…) -> Void) -> ()'
+```
+
+**`nearly matches` 意味着它不是协议实现**，不会被 `@objc` 导出成
+`webView:decidePolicyForNavigationAction:decisionHandler:`。WebKit 用
+`respondsToSelector` 问 delegate 时得到 false，直接按默认策略放行——链接点击于是在
+预览里原地导航，而不是交给系统浏览器。0.13.8 及之前的三处 `decidePolicyFor`
+（Markdown 预览 / HTML 预览 / diff 审阅面）全是这个状态。
+
+纪律：
+
+1. **`nearly matches optional requirement` 一律当 error**。它出现的唯一含义是
+   「这个方法不会生效」，没有「只是提醒」这一档。
+2. 这类失效**纯逻辑测试抓不到**（纯值决策全绿，坏的只是「方法有没有挂上」）。
+   守卫得用运行时检查：`PreviewLinkDelegateWiringTests` 对每个 delegate 实现断言
+   `Coordinator.instancesRespond(to: NSSelectorFromString("webView:decidePolicyFor:decisionHandler:"))`。
+3. 推断线索：如果某个 delegate 方法**可以被标成 `private` 而编译器不抗议**，
+   说明它并没有匹配 requirement（匹配时会报
+   `must be as accessible as its enclosing type because it matches a requirement`）。
+   这条可以当临时探针用。

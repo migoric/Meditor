@@ -775,10 +775,13 @@ img{max-width:100%}
 
         // MARK: WKNavigationDelegate
 
+        /// ⚠️⚠️ 闭包上的 `@MainActor @Sendable` 一个字都不能少：与 WebKit 的 requirement
+        /// 不一致时编译器只报 "nearly matches optional requirement" 警告，方法却不会被
+        /// 导出成 delegate selector——WebKit 按默认策略放行，整块 diff 会被导航走。
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
             if allowsNextLoad {
                 allowsNextLoad = false
