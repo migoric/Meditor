@@ -29,6 +29,9 @@
   - 每张图给独立的 `idPrefix`（`render()` 不像 `mount()` 那样自动给）。这个不是可有可无：
     桑基图的渐变 `<linearGradient>` **只有给了前缀才生成**，同页多图还会共用 id。
   - 709KB 的解析成本按需付：只有文档含 `mermaid` 字样时才加载渲染器。
+  - 打包脚本（`scripts/bundle.sh`）两道显式闸：选资源目录要求 `ql-render.js` 与
+    `pele.global.js` **都在**（增量构建会留下「有驱动、没渲染器」的半旧目录，只按驱动
+    判定会取到它，打出来的 appex 图表静默退化成代码块），拷进 appex 后再逐个确认一次。
 
 ### Performance
 
