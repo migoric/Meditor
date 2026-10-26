@@ -35,7 +35,9 @@ extension AppState {
         // 先加载文件树，再设置 rootURL：ContentView 从 welcomeScreen → mainLayout 时
         // fileTree 已就绪，避免空列表闪烁。rootURL 只设一次——此前在清 tab 之前先设了
         // 一次，会提前触发 didSet（索引重建 / 调度器 reload / share 同步）且带着旧 tab。
-        fileTreeManager.reloadFresh(rootURL: url)
+        // 全量索引（QuickOpen/@mention）不自建：defersFullIndex 等 rootURL didSet 触发的
+        // 工作区扫描（scanWorkspace 一次枚举）把树索引与内容/Spotlight 索引一起分发下来。
+        fileTreeManager.reloadFresh(rootURL: url, defersFullIndex: true)
         rootURL = url
 
         // Git 状态：打开工作区后立即刷新一次（非 git 目录内部静默）

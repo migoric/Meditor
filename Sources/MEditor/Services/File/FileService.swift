@@ -16,6 +16,19 @@ enum FileServiceError: LocalizedError {
     }
 }
 
+/// 单次工作区枚举的分发产物（`FileService.scanWorkspace`），四份列表共享同一次
+/// 目录遍历，各自保持消费方的原始谓词语义（详见 scanWorkspace 注释）。
+struct WorkspaceScanResult: Sendable {
+    /// 可搜索文件（QuickOpen 索引）：扩展名白名单过滤后的文件，已排序。
+    var treeFiles: [FileItem] = []
+    /// @mention 全量项（含目录）：与 treeFiles 同一次枚举、同一次排序派生。
+    var treeItems: [FileItem] = []
+    /// 内容索引全集（WorkspaceIndexService）：非隐藏、非噪音目录、不限扩展名。
+    var contentFileURLs: [URL] = []
+    /// Spotlight 子集：contentFileURLs 中的 md/markdown。
+    var markdownFileURLs: [URL] = []
+}
+
 /// 无状态文件服务：只持有 FileManager.default（线程安全）与常量键。
 final class FileService: FileServiceProtocol, @unchecked Sendable {
     private let fm = FileManager.default
@@ -97,28 +110,60 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
 
     /// 一次枚举同时产出「可搜索文件」与「@mention 全量项（含目录）」。
     ///
-    /// 这两个列表的**筛选谓词完全相同**（隐藏名单 / iCloud 占位符 / 扩展名白名单），
-    /// 早先各写一遍、各枚举一遍整棵目录树。合并成一次枚举省掉的是**重复枚举**；
-    /// 排序也只排一次：`files` 从排好的 `items` 派生（目录恒排前、同类按 name，
+    /// 实现已收敛到 `scanWorkspace`（枚举谓词的超集 + 逐消费方过滤），此处只取
+    /// 树侧两份产物，保证与 scanWorkspace 的树产物逐位一致、谓词不再双写漂移。
+    /// 排序只排一次：`files` 从排好的 `items` 派生（目录恒排前、同类按 name，
     /// 过滤保持相对顺序，与单独排序逐位一致），并重新 new 实例隔离可变字段。
     ///
     /// 调用方在 `FileTreeManager.rebuildIndex` 的 `Task.detached(priority: .utility)` 里，
     /// **不在主线程**，不会直接压住用户等待。
-    ///
-    /// 单一来源：`loadAllFiles` / `loadAllItems` 都从这里派生，避免两套谓词漂移。
-    /// 两个数组里的 FileItem 是各自独立实例（仅 url/isDirectory 相同），
-    /// 这样 mention 侧的可变字段（children 等）不会串到索引侧。
     func loadAll(under directory: URL) -> (files: [FileItem], items: [FileItem]) {
+        let scan = scanWorkspace(under: directory)
+        return (scan.treeFiles, scan.treeItems)
+    }
+
+    /// 递归返回所有文件 + 目录（供 @mention 搜索用）。
+    /// 目录本身包含在列表中，但不过滤扩展名——由 `loadAll` 保证，见其注释。
+    func loadAllItems(under directory: URL) -> [FileItem] {
+        loadAll(under: directory).items
+    }
+
+    func loadAllFiles(under directory: URL) -> [FileItem] {
+        loadAll(under: directory).files
+    }
+
+    /// 一次目录枚举同时产出三个消费方所需的产物（性能方案批 4：打开工作区时
+    /// FileTreeManager / WorkspaceIndexService / SpotlightIndexManager 曾各自
+    /// 枚举一遍整树）。
+    ///
+    /// 枚举谓词取三方的**并集**（最宽口径），再按消费方各自的原谓词过滤，
+    /// 三方可见集合与合并前逐位一致：
+    ///   - 目录剪枝只用 FileService.hiddenNames（文件树的原口径）。刻意**不**把
+    ///     Agent 噪音目录（dist/vendor/Pods/.cache…）并入剪枝——文件树现状是
+    ///     展示这些目录的，剪掉等于悄悄改 UI 语义；枚举成本不增（树本来就在走它们），
+    ///     索引消费方在过滤阶段剔除。
+    ///   - treeItems / treeFiles：与 loadAll 同一套筛选（隐藏名 / .icloud /
+    ///     扩展名白名单），同一次排序派生。
+    ///   - contentFileURLs：对应 DefaultAgentFileRepository.enumerate 的
+    ///     .skipsHiddenFiles 语义 = 任一路径分量为 dot 名（.github 内文件也排除，
+    ///     与旧实现一致）或条目带隐藏标记；再叠加噪音目录过滤（沿用旧实现
+    ///     检查**完整** pathComponents 的怪癖，root 路径含噪音名时行为不变）。
+    ///   - markdownFileURLs：contentFileURLs 的 md/markdown 子集（Spotlight 口径）。
+    func scanWorkspace(under directory: URL) -> WorkspaceScanResult {
+        let scanKeys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .isHiddenKey]
         guard let enumerator = fm.enumerator(
             at: directory,
-            includingPropertiesForKeys: indexedResourceKeys,
+            includingPropertiesForKeys: scanKeys,
             options: [.skipsPackageDescendants]
         ) else {
-            return ([], [])
+            return WorkspaceScanResult()
         }
 
-        let keys = Set(indexedResourceKeys)
+        let keys = Set(scanKeys)
         let supported = FileTypeConfiguration.shared.supportedExtensions
+        let noise = DefaultAgentFileRepository.noiseDirectories
+        let rootComponents = directory.standardizedFileURL.pathComponents
+        var result = WorkspaceScanResult()
         var items: [FileItem] = []
 
         for case let url as URL in enumerator {
@@ -134,30 +179,35 @@ final class FileService: FileServiceProtocol, @unchecked Sendable {
 
             if values.isDirectory == true {
                 items.append(FileItem(url: url, isDirectory: true, childrenLoaded: true))
-            } else if values.isRegularFile == true,
-                      supported.contains(ext) {
+                continue
+            }
+            guard values.isRegularFile == true else { continue }
+
+            // 文件树产物：扩展名白名单
+            if supported.contains(ext) {
                 items.append(FileItem(url: url, isDirectory: false, childrenLoaded: true))
             }
+            // 内容索引产物：.skipsHiddenFiles 语义 + 噪音目录，不限扩展名
+            let relativeComponents = url.pathComponents.dropFirst(rootComponents.count)
+            let isHidden = values.isHidden == true
+                || relativeComponents.contains(where: { $0.hasPrefix(".") })
+            if !isHidden, !url.pathComponents.contains(where: { noise.contains($0) }) {
+                result.contentFileURLs.append(url)
+                if ext == "md" || ext == "markdown" {
+                    result.markdownFileURLs.append(url)
+                }
+            }
         }
+
         // 只排一次序：比较器目录恒在文件前、同类按 name，过滤保持相对顺序 ⇒
-        // files 直接从排好的 items 派生（顺序与单独 sortItems 逐位一致），
-        // 省掉一整次 ICU 排序（4.5k 项 ≈13ms，随规模线性涨）。
-        // files 侧重新 new 实例：与 items 隔离可变字段（见上文注释）。
+        // files 直接从排好的 items 派生（顺序与单独 sortItems 逐位一致）。
+        // files 侧重新 new 实例：与 items 隔离可变字段。
         let sortedItems = sortItems(items)
-        let sortedFiles = sortedItems.compactMap { item in
+        result.treeItems = sortedItems
+        result.treeFiles = sortedItems.compactMap { item in
             item.isDirectory ? nil : FileItem(url: item.url, isDirectory: false, childrenLoaded: item.childrenLoaded)
         }
-        return (sortedFiles, sortedItems)
-    }
-
-    /// 递归返回所有文件 + 目录（供 @mention 搜索用）。
-    /// 目录本身包含在列表中，但不过滤扩展名——由 `loadAll` 保证，见其注释。
-    func loadAllItems(under directory: URL) -> [FileItem] {
-        loadAll(under: directory).items
-    }
-
-    func loadAllFiles(under directory: URL) -> [FileItem] {
-        loadAll(under: directory).files
+        return result
     }
 
     // MARK: - File I/O

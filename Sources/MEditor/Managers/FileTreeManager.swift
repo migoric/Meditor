@@ -100,27 +100,58 @@ final class FileTreeManager {
     /// Fresh open: load and assign in one step, bypassing merge so SwiftUI
     /// sees a single [] → [items] transition with no intermediate empty render.
     /// IO 在后台执行，完成后回到主线程更新树。
-    func reloadFresh(rootURL: URL) {
+    /// - Parameter defersFullIndex: true 时只刷首层目录树，全量索引等待组合根
+    ///   （AppState 的工作区扫描合一）经 `applyScannedIndex` 下发——避免与
+    ///   WorkspaceIndexService / SpotlightIndexManager 各自重复枚举整树。
+    ///   独立使用方（测试 / QuickOpen 兜底）保持默认 false，索引行为不变。
+    func reloadFresh(rootURL: URL, defersFullIndex: Bool = false) {
         pendingReloadWork?.cancel()
         fileIndexGeneration &+= 1
+        let generation = fileIndexGeneration
+        // 同步落地 root 标记：组合根的扫描分发（applyScannedIndex）以此判定
+        // 产物是否属于当前工作区，必须在扫描任务启动前就位。
+        lastIndexedRootURL = rootURL
         let svc     = fileService
         Task.detached(priority: .userInitiated) { [weak self] in
             let children = svc.loadImmediateChildren(of: rootURL)
-            await self?.applyReloadFresh(children: children, rootURL: rootURL)
+            await self?.applyReloadFresh(children: children, rootURL: rootURL,
+                                         generation: generation, defersFullIndex: defersFullIndex)
         }
     }
 
     @MainActor
-    private func applyReloadFresh(children: [FileItem], rootURL: URL) {
+    private func applyReloadFresh(children: [FileItem], rootURL: URL,
+                                  generation: Int, defersFullIndex: Bool) {
         // Still merge to reuse existing FileItem instances when reopening the
         // same folder — avoids DisclosureGroup node destruction/recreation.
         let merged = mergeChildren(children, into: fileTree)
         fileItemMap = [:]
         fileTree = merged
         addToMap(merged)
-        lastIndexedRootURL = rootURL
+        if defersFullIndex {
+            // 组合根的扫描可能先于本回调落地（generation 已被 applyScannedIndex
+            // 推进）：索引产物已就位，不得再清空。否则标记 stale，QuickOpen
+            // 提前打开时仍能走 ensureIndexReady 的兜底重建。
+            guard generation == fileIndexGeneration else { return }
+            indexedFiles = []
+            mentionItems = []
+            indexStale = true
+            return
+        }
         // 打开项目时立即构建全量索引（含目录），不再延迟到 QuickOpen/@mention
         rebuildIndex(rootURL: rootURL)
+    }
+
+    /// 组合根（AppState）下发的工作区扫描产物：一次枚举喂给三方索引。
+    /// generation 自增使在途的兜底重建结果（若竞态发生）不会覆盖这份数据；
+    /// root 不匹配（快速连开两个工作区，旧扫描晚到）直接丢弃。
+    func applyScannedIndex(files: [FileItem], items: [FileItem], rootURL: URL) {
+        guard lastIndexedRootURL == rootURL else { return }
+        fileIndexGeneration &+= 1
+        indexStale = false
+        indexedFiles = files
+        mentionItems = items
+        onMentionItemsUpdated?()
     }
 
     /// Ensure the full-text index is up to date. Called by QuickOpen on open.

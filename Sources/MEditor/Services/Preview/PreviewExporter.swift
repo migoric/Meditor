@@ -176,7 +176,7 @@ final class PreviewExporter: PreviewExporterProtocol {
         // 默认选项不需要后处理：不注入 @page 样式（保留 WebKit 自带分页/边距），
         // 也跳过 decorate——重绘会丢链接 annotation（见 postProcessPDFData）。
         let needsDecoration = options.map { !$0.isDefault } ?? false
-        captureViaReload(webView: webView, extraCSS: needsDecoration ? options?.printCSS() : nil) { pdfData in
+        captureOffscreen(webView: webView, extraCSS: needsDecoration ? options?.printCSS() : nil) { pdfData in
             guard let pdfData else {
                 completion(.failure(.pdfGenerationFailed("createPDF returned no data")))
                 return
@@ -206,69 +206,95 @@ final class PreviewExporter: PreviewExporterProtocol {
         return PDFDocumentDecorator.decorate(data: data, options: options, title: title) ?? data
     }
 
-    /// Reloads the webview content via loadHTMLString (bypasses file:// createPDF limitation),
-    /// calls createPDF, then restores the original file URL.
+    /// 离屏捕获：从预览页取 outerHTML，在**独立的离屏 WKWebView** 里 loadHTMLString
+    /// （绕过 file:// createPDF 限制）并 createPDF。预览 webview 全程不被触碰——
+    /// 旧实现（captureViaReload）劫持活着的预览：整页重渲 → 导出 → 再整页重渲恢复，
+    /// 用户可见闪烁且付两次全量渲染。
+    ///
+    /// 不复用 WebViewPool：预热视图是给「首个预览秒开」准备的，导出 dequeue 会
+    /// 偷走预热成果造成回归；离屏建一个临时 webview 的成本远低于 createPDF 本身。
+    ///
     /// - Parameter extraCSS: 追加注入 </head> 前的样式（PDF 导出用它声明 @page 纸张尺寸）。
-    private static func captureViaReload(webView: WKWebView,
+    private static func captureOffscreen(webView: WKWebView,
                                          extraCSS: String? = nil,
                                          completion: @escaping @Sendable (Data?) -> Void) {
         webView.evaluateJavaScript("document.documentElement.outerHTML") { result, _ in
             guard let html = result as? String else { completion(nil); return }
             let originalURL = webView.url
-            let originalDelegate = webView.navigationDelegate
             let cacheDir = originalURL?.deletingLastPathComponent()
 
             // Determine if this is a user HTML file (not MEditor's markdown preview cache).
             // For HTML files: keep scripts so JS-rendered content (charts etc.) works.
             // For markdown preview: strip scripts to prevent MEditor.boot() wiping #content.
             let isMEditorCache = originalURL?.path.contains("com.meditor.preview") == true
-            var processed = inlineCSS(html: html, baseDir: cacheDir)
-            if isMEditorCache {
-                processed = stripScripts(processed)
-            }
-            if let extraCSS {
-                processed = injectCSS(processed, css: extraCSS)
-            }
-
             let baseURL = isMEditorCache ? nil : originalURL?.deletingLastPathComponent()
             // Extra delay for HTML files with JS rendering (charts need time to paint).
             let delay: TimeInterval = isMEditorCache ? 0 : 1.5
+            // 分页宽度与源预览一致：createPDF 的布局视口取 webview bounds。
+            let frame = webView.bounds.isEmpty
+                ? NSRect(x: 0, y: 0, width: 1024, height: 768)
+                : webView.bounds
 
-            // 导出结束后统一恢复现场：换回原来的 navigationDelegate（预览的
-            // Coordinator——链接拦截/didFinish 注入圈选 listener 都挂在它上面），
-            // 重新 loadFileURL 加载预览页，再通知预览层强制重推当前内容
-            // （页面已被整页重载，Swift 侧 revision 未变，updateNSView 不会自动重推）。
-            let restore: (Data?) -> Void = { data in
-                webView.navigationDelegate = originalDelegate
-                // 仅当原始 URL 确为 file:// 时才用 loadFileURL 恢复预览；
-                // 否则（about:blank / loadHTMLString 来源等）loadFileURL 会抛
-                // NSInvalidArgumentException 导致整个 app abort，这里用 reload 兜底。
-                if let originalURL, originalURL.isFileURL, let cacheDir {
-                    webView.loadFileURL(originalURL, allowingReadAccessTo: cacheDir)
-                } else {
-                    webView.reload()
+            // inlineCSS（读盘 + 大字符串正则）/ stripScripts（大字符串正则）挪到后台：
+            // 预览页 outerHTML 可达 MB 级，主线程正则会卡 UI。
+            DispatchQueue.global(qos: .userInitiated).async {
+                let processed = prepareCaptureHTML(
+                    html: html, stripsScripts: isMEditorCache, baseDir: cacheDir, extraCSS: extraCSS)
+                DispatchQueue.main.async {
+                    renderOffscreen(html: processed, baseURL: baseURL, frame: frame,
+                                    delay: delay, completion: completion)
                 }
-                (originalDelegate as? PreviewExportRestorable)?.restorePreviewAfterExport()
-                completion(data)
             }
-
-            let delegate = OneShotNavDelegate(
-                delay: delay,
-                onFinish: {
-                    let config = WKPDFConfiguration()
-                    webView.createPDF(configuration: config) { pdfResult in
-                        DispatchQueue.main.async { restore(try? pdfResult.get()) }
-                    }
-                },
-                onFail: { restore(nil) }
-            )
-            objc_setAssociatedObject(webView, &OneShotNavDelegate.key, delegate, .OBJC_ASSOCIATION_RETAIN)
-            webView.navigationDelegate = delegate
-            webView.loadHTMLString(processed, baseURL: baseURL)
         }
     }
 
-    private static func inlineCSS(html: String, baseDir: URL?) -> String {
+    /// 主线程收尾：建离屏 webview、加载处理后的 HTML、didFinish 后 createPDF。
+    @MainActor
+    private static func renderOffscreen(html: String,
+                                        baseURL: URL?,
+                                        frame: NSRect,
+                                        delay: TimeInterval,
+                                        completion: @escaping @Sendable (Data?) -> Void) {
+        // 配置与预览一致：注册 meditor-asset scheme（预览页图片/资源经它解析）。
+        let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(MeditorAssetSchemeHandler(), forURLScheme: MeditorAssetSchemeHandler.scheme)
+        config.userContentController = WKUserContentController()
+        let captureView = WKWebView(frame: frame, configuration: config)
+        captureView.setValue(false, forKey: "drawsBackground")
+
+        let delegate = OneShotNavDelegate(
+            delay: delay,
+            onFinish: {
+                let pdfConfig = WKPDFConfiguration()
+                captureView.createPDF(configuration: pdfConfig) { pdfResult in
+                    DispatchQueue.main.async { completion(try? pdfResult.get()) }
+                }
+            },
+            onFail: { completion(nil) }
+        )
+        // 离屏 webview 不在视图层级、无人持有：由 delegate 反向持有到导航结束。
+        // detach（didFinish/didFail 时）断开 delegate↔webView 这个刻意建立的临时循环；
+        // 之后 webview 由 onFinish 闭包持有到 createPDF 回调结束。
+        delegate.keepAlive = captureView
+        objc_setAssociatedObject(captureView, &OneShotNavDelegate.key, delegate, .OBJC_ASSOCIATION_RETAIN)
+        captureView.navigationDelegate = delegate
+        captureView.loadHTMLString(html, baseURL: baseURL)
+    }
+
+    /// 把预览页 outerHTML 处理成可离线渲染的自包含 HTML：
+    /// 内联 <link> 样式表（读盘）→（MEditor 预览缓存）剥离 <script> → 注入导出附加样式。
+    /// 纯字符串/文件处理，nonisolated：大文档的正则与读盘不占主线程，也便于单测。
+    nonisolated static func prepareCaptureHTML(html: String,
+                                               stripsScripts: Bool,
+                                               baseDir: URL?,
+                                               extraCSS: String?) -> String {
+        var processed = inlineCSS(html: html, baseDir: baseDir)
+        if stripsScripts { processed = stripScripts(processed) }
+        if let extraCSS { processed = injectCSS(processed, css: extraCSS) }
+        return processed
+    }
+
+    nonisolated private static func inlineCSS(html: String, baseDir: URL?) -> String {
         guard let baseDir else { return html }
         var result = html
         let pattern = try? NSRegularExpression(pattern: #"<link\b[^>]*\bhref="([^"]+\.css)"[^>]*/?>"#)
@@ -295,7 +321,7 @@ final class PreviewExporter: PreviewExporterProtocol {
         return style + html
     }
 
-    private static func stripScripts(_ html: String) -> String {
+    nonisolated private static func stripScripts(_ html: String) -> String {
         // Remove all <script ...>...</script> blocks — content is already rendered in DOM.
         let pattern = try? NSRegularExpression(
             pattern: #"<script\b[^>]*>[\s\S]*?</script>"#,
@@ -326,7 +352,7 @@ final class PreviewExporter: PreviewExporterProtocol {
                 let contentW = max(!dims.isEmpty ? dims[0] : webView.bounds.width, 100)
                 let contentH = max(dims.count > 1 ? dims[1] : webView.bounds.height, 100)
 
-                captureViaReload(webView: webView) { pdfData in
+                captureOffscreen(webView: webView) { pdfData in
                     guard let pdfData else {
                         completion(.failure(.snapshotFailed("createPDF returned no data")))
                         return
@@ -352,22 +378,16 @@ final class PreviewExporter: PreviewExporterProtocol {
     }
 }
 
-// MARK: - One-shot navigation delegate for export reload
-
-/// 导出流程（captureViaReload）结束后由预览侧实现的恢复钩子：
-/// 导出会临时替换 navigationDelegate 并整页重载 webview，完成后需要预览层
-/// 强制重推当前内容，恢复显示/链接拦截/圈选监听。
-/// @MainActor：实现方（MarkdownWebView.Coordinator）是主线程 UI 对象。
-@MainActor
-protocol PreviewExportRestorable: AnyObject {
-    func restorePreviewAfterExport()
-}
+// MARK: - One-shot navigation delegate for offscreen capture
 
 private final class OneShotNavDelegate: NSObject, WKNavigationDelegate {
     static var key: UInt8 = 0
     private let delay: TimeInterval
     private let onFinish: () -> Void
     private let onFail: () -> Void
+    /// 离屏捕获期间反向持有 webview（离屏视图没有 owner）；detach 时释放，
+    /// 断开与 associated object 构成的临时循环。
+    var keepAlive: AnyObject?
 
     init(delay: TimeInterval = 0, onFinish: @escaping () -> Void, onFail: @escaping () -> Void) {
         self.delay = delay
@@ -399,6 +419,7 @@ private final class OneShotNavDelegate: NSObject, WKNavigationDelegate {
     private func detach(from webView: WKWebView) {
         webView.navigationDelegate = nil
         objc_setAssociatedObject(webView, &OneShotNavDelegate.key, nil, .OBJC_ASSOCIATION_RETAIN)
+        keepAlive = nil
     }
 }
 

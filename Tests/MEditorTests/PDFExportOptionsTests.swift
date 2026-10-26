@@ -132,6 +132,41 @@ final class PDFExportOptionsTests: XCTestCase {
         XCTAssertEqual(PDFDocument(data: out)?.pageCount, 2)
     }
 
+    // MARK: - 离屏捕获的 HTML 预处理（PreviewExporter.prepareCaptureHTML）
+
+    /// 管线语义钉住：内联样式表 →（预览缓存）剥离脚本 → 注入附加样式。
+    /// 守卫的是「导出捕获页 = 预览渲染产物」这条不变量，顺序错了导出内容会变。
+    func test_prepareCaptureHTML_inlinesLinkedCSS() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MEditorCaptureTests_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "body { color: red; }".write(to: dir.appendingPathComponent("style.css"),
+                                         atomically: true, encoding: .utf8)
+        let html = #"<html><head><link rel="stylesheet" href="style.css"/></head><body>x</body></html>"#
+        let out = PreviewExporter.prepareCaptureHTML(
+            html: html, stripsScripts: false, baseDir: dir, extraCSS: nil)
+        XCTAssertFalse(out.contains("<link"), "link 标签应被内联替换")
+        XCTAssertTrue(out.contains("<style>body { color: red; }</style>"))
+    }
+
+    func test_prepareCaptureHTML_stripsScriptsOnlyWhenRequested() {
+        let html = "<html><head><script>boot()</script></head><body>x</body></html>"
+        let stripped = PreviewExporter.prepareCaptureHTML(
+            html: html, stripsScripts: true, baseDir: nil, extraCSS: nil)
+        XCTAssertFalse(stripped.contains("<script"), "MEditor 预览缓存导出必须剥离脚本（防 boot 清空内容）")
+        let kept = PreviewExporter.prepareCaptureHTML(
+            html: html, stripsScripts: false, baseDir: nil, extraCSS: nil)
+        XCTAssertTrue(kept.contains("<script>boot()</script>"), "用户 HTML 文件必须保留脚本（JS 渲染图表依赖）")
+    }
+
+    func test_prepareCaptureHTML_injectsExtraCSS() {
+        let html = "<html><head></head><body>x</body></html>"
+        let out = PreviewExporter.prepareCaptureHTML(
+            html: html, stripsScripts: false, baseDir: nil, extraCSS: "@page { size: A4; }")
+        XCTAssertTrue(out.contains("<style>@page { size: A4; }</style></head>"))
+    }
+
     // MARK: - AppSettings 聚合
 
     @MainActor

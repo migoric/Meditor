@@ -81,7 +81,7 @@ final class AppState {
         didSet {
             shareManager.sync(rootURL: rootURL, openTabs: tabManager.openTabs)
             if !isRestoringSession { scheduleSessionPersist() }
-            // 工作区切换 → 重建内容索引；关闭（nil）→ 释放
+            // 工作区切换 → 重建三方索引（一次枚举分发）；关闭（nil）→ 释放
             if rootURL?.standardizedFileURL != oldValue?.standardizedFileURL {
                 rebuildWorkspaceIndex(root: rootURL)
                 if rootURL == nil { gitStatusService.clear() }
@@ -344,7 +344,13 @@ final class AppState {
     /// 首次全量构建完成标记（@Observable 可追踪），搜索 UI 用它显示「索引构建中…」。
     private(set) var workspaceIndexReady = false
 
-    /// rootURL 变化时重建/释放索引；构建在 actor 后台执行，不占主线程。
+    /// rootURL 变化时重建/释放索引；枚举与构建均在后台执行，不占主线程。
+    ///
+    /// 三方索引（文件树 QuickOpen/@mention、WorkspaceIndexService 内容索引、
+    /// 系统 Spotlight）共用 `FileService.scanWorkspace` 的一次目录枚举——
+    /// 此前三方各自为政，打开工作区要把整棵树扫三遍（性能方案批 4）。
+    /// 扫描谓词取三方并集、按消费方原谓词过滤，各方可见集合不变
+    /// （谓词对齐的取舍见 scanWorkspace 注释）。
     private func rebuildWorkspaceIndex(root: URL?) {
         workspaceIndexReady = false
         let index = workspaceIndex
@@ -355,13 +361,23 @@ final class AppState {
             Task { await spotlight.clearWorkspace() }
             return
         }
-        Task {
-            await index.buildIndex(root: root)
-            workspaceIndexReady = true
+        // 正文是否进 Spotlight 索引由用户显式设置（默认只索引文件名/标题）。
+        let includeContent = AppSettings.shared.spotlightIndexContent
+        let service = fileService
+        let tree = fileTreeManager
+        Task { [weak self] in
+            // 只有目录扫描离开 MainActor（FileService 是 Sendable）；
+            // 三方 Manager/Service 的 actor 调用留在原 actor 上，不做跨域捕获。
+            let scan = await Task.detached(priority: .utility) {
+                service.scanWorkspace(under: root)
+            }.value
+            await tree.applyScannedIndex(files: scan.treeFiles, items: scan.treeItems, rootURL: root)
+            await index.buildIndex(root: root, enumeratedFiles: scan.contentFileURLs)
+            self?.workspaceIndexReady = true
+            // 系统 Spotlight 全量索引（批量后台写入；切换工作区时旧 domain 由 reindex 内部清理）。
+            await spotlight.reindex(root: root, enumeratedFiles: scan.markdownFileURLs,
+                                    includeContent: includeContent)
         }
-        // 系统 Spotlight 全量索引（批量后台写入；切换工作区时旧 domain 由 reindex 内部清理）。
-        // 正文是否进索引由用户显式设置（默认只索引文件名/标题）。
-        Task { await spotlight.reindex(root: root, includeContent: AppSettings.shared.spotlightIndexContent) }
     }
 
     /// FSEvents 变化后的索引增量刷新（服务内部防抖；首次构建未完成时由 buildIndex 全量兜底）。

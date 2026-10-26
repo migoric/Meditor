@@ -79,15 +79,36 @@ class MockFileService: FileServiceProtocol, @unchecked Sendable {
         return (visible.filter { !$0.isDirectory }, visible)
     }
 
+    func scanWorkspace(under directory: URL) -> WorkspaceScanResult {
+        lock.lock()
+        defer { lock.unlock() }
+        _scanWorkspaceCalls += 1
+        let items = children[directory] ?? []
+        let supported = FileTypeConfiguration.shared.supportedExtensions
+        let visible = items.filter { $0.isDirectory || supported.contains($0.fileExtension) }
+        var result = WorkspaceScanResult()
+        result.treeItems = visible
+        result.treeFiles = visible.filter { !$0.isDirectory }
+        let files = items.filter { !$0.isDirectory }.map(\.url)
+        result.contentFileURLs = files
+        result.markdownFileURLs = files.filter {
+            ["md", "markdown"].contains($0.pathExtension.lowercased())
+        }
+        return result
+    }
+
     // MARK: - 枚举次数观测（守卫「建索引只扫一遍目录树」）
 
     private var _separateScanCalls = 0
     private var _combinedScanCalls = 0
+    private var _scanWorkspaceCalls = 0
 
     /// 两个单列表方法被调用的次数。建索引只该走 `loadAll`，这里是 0。
     var separateScanCallCount: Int { lock.lock(); defer { lock.unlock() }; return _separateScanCalls }
     /// `loadAll` 被调用的次数。
     var combinedScanCallCount: Int { lock.lock(); defer { lock.unlock() }; return _combinedScanCalls }
+    /// `scanWorkspace` 被调用的次数。打开工作区的三方索引合一后，应为 1。
+    var scanWorkspaceCallCount: Int { lock.lock(); defer { lock.unlock() }; return _scanWorkspaceCalls }
 
     func readFile(at url: URL) throws -> String {
         if let error = readError { throw error }
