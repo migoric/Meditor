@@ -54,8 +54,13 @@ for ARCH in "${ARCHES[@]}"; do
   if [ -z "$RESOURCE_DIR" ] && [ -d "$TRIPLE_DIR/${APP_NAME}_${APP_NAME}.bundle/Resources" ]; then
     RESOURCE_DIR="$TRIPLE_DIR/${APP_NAME}_${APP_NAME}.bundle/Resources"
   fi
-  # Quick Look 扩展的 SwiftPM 资源 bundle（包名_目标名）：ql-render.js、pele.global.js
-  if [ -z "$QL_RESOURCES_DIR" ] && [ -f "$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/ql-render.js" ]; then
+  # Quick Look 扩展的 SwiftPM 资源 bundle（包名_目标名）：ql-render.js、pele.global.js。
+  # 两份都必须在才算命中：增量构建会留下「有驱动、没渲染器」的半旧目录
+  # （只加了 pele 之后没重编过的那个架构），只按 ql-render.js 判定会取到它，
+  # 打出来的 appex 图表静默退化成代码块——看着正常，只是图全没了。
+  if [ -z "$QL_RESOURCES_DIR" ] \
+     && [ -f "$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/ql-render.js" ] \
+     && [ -f "$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/pele.global.js" ]; then
     QL_RESOURCES_DIR="$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources"
   fi
 done
@@ -222,6 +227,14 @@ else
   echo "error: 未找到 MEditorQuickLook 的 SwiftPM 资源 bundle（ql-render.js / pele.global.js）" >&2
   exit 1
 fi
+# 拷完再确认一遍：缺 pele 时 ql-render.js 会把图表降级成代码块（不报错、不崩），
+# 于是「图不出」只会在用户按空格时才发现。这里显式失败。
+for item in ql-render.js pele.global.js; do
+  if [ ! -f "$QL_APPEX/Contents/Resources/$item" ]; then
+    echo "error: appex 缺少 ${item}（QuickLook 资源 bundle 不完整）" >&2
+    exit 1
+  fi
+done
 plutil -lint "$QL_APPEX/Contents/Info.plist" > /dev/null
 
 # ---- App Intents metadata（Shortcuts/Siri 发现的唯一入口）----
