@@ -12,6 +12,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Quick Look 预览里的图表现在能出图了**。此前扩展把 ```` ```mermaid ```` 降级成代码块，
+  注释写的是「mermaid 需要 DOM」——这不是偷懒：Quick Look 是数据式预览（扩展只交 HTML
+  字符串给系统渲染，进程里没有 WebKit），而 mermaid 靠 `getBBox`/canvas 量文本宽度，
+  没有 DOM 连解析都过不去。现在改用 **pele**（Obsidian 出品、MIT、零运行时依赖的同步
+  渲染器，1.10.0 锁版本内嵌）：它内置字宽表，在无 canvas 的环境里退回查表估算，于是
+  JavaScriptCore 里直接就能出 SVG 字符串。实测同一批图 mermaid 43.90ms / 664.44ms
+  （120 节点）→ pele 0.62ms / 5.29ms，全量体积 raw 3.31MB → 709KB、gzip 904KB → 264KB。
+  - 降级链完整：pele 资源缺失或加载异常时**只记日志**，图表退回代码块（与改造前一样），
+    整篇预览照常出；图表语法错误输出 `.error-block`，错误信息含图源码、进 HTML 前已转义。
+  - 围栏口径与主 app 一致：只有反引号围栏 + info 首 token 恰为 `mermaid` 才出图，
+    `~~~mermaid` 仍按代码块显示（marked 的 `renderer.code` 拿不到围栏字符，所以在预处理里
+    先把 tilde 围栏的信息串改名，渲染时再把语言类名还原）。
+  - 每张图给独立的 `idPrefix`（`render()` 不像 `mount()` 那样自动给）。这个不是可有可无：
+    桑基图的渐变 `<linearGradient>` **只有给了前缀才生成**，同页多图还会共用 id。
+  - 709KB 的解析成本按需付：只有文档含 `mermaid` 字样时才加载渲染器。
+
 ### Performance
 
 - **编辑器行偏移表改为按编辑 delta 增量维护**：此前每次击键都全量重扫文本

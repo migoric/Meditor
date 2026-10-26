@@ -1,5 +1,8 @@
 import Foundation
 import JavaScriptCore
+import OSLog
+
+private let qlLog = Logger(subsystem: "com.meditor.app.QuickLook", category: "render")
 
 /// Markdown → HTML 离线渲染器（JavaScriptCore，无 DOM、无 WebView）。
 ///
@@ -12,7 +15,9 @@ import JavaScriptCore
 ///   需要 App Group + 进程间同步，复杂度不值当。
 /// - Markdown 里的相对路径图片不加载：沙箱只授予被预览文件本身的读权限，
 ///   主 app 靠自定义 scheme（meditor-asset）绕过，扩展不引入这套机制。
-/// - mermaid 需要 DOM，扩展里降级为代码块显示。
+/// - 图表由 pele 渲染（不是 mermaid）：mermaid 靠 getBBox/canvas 量文本宽度，
+///   没有 DOM 连解析都过不去；pele 零 DOM 依赖、同步出 SVG 字符串，正好适配
+///   「扩展里没有 WebKit」这个硬约束。详见 Resources/ql-render.js 顶部注释。
 enum QLMarkdownRenderer {
 
     enum RenderError: LocalizedError {
@@ -52,6 +57,24 @@ enum QLMarkdownRenderer {
         <style>
         \(baseCSS)
         </style>
+        <style>
+        /* pele 图表主题变量。QL 固定 github 亮色主题，取值与 themes.css 的
+           --bg/--text/--code-bg/--table-border/--link 同源。
+           必须显式设 --pele-bg：pele 的 SVG 内联了 var(--pele-bg, #fff)，
+           不设就退回纯白 —— 将来 QL 支持暗色主题时那会是一块白板。 */
+        .pele {
+          --pele-bg: #ffffff;
+          --pele-fg: #24292e;
+          --pele-muted: #57606a;
+          --pele-line: #57606a;
+          --pele-surface: #f6f8fa;
+          --pele-surface-alt: #eef1f4;
+          --pele-border: #d0d7de;
+          --pele-accent: #0969da;
+          --pele-critical: #cf222e;
+          --pele-radius: 5px;
+        }
+        </style>
         </head>
         <body>
         <div id="content">\(bodyHTML)</div>
@@ -74,11 +97,29 @@ enum QLMarkdownRenderer {
         // 指向全局对象即可（window === self === globalThis）
         context.evaluateScript("var window = this; var self = this;")
 
-        // 顺序有依赖：marked → hljs → ql-render（驱动依赖前两者）
-        for script in ["Preview/marked.min.js", "Preview/highlight.min.js", "ql-render.js"] {
+        // 顺序有依赖：marked → hljs → pele（条件）→ ql-render（驱动依赖前三者）
+        for script in ["Preview/marked.min.js", "Preview/highlight.min.js"] {
             context.evaluateScript(try loadResourceString(script))
             if let jsException { throw RenderError.jsFailed("\(script): \(jsException)") }
         }
+
+        // 图表渲染器按需加载：709KB 的解析成本不该让每份不含图表的文档都付一遍。
+        // 加载失败**不致命**——ql-render.js 找不到 pele 就把 mermaid 块降级成代码块
+        // （与改造前的行为一致），整篇预览照常出。这里只记日志，不抛。
+        if markdown.contains("mermaid") {
+            do {
+                context.evaluateScript(try loadResourceString("pele.global.js"))
+                if let message = jsException {
+                    qlLog.error("pele 加载异常，图表降级为代码块: \(message, privacy: .public)")
+                    jsException = nil   // 清掉，别让它中断后面的 ql-render
+                }
+            } catch {
+                qlLog.error("pele 资源缺失，图表降级为代码块: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        context.evaluateScript(try loadResourceString("ql-render.js"))
+        if let jsException { throw RenderError.jsFailed("ql-render.js: \(jsException)") }
 
         guard let render = context.objectForKeyedSubscript("MEditorQL")?
             .objectForKeyedSubscript("render"),

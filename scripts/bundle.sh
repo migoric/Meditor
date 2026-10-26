@@ -44,7 +44,7 @@ CONST_GATHER_FLAGS=(
 BINARIES=()
 QL_BINARIES=()
 RESOURCE_DIR=""
-QL_RESOURCE_FILE=""
+QL_RESOURCES_DIR=""
 for ARCH in "${ARCHES[@]}"; do
   swift build -c "$CONFIG" --arch "$ARCH" --package-path "$PROJECT_DIR" "${CONST_GATHER_FLAGS[@]}"
   TRIPLE_DIR="$PROJECT_DIR/.build/${ARCH}-apple-macosx/$CONFIG"
@@ -54,9 +54,9 @@ for ARCH in "${ARCHES[@]}"; do
   if [ -z "$RESOURCE_DIR" ] && [ -d "$TRIPLE_DIR/${APP_NAME}_${APP_NAME}.bundle/Resources" ]; then
     RESOURCE_DIR="$TRIPLE_DIR/${APP_NAME}_${APP_NAME}.bundle/Resources"
   fi
-  # Quick Look 扩展的 SwiftPM 资源 bundle（包名_目标名）：ql-render.js
-  if [ -z "$QL_RESOURCE_FILE" ] && [ -f "$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/ql-render.js" ]; then
-    QL_RESOURCE_FILE="$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/ql-render.js"
+  # Quick Look 扩展的 SwiftPM 资源 bundle（包名_目标名）：ql-render.js、pele.global.js
+  if [ -z "$QL_RESOURCES_DIR" ] && [ -f "$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/ql-render.js" ]; then
+    QL_RESOURCES_DIR="$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources"
   fi
 done
 
@@ -198,6 +198,11 @@ cp "$PROJECT_DIR/Sources/$QL_NAME/Info.plist" "$QL_APPEX/Contents/Info.plist"
 # 渲染资源与主 app 同源（从已拷进主 app 的 Resources/Preview 里挑需要的复制，
 # 单一来源不双份维护）。扩展走 JavaScriptCore 离线渲染，只需要 marked/highlight/css；
 # template.html、scripts/、mermaid（~3.3MB）是 WebView 管线用的，不拷。
+#
+# mermaid 不出图的原因不是「不想拷」而是「拷了也跑不了」：mermaid 靠 getBBox/canvas
+# 量文本宽度，没有 DOM 连解析都过不去。图表由 pele 承担——它是零 DOM 依赖的同步
+# 渲染器（实测同一批图比 mermaid 快 42–126 倍，体积 gzip 后 264KB vs 904KB），
+# 正好适配这里「扩展进程里没有 WebKit」的约束。
 mkdir -p "$QL_APPEX/Contents/Resources/Preview"
 # 只拷 QL 真正用到的资源：QLMarkdownRenderer 内联的只有 themes.css / base.css
 # 两份样式表（QLPreviewReply 的 HTML 不带 base URL，引不了外部 css）。
@@ -210,10 +215,11 @@ mkdir -p "$QL_APPEX/Contents/Resources/Preview/css"
 for item in themes.css base.css; do
   cp "$APP_BUNDLE/Contents/Resources/Preview/css/$item" "$QL_APPEX/Contents/Resources/Preview/css/"
 done
-if [ -n "$QL_RESOURCE_FILE" ]; then
-  cp "$QL_RESOURCE_FILE" "$QL_APPEX/Contents/Resources/ql-render.js"
+if [ -n "$QL_RESOURCES_DIR" ]; then
+  # 整个资源目录拷过去（ql-render.js 驱动 + pele 渲染器 + 其许可证）
+  cp -R "$QL_RESOURCES_DIR/"* "$QL_APPEX/Contents/Resources/"
 else
-  echo "error: 未找到 ql-render.js（MEditorQuickLook 的 SwiftPM 资源 bundle）" >&2
+  echo "error: 未找到 MEditorQuickLook 的 SwiftPM 资源 bundle（ql-render.js / pele.global.js）" >&2
   exit 1
 fi
 plutil -lint "$QL_APPEX/Contents/Info.plist" > /dev/null
