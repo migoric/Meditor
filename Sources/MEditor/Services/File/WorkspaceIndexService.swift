@@ -44,7 +44,15 @@ actor WorkspaceIndexService {
     }
 
     private var root: URL?
-    private var files: [URL: IndexedFile] = [:]
+    /// 任何增删改都会让 didSet 把 sortedFilesCache 置 nil——缓存键序随索引自动失效。
+    private var files: [URL: IndexedFile] = [:] {
+        didSet { sortedFilesCache = nil }
+    }
+    /// 按 relativePath 排序的遍历键序缓存：search 每次查询都全量排序一次千级字典
+    /// 是纯浪费（结果集上限提前退出也排在排序之后），索引不变时序也不变。
+    private var sortedFilesCache: [(url: URL, file: IndexedFile)]?
+    /// 测试观测口：排序键序的重建次数（缓存生效时多次 search 只应重建一次）。
+    private(set) var sortedOrderBuildCount = 0
     /// 防抖/代际标记：scheduleRefresh 连发时只保留最后一次；buildIndex/clear 会取消未执行的 refresh。
     private var refreshGeneration = 0
 
@@ -74,11 +82,18 @@ actor WorkspaceIndexService {
     /// 打开工作区时的全量重建。整个构建在 actor 内同步完成（IO 在后台执行），
     /// 期间到达的 search 调用会排队到构建结束后执行——UI 输入即搜自然得到最新结果。
     func buildIndex(root: URL) {
+        buildIndex(root: root, enumeratedFiles: Self.enumerateWorkspaceFiles(root: root))
+    }
+
+    /// 枚举结果已由组合根（AppState 的工作区扫描合一）提供时的构建入口：
+    /// 消费方不再自行枚举整树。`enumeratedFiles` 必须满足与本服务
+    /// `enumerateWorkspaceFiles` 相同的谓词（由 FileService.scanWorkspace 保证）。
+    func buildIndex(root: URL, enumeratedFiles: [URL]) {
         refreshGeneration &+= 1   // 取消未执行的增量刷新
         self.root = root
         setReady(false)
         var newFiles: [URL: IndexedFile] = [:]
-        for url in Self.enumerateWorkspaceFiles(root: root) {
+        for url in enumeratedFiles {
             if let file = Self.loadFile(at: url, root: root) {
                 newFiles[url] = file
             }
@@ -164,7 +179,17 @@ actor WorkspaceIndexService {
         let exts = Set(extensions.map { $0.lowercased() })
         var results: [WorkspaceSearchMatch] = []
         // 按相对路径排序遍历：结果顺序稳定，UI 与 Agent 输出可预期、可断言。
-        for (url, file) in files.sorted(by: { $0.value.relativePath < $1.value.relativePath }) {
+        // 排序结果按索引代际缓存——didSet 保证任何增删都会失效重建。
+        let ordered: [(url: URL, file: IndexedFile)]
+        if let cached = sortedFilesCache {
+            ordered = cached
+        } else {
+            ordered = files.sorted(by: { $0.value.relativePath < $1.value.relativePath })
+                          .map { (url: $0.key, file: $0.value) }
+            sortedFilesCache = ordered
+            sortedOrderBuildCount &+= 1
+        }
+        for (url, file) in ordered {
             guard results.count < maxTotal else { break }
             if !exts.isEmpty, !exts.contains(url.pathExtension.lowercased()) { continue }
             var perFile = 0

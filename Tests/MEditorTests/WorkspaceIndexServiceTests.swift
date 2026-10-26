@@ -201,6 +201,33 @@ final class WorkspaceIndexServiceTests: XCTestCase {
         XCTAssertEqual(results.map(\.relativePath), ["docs/real.md"], "噪音目录应被跳过")
     }
 
+    // MARK: - 搜索排序键序缓存（守卫：多次搜索不得重复全量排序）
+
+    func testSearch_reusesSortedOrderAcrossQueries() async {
+        createFile("b.md", content: "apple")
+        createFile("a.md", content: "apple")
+        await build()
+        _ = await index.search(query: "apple")
+        let afterFirst = await index.sortedOrderBuildCount
+        _ = await index.search(query: "apple")
+        _ = await index.search(query: "apple")
+        let afterThird = await index.sortedOrderBuildCount
+        XCTAssertEqual(afterFirst, 1, "首次搜索应重建一次排序键序")
+        XCTAssertEqual(afterThird, 1, "索引未变时后续搜索必须复用缓存键序，不得重复全量排序")
+    }
+
+    func testSearch_invalidatesSortedOrderOnMutation() async {
+        createFile("a.md", content: "apple")
+        await build()
+        _ = await index.search(query: "apple")
+        createFile("b.md", content: "apple")
+        await index.updateFile(at: tempDir.appendingPathComponent("b.md"))
+        let results = await index.search(query: "apple")
+        let builds = await index.sortedOrderBuildCount
+        XCTAssertEqual(builds, 2, "索引增删后排序缓存必须失效并重建")
+        XCTAssertEqual(results.map(\.relativePath), ["a.md", "b.md"], "重建后结果顺序仍按相对路径排序")
+    }
+
     // MARK: - 生命周期
 
     func testClear_releasesIndex() async {

@@ -37,6 +37,14 @@ actor SpotlightIndexManager {
     /// 打开/切换工作区时的全量重建。批量写入，批间让出；可随时被 Task 取消打断。
     /// - Parameter includeContent: 是否索引正文（默认 false：只索引文件名/标题与修改时间）。
     func reindex(root: URL, includeContent: Bool = false) async {
+        await reindex(root: root, enumeratedFiles: Self.enumerateMarkdownFiles(root: root),
+                      includeContent: includeContent)
+    }
+
+    /// 枚举结果已由组合根（AppState 的工作区扫描合一）提供时的重建入口：
+    /// 消费方不再自行枚举整树。`enumeratedFiles` 必须满足与本服务
+    /// `enumerateMarkdownFiles` 相同的谓词（由 FileService.scanWorkspace 保证）。
+    func reindex(root: URL, enumeratedFiles: [URL], includeContent: Bool = false) async {
         refreshGeneration &+= 1   // 取消未执行的增量刷新
         let domain = SpotlightMetadata.domainIdentifier(forRoot: root)
         // 切换到新工作区时先清理旧 domain，避免 Spotlight 里残留旧工作区条目
@@ -47,7 +55,7 @@ actor SpotlightIndexManager {
         self.domainIdentifier = domain
         indexedModDates = [:]
 
-        let files = Self.enumerateMarkdownFiles(root: root)
+        let files = enumeratedFiles
         var batch: [CSSearchableItem] = []
         var applied: [String: Date?] = [:]
         for url in files {

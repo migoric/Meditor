@@ -11,6 +11,9 @@ protocol FileServiceProtocol: AnyObject, Sendable {
     /// 一次枚举同时产出上面两个列表。建索引时只要这两份数据，
     /// 分两次调用等于把整棵目录树枚举两遍。
     func loadAll(under directory: URL) -> (files: [FileItem], items: [FileItem])
+    /// 一次枚举产出全部消费方的产物（树索引 + 内容索引 + Spotlight 子集）。
+    /// 打开工作区时由组合根调用一次并分发，替代三方各自枚举整树。
+    func scanWorkspace(under directory: URL) -> WorkspaceScanResult
 
     // File I/O
     func readFile(at url: URL) throws -> String

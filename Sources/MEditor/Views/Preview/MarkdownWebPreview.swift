@@ -283,7 +283,7 @@ struct MarkdownWebView: NSViewRepresentable {
 
 extension MarkdownWebView {
     @MainActor
-    final class Coordinator: NSObject, PreviewExportRestorable {
+    final class Coordinator: NSObject {
         weak var webView: WKWebView?
         var onVisibleLineChange: ((Int) -> Void)?
         var onTOCUpdate: (([TOCItem]) -> Void)?
@@ -291,8 +291,6 @@ extension MarkdownWebView {
         var findController: PreviewFindController?
         var onSelectionChange: ((String, CGRect) -> Void)?
         var onAddTodo: ((String) -> Void)?
-        /// 最近一次实际推送给页面的 markdown 内容，供导出后恢复重推。
-        private var lastContent: String?
 
         /// JS snippet that installs a `selectionchange` listener and forwards
         /// selected text to the native `selectionHandler` message handler.
@@ -433,20 +431,8 @@ extension MarkdownWebView {
             pendingContentScript = nil
         }
 
-        /// 导出（PDF/图片）结束后由 PreviewExporter 调用：导出的整页重载把
-        /// 页面重置回 preview.html 的 initial content（可能是预热时的空文档），
-        /// 而 Swift 侧 lastContentRevision 未变、updateNSView 不会重推——
-        /// 这里强制重推当前内容。isReady 置 false 让更新进入 pendingContentScript，
-        /// 等恢复导航的 didFinish 里 flush，避免在导航途中 evaluate 打到旧页面。
-        func restorePreviewAfterExport() {
-            guard let content = lastContent else { return }
-            isReady = false
-            scheduleContentUpdate(content, revision: lastContentRevision, immediately: true)
-        }
-
         private func dispatchContentUpdate(_ content: String, revision: Int) {
             pendingContentUpdate = nil
-            lastContent = content
             // Lazily provision mermaid.min.js only when content contains a mermaid block.
             if content.contains("```mermaid") {
                 PreviewAssetMirror.ensureMermaidProvisioned(at: previewDir)
