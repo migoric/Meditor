@@ -44,6 +44,14 @@
 
 ### Fixed
 
+- **Quick Look 的 `~~~mermaid` 预处理不再污染其他围栏的代码内容**：此前用裸正则
+  全文替换 tilde 围栏的信息串，mermaid 教程文档里（` ```text ` / ` ```md ` 内嵌
+  `~~~mermaid`）那些行是**代码内容**而不是开栏，也被改名——读者看到的源码被
+  写成 `~~~mermaid-suppressed`。现在预处理按行跟踪围栏状态，只对**顶层**
+  `~~~mermaid` 开栏行改名，哨兵串换成 `__ql_tilde_mermaid__` 避免语言标签碰撞。
+  新增 `QLRenderTests`（JavaScriptCore 直载真实资源）：教程场景 / 顶层降级 /
+  pele 缺失降级 / pele 出图与多图 idPrefix。
+
 - **预览热更新的 DOM 层不再逐帧付出整篇代价**：块级缓存命中后，下游此前仍是
   O(全文)——整篇 HTML 重新拼接、`temp.innerHTML` 把整篇再解析成 DOM 树、
   逐顶层节点序列化比较。现在「哪些块变了」从分块渲染透传到 DOM 层

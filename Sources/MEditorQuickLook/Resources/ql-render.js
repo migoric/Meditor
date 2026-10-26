@@ -73,11 +73,49 @@
 
   // 与主 app 的围栏口径对齐：只有「反引号围栏 + info 首 token 恰为 mermaid」才出图。
   // marked 的 renderer.code 只拿得到 infostring、拿不到围栏字符，所以在预处理阶段
-  // 把 ~~~mermaid 的开栏信息串改掉（闭栏是裸 ~~~，不会被这条正则命中）。
-  // 副作用只有一处：代码块的语言类名会带 -suppressed，渲染时再还原成 mermaid。
+  // 把**顶层** ~~~mermaid 的开栏信息串改名（渲染时再还原语言类名）。
+  // 必须按行跟踪围栏状态：其他围栏内部的 `~~~mermaid` 是代码内容（mermaid 教程
+  // 文档的典型形态），裸正则会把字面文本也改掉（已实测复现）。
+  var QL_TILDE_SENTINEL = '__ql_tilde_mermaid__';
+
+  function fenceOpen(line) {
+    // 0–3 空格缩进 + ≥3 反引号/波浪号；反引号 info 含反引号 ⇒ 不是围栏
+    var m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!m) return null;
+    if (m[1].charAt(0) === '`' && m[2].indexOf('`') !== -1) return null;
+    return { char: m[1].charAt(0), len: m[1].length, info: m[2].replace(/^[ \t]+/, '') };
+  }
+
+  function fenceClose(line, fence) {
+    var m = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
+    return !!m && m[1].charAt(0) === fence.char && m[1].length >= fence.len;
+  }
+
   function suppressTildeMermaid(text) {
     if (text.indexOf('~~~') === -1) return text;
-    return text.replace(/^([ \t]*)(~~~+[ \t]*mermaid(?=[ \t]|$))/gm, '$1$2-suppressed');
+    var lines = text.split('\n');
+    var out = [];
+    var fence = null;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (fence) {
+        out.push(line);
+        if (fenceClose(line, fence)) fence = null;
+        continue;
+      }
+      var open = fenceOpen(line);
+      if (open) {
+        if (open.char === '~' && open.info.split(/[ \t]/)[0] === 'mermaid') {
+          out.push(line.replace(/mermaid(?=[ \t]|$)/, QL_TILDE_SENTINEL));
+        } else {
+          out.push(line);
+        }
+        fence = open;
+        continue;
+      }
+      out.push(line);
+    }
+    return out.join('\n');
   }
 
   // 移植自 render.js 的 renderMarkdown 预处理：
@@ -151,8 +189,8 @@
           // 至少让读者看得到源码，而不是留一块空白。
           if (diagram !== null) return diagram;
         }
-        // ~~~mermaid 在预处理里被改过名，显示语言要还原成 mermaid
-        var displayLang = rawLang === 'mermaid-suppressed' ? 'mermaid' : rawLang;
+        // 顶层 ~~~mermaid 在预处理里被改过名，显示语言要还原成 mermaid
+        var displayLang = rawLang === QL_TILDE_SENTINEL ? 'mermaid' : rawLang;
         var lang = LANG_ALIASES[displayLang] || displayLang;
         var inner;
         var highlighted = false;
