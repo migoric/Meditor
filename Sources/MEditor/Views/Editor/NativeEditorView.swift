@@ -145,7 +145,7 @@ struct NativeEditorView: NSViewRepresentable {
         // Line number gutter
         scrollView.rulersVisible = true
         scrollView.hasVerticalRuler = true
-        if let ruler = LineNumberRulerView(textView: textView) {
+        if let ruler = LineNumberRulerView(textView: textView, highlighter: context.coordinator.highlighter) {
             scrollView.verticalRulerView = ruler
         }
 

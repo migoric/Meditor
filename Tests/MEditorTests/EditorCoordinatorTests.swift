@@ -205,4 +205,93 @@ final class EditorCoordinatorTests: XCTestCase {
         XCTAssertEqual(textView.string, "")
         withExtendedLifetime(coordinator) {}
     }
+
+    // MARK: - 行偏移表增量维护接线
+
+    /// 放行的击键：shouldChangeTextIn 记录 delta，textDidChange 走增量，
+    /// 不做全量重建。
+    func testTextDidChangeAppliesRecordedEditIncrementally() {
+        let log = PushLog()
+        let (coordinator, textView) = makeCoordinator(log: log)
+        textView.string = "aaa\nbbb\nccc"
+        coordinator.highlighter.rebuildLineOffsets(for: textView.string)
+        let rebuilds = coordinator.highlighter.rebuildCount
+
+        XCTAssertTrue(coordinator.textView(
+            textView, shouldChangeTextIn: NSRange(location: 4, length: 0),
+            replacementString: "X\n"
+        ))
+        textView.textStorage?.replaceCharacters(in: NSRange(location: 4, length: 0), with: "X\n")
+        simulateKeystroke(coordinator, in: textView)
+
+        XCTAssertEqual(coordinator.highlighter.lineOffsets, [0, 4, 6, 10])
+        XCTAssertEqual(coordinator.highlighter.incrementalApplyCount, 1)
+        XCTAssertEqual(coordinator.highlighter.rebuildCount, rebuilds,
+                       "记录到 delta 的击键不应触发全量重建")
+    }
+
+    /// 未经 shouldChangeTextIn 的存储直改（undo / 程序化路径）：没有 delta，
+    /// textDidChange 必须回退全量重建，表仍然正确。
+    func testTextDidChangeWithoutRecordedEditFallsBackToRebuild() {
+        let log = PushLog()
+        let (coordinator, textView) = makeCoordinator(log: log)
+        textView.string = "a\nb"
+        coordinator.highlighter.rebuildLineOffsets(for: textView.string)
+        let rebuilds = coordinator.highlighter.rebuildCount
+
+        textView.textStorage?.replaceCharacters(in: NSRange(location: 2, length: 0), with: "\nz")
+        simulateKeystroke(coordinator, in: textView)
+
+        XCTAssertEqual(coordinator.highlighter.lineOffsets, [0, 2, 3])
+        XCTAssertEqual(coordinator.highlighter.incrementalApplyCount, 0)
+        XCTAssertEqual(coordinator.highlighter.rebuildCount, rebuilds + 1,
+                       "没有 delta 的变更必须回退全量重建")
+    }
+
+    /// 自动补对：击键 "(" 实际写入 "()" 两个字符，记录的 delta 对不上实际
+    /// 变更，applyEdit 校验失败回退全量——表必须仍然正确。
+    func testTextDidChangeAutoClosePairFallsBackToRebuild() {
+        let log = PushLog()
+        let (coordinator, textView) = makeCoordinator(log: log)
+        textView.string = ""
+        coordinator.highlighter.rebuildLineOffsets(for: "")
+        let rebuilds = coordinator.highlighter.rebuildCount
+
+        XCTAssertTrue(coordinator.textView(
+            textView, shouldChangeTextIn: NSRange(location: 0, length: 0),
+            replacementString: "("
+        ))
+        textView.textStorage?.replaceCharacters(in: NSRange(location: 0, length: 0), with: "(")
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+        simulateKeystroke(coordinator, in: textView)
+
+        XCTAssertEqual(textView.string, "()")
+        XCTAssertEqual(coordinator.highlighter.lineOffsets, [0])
+        XCTAssertEqual(coordinator.highlighter.incrementalApplyCount, 0)
+        XCTAssertEqual(coordinator.highlighter.rebuildCount, rebuilds + 1)
+    }
+
+    /// 程序化路径的编辑不记录 delta（记录了就会在 textDidChange 里把别人的
+    /// 编辑错当成这次击键的 delta）。
+    func testProgrammaticEditDoesNotRecordDelta() {
+        let log = PushLog()
+        let (coordinator, textView) = makeCoordinator(log: log)
+        textView.string = "ab"
+        coordinator.highlighter.rebuildLineOffsets(for: textView.string)
+        let rebuilds = coordinator.highlighter.rebuildCount
+
+        // 程序化路径：shouldChangeTextIn 放行但不记录
+        coordinator.isProgrammaticChange = true
+        XCTAssertTrue(coordinator.textView(
+            textView, shouldChangeTextIn: NSRange(location: 2, length: 0),
+            replacementString: "\n"
+        ))
+        coordinator.isProgrammaticChange = false
+        textView.textStorage?.replaceCharacters(in: NSRange(location: 2, length: 0), with: "\n")
+        simulateKeystroke(coordinator, in: textView)
+
+        XCTAssertEqual(coordinator.highlighter.lineOffsets, [0, 3])
+        XCTAssertEqual(coordinator.highlighter.incrementalApplyCount, 0)
+        XCTAssertEqual(coordinator.highlighter.rebuildCount, rebuilds + 1)
+    }
 }

@@ -56,6 +56,11 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
 
     nonisolated(unsafe) private var debounceTimer: Timer?
     private var pendingAutoClose: Character?
+    /// `shouldChangeTextIn` 记录、紧随其后的 `textDidChange` 消费的编辑 delta
+    /// （编辑前区间 + 替换字符串），供行偏移表增量维护。只在编辑被放行且非
+    /// 程序化/非 slash 命令应用时记录；记录后必有 textDidChange 消费（每次编辑
+    /// 都同步触发），不会滞留。
+    private var pendingEdit: (range: NSRange, replacement: String)?
     private static let autoPairs: [Character: Character] = [
         "(": ")", "[": "]", "{": "}",
         "\"": "\"", "'": "'", "`": "`"
@@ -152,6 +157,17 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     }
 
     func textView(_ textView: NSTextView, shouldChangeTextIn range: NSRange, replacementString text: String?) -> Bool {
+        let allowed = shouldChangeTextImpl(in: textView, range: range, replacementString: text)
+        // 记录 delta 供 textDidChange 增量更新行偏移表。只记放行且非程序化/非命令
+        // 应用的编辑；其余路径（IME 无 replacement、命令插入、程序化替换）记不到，
+        // textDidChange 会自动回退全量 rebuild。
+        if allowed, !isProgrammaticChange, !slashHandler.isApplyingCommand, let text {
+            pendingEdit = (range, text)
+        }
+        return allowed
+    }
+
+    private func shouldChangeTextImpl(in textView: NSTextView, range: NSRange, replacementString text: String?) -> Bool {
         guard !isProgrammaticChange else { return true }
         if slashHandler.isApplyingCommand { return true }
 
@@ -189,6 +205,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
 
     func textDidChange(_ notification: Notification) {
         guard let textView = textView, !isProgrammaticChange else { return }
+        let edit = pendingEdit
+        pendingEdit = nil
 
         if let close = pendingAutoClose {
             pendingAutoClose = nil
@@ -205,7 +223,16 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
             lastAcknowledgedRevision &+= 1
             localRevisionPredictionActive = true
         }
-        highlighter.rebuildLineOffsets(for: newContent)
+        // 行偏移表优先按编辑 delta 增量维护（O(编辑点之后)）；delta 缺失或与实际
+        // 编辑对不上（自动补对把一次击键变成两个字符、undo 绕过 delegate 等）时
+        // applyEdit 校验失败，回退全量 rebuild。
+        let appliedIncrementally = edit.map {
+            highlighter.applyEdit(editedRange: $0.range, replacement: $0.replacement,
+                                  newLength: (newContent as NSString).length)
+        } ?? false
+        if !appliedIncrementally {
+            highlighter.rebuildLineOffsets(for: newContent)
+        }
 
         debounceTimer?.invalidate()
         let delay = Self.previewUpdateDebounce(for: newContent)
