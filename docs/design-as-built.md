@@ -71,8 +71,9 @@ MEditorApp → ContentView (Views/AppShell/)
 ## 4. 编辑器
 
 - **模型**：整页 NSTextView（MEditorTextView 子类，非块级）；allowsNonContiguousLayout 优化大文件（NativeEditorView.swift:83-99,132）
-- 行号：NSRulerView 子类，只画可见行（LineNumberRulerView.swift）
+- 行号：NSRulerView 子类，只画可见行；行首偏移表共享自 EditorHighlightScheduler（LineNumberRulerView.swift）
 - 高亮：EditorHighlightScheduler——击键 0.3s 后高亮 + 滚动停稳补可见区，只重绘可见范围±2000 字符；>150KB 跳过正则高亮
+- 行偏移表：击键按 `shouldChangeTextIn` 记录的编辑 delta 增量维护（平移编辑点之后的行首），delta 对不上时回退全量重扫
 - 滚动同步：EditorScrollSyncHandler 缓存行偏移二分求顶行，双向 + ScrollSyncState 防回环
 - Markdown 输入：⌘B/⌘I/⌘K 选区包裹（可解包+占位符）、括号引号自动配对、图片 ⌘V 落盘 assets/ 插入相对路径
 - 标题区 DocumentHeader（图标+名+相对路径+语言胶囊+未保存圆点）；底部 StatusBar 齐全

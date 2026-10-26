@@ -3,20 +3,20 @@ import AppKit
 /// A vertical ruler that displays line numbers alongside an NSTextView.
 final class LineNumberRulerView: NSRulerView {
     private weak var textView: NSTextView?
+    /// 行首偏移表共享自调度器（`EditorHighlightScheduler`）：击键时调度器按编辑
+    /// delta 增量维护，这里重绘只做二分查找。此前本类另维护一份表，每击键后用
+    /// 逐次 `range(of:)` 旧法 O(n) 重扫一遍（比调度器的分块快扫慢 ~17×）。
+    private weak var highlighter: EditorHighlightScheduler?
     private let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
     private let textColor = NSColor.tertiaryLabelColor
-
-    /// 每行行首的 UTF-16 偏移缓存。击键/文本变化时失效，滚动重绘时只做二分查找——
-    /// 此前每次 drawHashMarksAndLabels 都从文档头扫到可见区（大文件滚动每帧 O(n)）。
-    private var lineStartOffsets: [Int] = [0]
-    private var lineOffsetsValid = false
 
     /// Returns nil if textView is not yet embedded in a scroll view.
     /// Caller (NativeEditorView.makeNSView) creates this after the scrollView
     /// is set up, so in practice scrollView is always available.
-    init?(textView: NSTextView) {
+    init?(textView: NSTextView, highlighter: EditorHighlightScheduler) {
         guard let scrollView = textView.enclosingScrollView else { return nil }
         self.textView = textView
+        self.highlighter = highlighter
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         self.ruleThickness = 36
         self.clientView = textView
@@ -35,36 +35,9 @@ final class LineNumberRulerView: NSRulerView {
     required init(coder: NSCoder) { fatalError() }
 
     @objc private func textDidChange(_ n: Notification) {
-        lineOffsetsValid = false
         needsDisplay = true
     }
     @objc private func boundsDidChange(_ n: Notification) { needsDisplay = true }
-
-    /// 重建行首偏移表（每次文本变化只做一次，O(n)）。
-    /// 走 `LineOffsetScanner` 的分块快扫——此前这里用逐行 `NSString.range` 的旧法，
-    /// 与调度器各扫一遍，同一份文本每击键付两次、这份还慢 16.7×。
-    private func ensureLineOffsets(_ text: NSString) {
-        guard !lineOffsetsValid else { return }
-        lineStartOffsets = LineOffsetScanner.build(for: text)
-        lineOffsetsValid = true
-    }
-
-    /// 二分查找包含 `charIndex` 的行下标（0-based）。
-    private func lineIndex(forCharacterAt charIndex: Int) -> Int {
-        var low = 0
-        var high = lineStartOffsets.count - 1
-        var result = 0
-        while low <= high {
-            let mid = (low + high) / 2
-            if lineStartOffsets[mid] <= charIndex {
-                result = mid
-                low = mid + 1
-            } else {
-                high = mid - 1
-            }
-        }
-        return result
-    }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
         guard let textView, let layoutManager = textView.layoutManager,
@@ -75,7 +48,6 @@ final class LineNumberRulerView: NSRulerView {
         let visibleChars = layoutManager.characterRange(forGlyphRange: visibleGlyphs, actualGlyphRange: nil)
 
         let text = textView.string as NSString
-        ensureLineOffsets(text)
         let inset = textView.textContainerInset.height
 
         let attrs: [NSAttributedString.Key: Any] = [
@@ -83,8 +55,12 @@ final class LineNumberRulerView: NSRulerView {
             .foregroundColor: textColor
         ]
 
-        // 可见区起点所在行的行号（含起点在某行中间的情况）
-        var lineNumber = lineIndex(forCharacterAt: min(visibleChars.location, max(0, text.length))) + 1
+        // 可见区起点所在行的行号（含起点在某行中间的情况）；
+        // 行偏移表由调度器维护（增量/全量 + 长度兜底），这里只二分
+        var lineNumber = (highlighter?.lineIndex(
+            forCharacterAt: min(visibleChars.location, max(0, text.length)),
+            textLength: textView.textStorage?.length ?? 0
+        ) ?? 0) + 1
 
         // Draw line numbers for visible lines
         var glyphIdx = visibleGlyphs.location
