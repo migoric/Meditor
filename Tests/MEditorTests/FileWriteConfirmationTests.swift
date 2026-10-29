@@ -147,6 +147,20 @@ final class FileWriteConfirmationTests: XCTestCase {
     }
 
     /// 确认条摘要压成单行并截断，避免长文本把面板里的确认条撑爆。
+    func testInsertAtCursor_autoApproved_skipsConfirmation() async throws {
+        ctx.preApprovedWritePaths = ["doc.md"]
+        _ = try await InsertAtCursorTool().execute(arguments: ["text": .string("定时任务插入")], context: ctx)
+        XCTAssertTrue(ctx.confirmedWrites.isEmpty, "autoApprove 命中时不得挂起确认")
+        XCTAssertEqual(ctx.insertedTexts.count, 1)
+    }
+
+    func testInsertAtCursor_tabChangesDuringConfirmation_doesNotInsert() async throws {
+        ctx.confirmWriteHook = { self.ctx.currentTabID = UUID() }
+        let result = try await InsertAtCursorTool().execute(arguments: ["text": .string("错位内容")], context: ctx)
+        XCTAssertTrue(result.contains("[!]"))
+        XCTAssertTrue(ctx.insertedTexts.isEmpty, "确认期间切 Tab 后不得插入新文档")
+    }
+
     func testInsertAtCursor_snippetIsSingleLineAndTruncated() {
         XCTAssertEqual(InsertAtCursorTool.snippet("a\nb\nc"), "a b c")
         let long = String(repeating: "长", count: 100)

@@ -397,152 +397,139 @@ final class AgentRunner {
                         addToolCall(id: call.id, name: call.name, args: prettyArgs(call.arguments))
                     }
 
-                    // 分组：纯查询的只读工具并行执行；写工具与短路分支（参数解析失败 /
-                    // _parse_error / 未知工具）保持串行。取舍：同一轮读写混合时先并行跑完
-                    // 只读、再按原相对顺序串行跑写——模型同一轮先读后写是常态，先跑读不
-                    // 破坏「读到写前状态」的语义（反过来先写后读才会）。run_command 不在
-                    // 只读清单内，永不并行（确认弹框会乱）。
-                    let readIndices = calls.indices.filter { Self.isParallelReadOnly(calls[$0], tools: tools) }
-                    let readIndexSet = Set(readIndices)
+                    // 只并行化响应顺序中连续的只读调用段。写调用与短路分支保持串行，
+                    // 不再把后续只读调用提前到写调用之前，保住模型给出的因果顺序。
+                    var batches: [(indices: [Int], parallel: Bool)] = []
+                    var cursor = 0
+                    while cursor < calls.count {
+                        if Self.isParallelReadOnly(calls[cursor], tools: tools) {
+                            var indices: [Int] = []
+                            while cursor < calls.count, Self.isParallelReadOnly(calls[cursor], tools: tools) {
+                                indices.append(cursor)
+                                cursor += 1
+                            }
+                            batches.append((indices, true))
+                        } else {
+                            batches.append(([cursor], false))
+                            cursor += 1
+                        }
+                    }
 
-                    // 只读组：task group 并行执行，省去多个只读调用串行的多次 RTT。
-                    // 取消会传播给子任务；group 会等所有已启动的子任务收尾后
-                    // 才返回，不会出现「run 结束了工具还在执行」的悬挂写。
-                    if !readIndices.isEmpty && !Task.isCancelled {
-                        try await withThrowingTaskGroup(of: (Int, AgentToolResult, TimeInterval).self) { group in
-                            for i in readIndices {
+                    for batch in batches {
+                        if stalled { break }
+                        if batch.parallel {
+                            guard !Task.isCancelled else { cancelled = true; break }
+                            try await withThrowingTaskGroup(of: (Int, AgentToolResult, TimeInterval).self) { group in
+                                for i in batch.indices {
+                                    let call = calls[i]
+                                    guard let tool = tools.first(where: { $0.spec.name == call.name }) else { continue }
+                                    group.addTask {
+                                        let startedAt = Date()
+                                        let result: AgentToolResult
+                                        if let violation = tool.validateArguments(call.arguments) {
+                                            result = AgentToolResult(
+                                                toolCallID: call.id, toolName: call.name,
+                                                content: violation, isError: true
+                                            )
+                                        } else {
+                                            do {
+                                                let output = try await tool.execute(arguments: call.arguments, context: context)
+                                                result = AgentToolResult(toolCallID: call.id, toolName: call.name, content: output)
+                                            } catch {
+                                                result = AgentToolResult(
+                                                    toolCallID: call.id, toolName: call.name,
+                                                    content: "错误：\(error.localizedDescription)", isError: true
+                                                )
+                                            }
+                                        }
+                                        return (i, result, Date().timeIntervalSince(startedAt))
+                                    }
+                                }
+                                for try await (i, result, duration) in group {
+                                    results[i]   = result
+                                    durations[i] = duration
+                                }
+                                if Task.isCancelled { throw CancellationError() }
+                            }
+                            for i in batch.indices {
+                                if let result = results[i] {
+                                    markToolCallDone(id: calls[i].id, result: result, durationSeconds: durations[i])
+                                }
+                            }
+                            for i in batch.indices {
+                                guard let result = results[i] else { continue }
+                                if recordStallIfNeeded(call: calls[i], result: result,
+                                                       lastFailureFingerprint: &lastFailureFingerprint,
+                                                       consecutiveFailures: &consecutiveFailures) {
+                                    stalled = true
+                                    break
+                                }
+                            }
+                        } else {
+                            for i in batch.indices {
+                                guard !Task.isCancelled else { cancelled = true; break }
                                 let call = calls[i]
-                                // isParallelReadOnly 已保证工具存在且参数解析成功
-                                guard let tool = tools.first(where: { $0.spec.name == call.name }) else { continue }
-                                group.addTask {
-                                    let startedAt = Date()
-                                    let result: AgentToolResult
-                                    // 参数运行时校验（required/类型/enum）：与串行组、
-                                    // MCPServer 同一把尺子。失败按工具错误回灌让模型自纠，
-                                    // 不升级成整轮失败（同 argumentsParseError 的处理）。
+
+                                var result: AgentToolResult
+                                var duration: TimeInterval? = nil
+                                if let parseError = call.argumentsParseError {
+                                    let raw = call.rawArgumentsJSON ?? ""
+                                    result = AgentToolResult(
+                                        toolCallID: call.id,
+                                        toolName:   call.name,
+                                        content: "工具 '\(call.name)' 的参数 JSON 解析失败（\(parseError)），未执行。\n原始参数：\(raw.prefix(200))\n请重新生成合法的 JSON 参数后再调用该工具。",
+                                        isError: true
+                                    )
+                                } else if call.name == "_parse_error" {
+                                    let args     = call.arguments
+                                    let original = args["original_tool"]?.stringValue ?? "unknown"
+                                    let rawArgs  = args["raw_arguments"]?.stringValue ?? ""
+                                    result = AgentToolResult(
+                                        toolCallID: call.id,
+                                        toolName:   original,
+                                        content: "[X] Tool call '\(original)' failed: arguments JSON could not be parsed.\nRaw: \(rawArgs.prefix(200))\nPlease retry with properly formatted JSON arguments.",
+                                        isError: true
+                                    )
+                                } else if let tool = tools.first(where: { $0.spec.name == call.name }) {
                                     if let violation = tool.validateArguments(call.arguments) {
                                         result = AgentToolResult(
                                             toolCallID: call.id, toolName: call.name,
                                             content: violation, isError: true
                                         )
                                     } else {
+                                        let startedAt = Date()
                                         do {
                                             let output = try await tool.execute(arguments: call.arguments, context: context)
                                             result = AgentToolResult(toolCallID: call.id, toolName: call.name, content: output)
                                         } catch {
+                                            if Self.isCancellation(error) { throw error }
                                             result = AgentToolResult(
                                                 toolCallID: call.id, toolName: call.name,
                                                 content: "错误：\(error.localizedDescription)", isError: true
                                             )
                                         }
+                                        duration = Date().timeIntervalSince(startedAt)
                                     }
-                                    return (i, result, Date().timeIntervalSince(startedAt))
-                                }
-                            }
-                            for try await (i, result, duration) in group {
-                                results[i]   = result
-                                durations[i] = duration
-                            }
-                            // 批结束后检查取消（withTaskGroup 非 throwing 不能逐个透传）：
-                            // 被取消时丢弃整批结果抛出 CancellationError，与串行路径一致，
-                            // 避免误导性的「错误：cancelled」工具结果回灌历史
-                            if Task.isCancelled { throw CancellationError() }
-                        }
-                        // 步骤 UI 按原顺序统一标记完成：结果可乱序到达，但 state 更新
-                        // 保持可预期顺序，避免步骤面板乱跳
-                        for i in readIndices {
-                            if let result = results[i] {
-                                markToolCallDone(id: calls[i].id, result: result, durationSeconds: durations[i])
-                            }
-                        }
-                        // 停滞记账（只读组，按原相对顺序）：达阈值则本轮写工具不再执行
-                        for i in readIndices {
-                            guard let result = results[i] else { continue }
-                            if recordStallIfNeeded(call: calls[i], result: result,
-                                                   lastFailureFingerprint: &lastFailureFingerprint,
-                                                   consecutiveFailures: &consecutiveFailures) {
-                                stalled = true
-                                break
-                            }
-                        }
-                    }
-
-                    // 写组/短路组：保持串行与原分支逻辑（写确认弹框依赖串行挂起语义）
-                    if !stalled {
-                        for i in calls.indices where !readIndexSet.contains(i) {
-                            guard !Task.isCancelled else { cancelled = true; break }
-                            let call = calls[i]
-
-                            var result: AgentToolResult
-                            /// 工具实际执行耗时（仅真实执行分支有值，存入 step 供 UI/排查用）
-                            var duration: TimeInterval? = nil
-                            if let parseError = call.argumentsParseError {
-                                // 参数 JSON 非法（对所有后端生效，同 ClaudeCLIBackend 的 _parse_error）：
-                                // 跳过执行，直接回灌错误，让模型重新生成合法 JSON
-                                let raw = call.rawArgumentsJSON ?? ""
-                                result = AgentToolResult(
-                                    toolCallID: call.id,
-                                    toolName:   call.name,
-                                    content: "工具 '\(call.name)' 的参数 JSON 解析失败（\(parseError)），未执行。\n原始参数：\(raw.prefix(200))\n请重新生成合法的 JSON 参数后再调用该工具。",
-                                    isError: true
-                                )
-                            } else if call.name == "_parse_error" {
-                                // ClaudeCLIBackend 注入的占位工具：JSON 解析失败，让 AI 看到错误后重试
-                                let args     = call.arguments
-                                let original = args["original_tool"]?.stringValue ?? "unknown"
-                                let rawArgs  = args["raw_arguments"]?.stringValue ?? ""
-                                result = AgentToolResult(
-                                    toolCallID: call.id,
-                                    toolName:   original,
-                                    content: "[X] Tool call '\(original)' failed: arguments JSON could not be parsed.\nRaw: \(rawArgs.prefix(200))\nPlease retry with properly formatted JSON arguments.",
-                                    isError: true
-                                )
-                            } else if let tool = tools.first(where: { $0.spec.name == call.name }) {
-                                // 参数运行时校验（required/类型/enum）：失败回灌让模型自纠，
-                                // 不计耗时（未真实执行），也不计入停滞指纹。
-                                if let violation = tool.validateArguments(call.arguments) {
+                                } else {
                                     result = AgentToolResult(
                                         toolCallID: call.id, toolName: call.name,
-                                        content: violation, isError: true
+                                        content: "未找到工具：\(call.name)", isError: true
                                     )
-                                } else {
-                                    let startedAt = Date()
-                                    do {
-                                        let output = try await tool.execute(arguments: call.arguments, context: context)
-                                        result = AgentToolResult(toolCallID: call.id, toolName: call.name, content: output)
-                                    } catch {
-                                        // 取消不是工具失败：直接抛给外层 catch（break 走向收尾，
-                                        // 缺口由 reconcileToolResults 补合成中断结果），不包装成
-                                        // 误导性的 tool error 回灌历史、也不计入停滞指纹。
-                                        if Self.isCancellation(error) { throw error }
-                                        result = AgentToolResult(
-                                            toolCallID: call.id, toolName: call.name,
-                                            content: "错误：\(error.localizedDescription)", isError: true
-                                        )
-                                    }
-                                    duration = Date().timeIntervalSince(startedAt)
                                 }
-                            } else {
-                                result = AgentToolResult(
-                                    toolCallID: call.id, toolName: call.name,
-                                    content: "未找到工具：\(call.name)", isError: true
-                                )
-                            }
 
-                            results[i]   = result
-                            durations[i] = duration
-                            markToolCallDone(id: call.id, result: result, durationSeconds: duration)
+                                results[i]   = result
+                                durations[i] = duration
+                                markToolCallDone(id: call.id, result: result, durationSeconds: duration)
 
-                            if recordStallIfNeeded(call: call, result: result,
-                                                   lastFailureFingerprint: &lastFailureFingerprint,
-                                                   consecutiveFailures: &consecutiveFailures) {
-                                stalled = true
-                                break
+                                if recordStallIfNeeded(call: call, result: result,
+                                                       lastFailureFingerprint: &lastFailureFingerprint,
+                                                       consecutiveFailures: &consecutiveFailures) {
+                                    stalled = true
+                                    break
+                                }
                             }
                         }
                     }
-                    // 并行只读批期间到达的取消：串行组首条 guard 已覆盖；全部只读且
-                    // 无串行成员时在这里兜底，保证取消后不再追加 thinking 直接进入收尾
                     if Task.isCancelled { cancelled = true }
 
                     // 按原顺序回灌 tool result（配对合法性）；取消/停滞造成的空缺由

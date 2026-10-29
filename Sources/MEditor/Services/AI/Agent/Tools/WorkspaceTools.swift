@@ -121,26 +121,40 @@ struct WriteFileTool: AgentTool {
         guard let filename = arguments["filename"]?.stringValue,
               let content  = arguments["content"]?.stringValue
         else { throw AgentError.executionError("缺少 filename 或 content 参数") }
-        // 写入前确认：本 run 已免确认（全部允许 / autoApprove 白名单命中）则直接放行，
-        // 否则挂起等用户在确认条上决定
+        let resolved = await context.resolveFile(filename)
+        if let message = resolved.promptMessage(forQuery: filename) { return message }
+        let existingURL: URL?
+        if case .found(let url) = resolved { existingURL = url } else { existingURL = nil }
+        var finalContent = content
         if !(await context.isFileWritePreApproved(path: filename)) {
             let lines = content.components(separatedBy: "\n").count
-            // diff 预览：已存在文件取写前内容（fileContentFull = tab 内存优先），新文件按纯新增
             let base: WriteBaseContent
-            if case .found(let url) = await context.resolveFile(filename) {
-                base = (try? await context.fileContentFull(at: url))
-                    .map { .existing($0) } ?? .unavailable
+            if let existingURL {
+                guard let old = try? await context.fileContentFull(at: existingURL) else {
+                    return "[!] 无法读取写前原文，为避免覆盖现有内容本次未落盘。请先确认文件可读后重试。"
+                }
+                base = .existing(old)
             } else {
                 base = .newFile
             }
             let preview = WriteDiffPreviewBuilder.make(
                 path: filename, summary: "写入 \(filename)（约 \(lines) 行）",
                 base: base, newContent: content)
-            let approved = await context.confirmFileWrite(preview)
-            guard approved else { return "[!] 用户已拒绝写入：\(filename)" }
+            guard let approved = await context.reviewFileWrite(preview, base: base, newContent: content) else {
+                return "[!] 用户已拒绝写入：\(filename)（未落盘）"
+            }
+            finalContent = approved
+            if let existingURL, case .existing(let old) = base {
+                let current = try await context.fileContentFull(at: existingURL)
+                guard current == old else {
+                    return "[!] 文件在审阅期间已被修改，为避免覆盖新编辑本次未落盘。请重新读取后再写入。"
+                }
+            } else if await context.resolveExistingFile(filename) != nil {
+                return "[!] 文件在审阅期间已被创建，为避免覆盖新内容本次未落盘。"
+            }
         }
-        let url = try await context.writeFile(name: filename, content: content)
-        return "[OK] 已写入文件：\(url.lastPathComponent)（\(content.count) 字符）"
+        let url = try await context.writeFile(name: filename, content: finalContent)
+        return "[OK] 已写入文件：\(url.lastPathComponent)（\(finalContent.count) 字符）"
     }
 }
 

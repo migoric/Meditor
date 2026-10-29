@@ -183,4 +183,9 @@ final class AgentRunCheckpoint {
         isRolledBack = true
         rollbackSummary = summary
     }
+
+    /// 写盘失败时记录摘要但保留可重试状态。
+    func recordRollbackSummary(_ summary: String) {
+        rollbackSummary = summary
+    }
 }

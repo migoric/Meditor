@@ -240,6 +240,11 @@ final class AgentWriteConfinementTests: XCTestCase {
         XCTAssertFalse(ctx.openFile(named: secret.path), "工作区外的 open_file 必须被拒绝")
         XCTAssertTrue(adapter.openTabPaths.isEmpty)
     }
+
+    func testDocumentAdapter_defaultWriteConfirmation_isFailClosed() async {
+        let allowed = await adapter.confirmFileWrite("a.md", summary: "write")
+        XCTAssertFalse(allowed, "未显式接入确认的适配器必须默认拒绝写入")
+    }
 }
 
 // MARK: - async 断言辅助

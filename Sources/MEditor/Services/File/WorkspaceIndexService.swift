@@ -68,6 +68,21 @@ actor WorkspaceIndexService {
         }
     }
     private let readyFlag = ReadyFlag()
+    private final class BuildRequestFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _root: URL?
+        var root: URL? {
+            get { lock.lock(); defer { lock.unlock() }; return _root }
+            set { lock.lock(); _root = newValue; lock.unlock() }
+        }
+    }
+    private let buildRequestFlag = BuildRequestFlag()
+
+    /// 在工作区扫描开始前登记最新 root 并让旧索引立即失效，晚到的旧构建会被拒绝。
+    nonisolated func prepareBuild(root: URL?) {
+        buildRequestFlag.root = root
+        readyFlag.value = false
+    }
 
     /// 首次全量构建是否已完成。构建中/已清空为 false。
     nonisolated var isReady: Bool { readyFlag.value }
@@ -82,14 +97,17 @@ actor WorkspaceIndexService {
     /// 打开工作区时的全量重建。整个构建在 actor 内同步完成（IO 在后台执行），
     /// 期间到达的 search 调用会排队到构建结束后执行——UI 输入即搜自然得到最新结果。
     func buildIndex(root: URL) {
-        buildIndex(root: root, enumeratedFiles: Self.enumerateWorkspaceFiles(root: root))
+        prepareBuild(root: root)
+        buildIndex(root: root, enumeratedFiles: Self.enumerateWorkspaceFiles(root: root),
+                   requireCurrentRequest: true)
     }
 
     /// 枚举结果已由组合根（AppState 的工作区扫描合一）提供时的构建入口：
     /// 消费方不再自行枚举整树。`enumeratedFiles` 必须满足与本服务
     /// `enumerateWorkspaceFiles` 相同的谓词（由 FileService.scanWorkspace 保证）。
-    func buildIndex(root: URL, enumeratedFiles: [URL]) {
+    func buildIndex(root: URL, enumeratedFiles: [URL], requireCurrentRequest: Bool = false) {
         refreshGeneration &+= 1   // 取消未执行的增量刷新
+        guard !requireCurrentRequest || buildRequestFlag.root == root else { return }
         self.root = root
         setReady(false)
         var newFiles: [URL: IndexedFile] = [:]
@@ -98,12 +116,17 @@ actor WorkspaceIndexService {
                 newFiles[url] = file
             }
         }
+        guard !requireCurrentRequest || buildRequestFlag.root == root else {
+            setReady(false)
+            return
+        }
         files = newFiles
         setReady(true)
     }
 
     /// 关闭/切换工作区时释放索引。
     func clear() {
+        prepareBuild(root: nil)
         refreshGeneration &+= 1
         root = nil
         files = [:]

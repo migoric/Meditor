@@ -343,6 +343,7 @@ final class AppState {
     let agentDemoFlow = AgentDemoFlow()
     /// 首次全量构建完成标记（@Observable 可追踪），搜索 UI 用它显示「索引构建中…」。
     private(set) var workspaceIndexReady = false
+    @ObservationIgnored private var workspaceScanGeneration = 0
 
     /// rootURL 变化时重建/释放索引；枚举与构建均在后台执行，不占主线程。
     ///
@@ -352,8 +353,11 @@ final class AppState {
     /// 扫描谓词取三方并集、按消费方原谓词过滤，各方可见集合不变
     /// （谓词对齐的取舍见 scanWorkspace 注释）。
     private func rebuildWorkspaceIndex(root: URL?) {
+        workspaceScanGeneration &+= 1
+        let generation = workspaceScanGeneration
         workspaceIndexReady = false
         let index = workspaceIndex
+        index.prepareBuild(root: root)
         let spotlight = SpotlightIndexManager.shared
         guard let root else {
             Task { await index.clear() }
@@ -371,9 +375,16 @@ final class AppState {
             let scan = await Task.detached(priority: .utility) {
                 service.scanWorkspace(under: root)
             }.value
-            await tree.applyScannedIndex(files: scan.treeFiles, items: scan.treeItems, rootURL: root)
-            await index.buildIndex(root: root, enumeratedFiles: scan.contentFileURLs)
-            self?.workspaceIndexReady = true
+            guard let self, self.workspaceScanGeneration == generation,
+                  self.rootURL?.standardizedFileURL == root.standardizedFileURL else { return }
+            tree.applyScannedIndex(files: scan.treeFiles, items: scan.treeItems, rootURL: root)
+            guard self.workspaceScanGeneration == generation,
+                  self.rootURL?.standardizedFileURL == root.standardizedFileURL else { return }
+            await index.buildIndex(root: root, enumeratedFiles: scan.contentFileURLs,
+                                   requireCurrentRequest: true)
+            guard self.workspaceScanGeneration == generation,
+                  self.rootURL?.standardizedFileURL == root.standardizedFileURL else { return }
+            self.workspaceIndexReady = true
             // 系统 Spotlight 全量索引（批量后台写入；切换工作区时旧 domain 由 reindex 内部清理）。
             await spotlight.reindex(root: root, enumeratedFiles: scan.markdownFileURLs,
                                     includeContent: includeContent)

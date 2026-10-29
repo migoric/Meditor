@@ -85,12 +85,34 @@ final class MobileAgentContext: AgentContextProtocol {
     /// iOS 无散文件 Tab 概念，工作区即全部可写范围）。
     /// DefaultAgentFileRepository.resolveURL 接受绝对路径与 ../——读路径由沙盒兜底，
     /// 写路径在此拒绝逃逸，防止提示注入诱导 Agent 写工作区外文件。
+    private func canonicalURL(_ url: URL) -> URL {
+        var base = url.standardizedFileURL
+        var suffix: [String] = []
+        while !FileManager.default.fileExists(atPath: base.path), base.path != "/" {
+            suffix.insert(base.lastPathComponent, at: 0)
+            base.deleteLastPathComponent()
+        }
+        var resolved = base.resolvingSymlinksInPath()
+        for component in suffix { resolved.appendPathComponent(component) }
+        return resolved
+    }
+
     private func validateWriteTarget(_ url: URL) throws {
-        let target = url.standardizedFileURL
-        guard let root = workspaceURL?.standardizedFileURL,
+        let target = canonicalURL(url)
+        guard let root = workspaceURL.map(canonicalURL),
               target.path == root.path || target.path.hasPrefix(root.path + "/") else {
             throw AgentContextError.pathOutsideWorkspace(target.path)
         }
+    }
+
+    private func validateReadTarget(_ url: URL) throws {
+        let target = canonicalURL(url)
+        if let root = workspaceURL.map(canonicalURL),
+           target.path == root.path || target.path.hasPrefix(root.path + "/") {
+            return
+        }
+        if url.standardizedFileURL == store.sandboxURL?.standardizedFileURL { return }
+        throw AgentContextError.pathOutsideWorkspace(target.path)
     }
 
     // MARK: - WorkspaceContext
@@ -102,10 +124,12 @@ final class MobileAgentContext: AgentContextProtocol {
     }
 
     func readFile(at url: URL) async throws -> String {
-        try await repo.readFile(at: url)
+        try validateReadTarget(url)
+        return try await repo.readFile(at: url)
     }
 
     func fileContentFull(at url: URL) async throws -> String {
+        try validateReadTarget(url)
         if url.standardizedFileURL == store.sandboxURL?.standardizedFileURL {
             return store.text
         }
