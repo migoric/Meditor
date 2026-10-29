@@ -7,6 +7,7 @@ class MockFileService: FileServiceProtocol, @unchecked Sendable {
     var fileExistsResult = true
     var readResult: String = "# Test"
     var readError: Error? = nil
+    var removeError: Error? = nil
     var writtenContent: String? = nil
     /// 测试用：写盘前人为延迟，模拟慢速写盘造成的乱序窗口。
     var writeDelay: TimeInterval = 0
@@ -144,6 +145,7 @@ class MockFileService: FileServiceProtocol, @unchecked Sendable {
     }
 
     func removeItem(at url: URL) throws {
+        if let removeError { throw removeError }
         lock.lock()
         files.removeValue(forKey: url)
         lock.unlock()

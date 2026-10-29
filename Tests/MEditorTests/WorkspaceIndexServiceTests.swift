@@ -277,6 +277,34 @@ final class WorkspaceIndexServiceTests: XCTestCase {
         XCTAssertTrue(results[0].hasPrefix("a.md:"))
     }
 
+    func testBuild_staleWorkspaceRequest_cannotOverwriteLatestRoot() async {
+        let rootA = tempDir.appendingPathComponent("A")
+        let rootB = tempDir.appendingPathComponent("B")
+        try! FileManager.default.createDirectory(at: rootA, withIntermediateDirectories: true)
+        try! FileManager.default.createDirectory(at: rootB, withIntermediateDirectories: true)
+        let fileA = rootA.appendingPathComponent("a.md")
+        let fileB = rootB.appendingPathComponent("b.md")
+        try! "from A".write(to: fileA, atomically: true, encoding: .utf8)
+        try! "from B".write(to: fileB, atomically: true, encoding: .utf8)
+
+        index.prepareBuild(root: rootA)
+        await index.buildIndex(root: rootA, enumeratedFiles: [fileA], requireCurrentRequest: true)
+        XCTAssertTrue(index.isReady)
+
+        index.prepareBuild(root: rootB)
+        XCTAssertFalse(index.isReady, "切换扫描开始时旧索引必须立即失效")
+        await index.buildIndex(root: rootA, enumeratedFiles: [fileA], requireCurrentRequest: true)
+
+        XCTAssertFalse(index.isReady, "旧 root 的晚到构建不得标记索引就绪")
+        let staleCount = await index.indexedFileCount
+        XCTAssertEqual(staleCount, 1, "旧构建不得额外写入或替换当前索引")
+
+        await index.buildIndex(root: rootB, enumeratedFiles: [fileB], requireCurrentRequest: true)
+        let results = await index.search(query: "from B")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertTrue(index.isReady)
+    }
+
     // MARK: - 性能（构造千级文件工作区，打印实测值，断言放宽到数量级兜底）
 
     func testPerformance_thousandFileWorkspace() async throws {

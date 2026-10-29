@@ -57,6 +57,7 @@ final class MockAgentContext: AgentContextProtocol {
     /// 文件写入确认的注入结果 / run 级「全部允许」开关（spy 语义同 commandConfirmResult）
     var writeConfirmResult: Bool                    = true
     var fileWriteAllowedForRun: Bool                = false
+    var preApprovedWritePaths: Set<String>          = []
     /// 写前审阅结果注入：返回批准后的最终内容（可改写），nil = 用户拒绝/取消。
     /// 未设置时走协议默认语义——转发 confirmFileWrite（Bool 确认），保持既有测试不变。
     var reviewWriteHandler: ((FileWritePreview, String) -> String?)? = nil
@@ -237,6 +238,10 @@ final class MockAgentContext: AgentContextProtocol {
     }
 
     var isFileWriteAllowedForRun: Bool { fileWriteAllowedForRun }
+
+    func isFileWritePreApproved(path: String) -> Bool {
+        fileWriteAllowedForRun || preApprovedWritePaths.contains(path)
+    }
 
     func isCommandApproved(_ key: String) -> Bool {
         _approvedKeys.contains(key)

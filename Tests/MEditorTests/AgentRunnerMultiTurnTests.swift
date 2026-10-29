@@ -294,8 +294,8 @@ final class AgentRunnerMultiTurnTests: XCTestCase {
         XCTAssertTrue(log.overlapped("read_file", "search_workspace"), "只读调用应并行执行")
     }
 
-    /// 读写混合（响应顺序：写在前）：读先并行跑完，写再串行执行；回灌仍按原顺序
-    func test_readWriteMixed_readsRunBeforeWrites_feedbackInOriginalOrder() async {
+    /// 读写混合（响应顺序：写在前）：必须先写再读，回灌仍按原顺序
+    func test_readWriteMixed_preservesResponseOrder_feedbackInOriginalOrder() async {
         let log = ToolExecutionLog()
         let tools: [any AgentTool] = [
             RecordingTool(name: "write_document", log: log),
@@ -313,10 +313,10 @@ final class AgentRunnerMultiTurnTests: XCTestCase {
 
         await runAndWait(runner, tools: tools)
 
-        // 执行顺序：只读并行先于写（只读之间是并行启动，相对顺序不保证）
-        XCTAssertEqual(Set(log.startOrder.prefix(2)), ["read_document", "read_file"],
-                       "两个只读调用应先于写执行")
-        XCTAssertEqual(log.startOrder.last, "write_document", "写调用必须最后执行")
+        // 执行顺序：写必须先完成，后续两个只读调用才可并行启动
+        XCTAssertEqual(log.startOrder.first, "write_document", "写调用不得被后续只读调用抢跑")
+        XCTAssertEqual(Set(log.startOrder.suffix(2)), ["read_document", "read_file"],
+                       "写后连续只读调用仍应组成并行批")
         // 回灌顺序：按 response.toolCalls 原顺序
         let toolMessages = runner.finalMessages.filter { $0.role == .tool }
         XCTAssertEqual(toolMessages.map(\.toolCallID), ["w1", "r1", "r2"])

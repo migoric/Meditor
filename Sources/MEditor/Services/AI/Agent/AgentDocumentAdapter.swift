@@ -57,8 +57,8 @@ extension AgentDocumentAdapter {
     var currentTabID: UUID? { nil }
     /// 默认无挂起确认——mock / 测试实现无需关心此方法。
     func cancelPendingCommandConfirmation() {}
-    /// 默认放行——mock / headless 实现无需感知写入确认流程，不破坏既有 conformer。
-    func confirmFileWrite(_ path: String, summary: String) async -> Bool { true }
+    /// 默认拒绝（fail-closed）——测试或无头场景需要放行时必须显式覆写。
+    func confirmFileWrite(_ path: String, summary: String) async -> Bool { false }
     /// 默认丢弃 diff、转发旧签名——只实现 path/summary 版本的 conformer 语义不变。
     func confirmFileWrite(_ preview: FileWritePreview) async -> Bool {
         await confirmFileWrite(preview.path, summary: preview.summary)
@@ -92,9 +92,9 @@ final class AppStateDocumentAdapter: AgentDocumentAdapter {
 
     var currentDocument: String? {
         guard let tab = appState?.selectedTab else { return nil }
-        // Tab 刚打开，内容异步加载中：回退读盘，避免 agent 误判"文件为空"
+        // Tab 刚打开，内容异步加载中：完整读盘失败时返回 nil，禁止把空内容或截断内容当写前原文。
         if tab.awaitingInitialContent {
-            return (try? fileRepo.readFileSyncFallback(at: tab.url)) ?? tab.content
+            return try? fileRepo.readFileFullSyncFallback(at: tab.url)
         }
         return tab.content
     }
@@ -117,9 +117,12 @@ final class AppStateDocumentAdapter: AgentDocumentAdapter {
     func patchDocument(find: String, replace: String, all: Bool = false) throws -> Int {
         guard let state = appState,
               let tab = state.selectedTab else { throw AgentContextError.noActiveDocument }
-        let original = tab.awaitingInitialContent
-            ? ((try? fileRepo.readFileSyncFallback(at: tab.url)) ?? tab.content)
-            : tab.content
+        let original: String
+        if tab.awaitingInitialContent {
+            original = try fileRepo.readFileFullSyncFallback(at: tab.url)
+        } else {
+            original = tab.content
+        }
         let (updated, count) = PatchEngine.apply(to: original, find: find, replace: replace, all: all)
         if count == 0 {
             throw PatchNotFoundError(

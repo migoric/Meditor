@@ -453,6 +453,51 @@ final class AgentWriteReviewTests: XCTestCase {
         XCTAssertFalse(appState.diffReview.isPresented)
     }
 
+    func testAdapter_largeDocumentDuringInitialLoad_patchKeepsFullSuffix() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let url = temp.appendingPathComponent("large.md")
+        let original = String(repeating: "a", count: 70_000) + "TARGET" + String(repeating: "z", count: 10_000)
+        try original.write(to: url, atomically: true, encoding: .utf8)
+        let appState = AppState()
+        let tab = EditorTab(url: url, content: "", language: .markdown, awaitingInitialContent: true)
+        appState.openTabs = [tab]
+        appState.selectedTabID = tab.id
+        let repo = DefaultAgentFileRepository { temp }
+        let adapter = AppStateDocumentAdapter(appState: appState, fileRepo: repo)
+
+        _ = try adapter.patchDocument(find: "TARGET", replace: "REPLACED", all: false)
+
+        XCTAssertEqual(tab.content, original.replacingOccurrences(of: "TARGET", with: "REPLACED"),
+                       "加载中的大文档必须用完整原文 patch，不得截断后缀")
+    }
+
+    func testWriteFile_contentChangesDuringReview_doesNotOverwriteNewEdit() async throws {
+        ctx.reviewWriteHandler = { _, proposed in
+            self.ctx.files["notes.md"] = "用户在确认期间的新编辑"
+            return proposed
+        }
+        let result = try await WriteFileTool().execute(
+            arguments: ["filename": .string("notes.md"), "content": .string("agent 全量版本")],
+            context: ctx
+        )
+        XCTAssertTrue(result.contains("[!]"))
+        XCTAssertEqual(ctx.files["notes.md"], "用户在确认期间的新编辑")
+        XCTAssertTrue(ctx.writtenFiles.isEmpty, "审阅期间内容已变化时必须放弃覆盖")
+    }
+
+    func testWriteFile_originalReadFails_doesNotOverwrite() async throws {
+        ctx.fileContentError = CocoaError(.fileReadNoPermission)
+        let result = try await WriteFileTool().execute(
+            arguments: ["filename": .string("notes.md"), "content": .string("agent 全量版本")],
+            context: ctx
+        )
+        XCTAssertTrue(result.contains("[!]"))
+        XCTAssertEqual(ctx.files["notes.md"], "Alpha\n\nBeta")
+        XCTAssertTrue(ctx.writtenFiles.isEmpty)
+    }
+
     // MARK: - 设置开关
 
     func testAutoApplyWritesSetting_persistsRoundtrip() {

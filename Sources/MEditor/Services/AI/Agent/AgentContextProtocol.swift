@@ -167,7 +167,7 @@ extension ShellContext {
     }
     /// 默认无挂起确认——与 cancelPendingCommandConfirmation 的默认实现同理。
     func cancelPendingWriteConfirmation() {}
-    /// 默认无「全部允许」状态——未接入 UI 的实现每次写都走 confirmFileWrite（其默认实现放行）。
+    /// 默认无「全部允许」状态——未接入 UI 的实现每次写都走 confirmFileWrite（其默认实现拒绝）。
     var isFileWriteAllowedForRun: Bool { false }
     /// 默认只看「全部允许」——mock / headless / 移动端无 autoApprove 概念，行为与此前一致。
     func isFileWritePreApproved(path: String) -> Bool { isFileWriteAllowedForRun }

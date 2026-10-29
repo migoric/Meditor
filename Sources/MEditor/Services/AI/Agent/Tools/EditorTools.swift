@@ -33,8 +33,9 @@ struct InsertAtCursorTool: AgentTool {
         // 插入同样修改用户内容：与 patch_document / write_document 同级走写前确认。
         // 这里给不了 diff——插入点由编辑器光标决定，工具拿不到「插入后全文」，
         // 所以 base 走 .unavailable（确认条只显示目标 + 摘要，不进全屏审阅）。
-        if !(await context.isFileWriteAllowedForRun) {
-            let docName = await context.currentDocumentName ?? "当前文档"
+        let docName = await context.currentDocumentName ?? "当前文档"
+        let sourceTabID = await context.currentTabID
+        if !(await context.isFileWritePreApproved(path: docName)) {
             let preview = WriteDiffPreviewBuilder.make(
                 path: docName,
                 summary: "在 \(docName) 插入 \(text.count) 字符：\(Self.snippet(text))",
@@ -43,6 +44,10 @@ struct InsertAtCursorTool: AgentTool {
             guard await context.confirmFileWrite(preview) else {
                 return "[!] 用户已拒绝插入：\(docName)（未改动）"
             }
+        }
+        if let refusal = try await AuthoringWrite.validateCurrentDocumentTarget(
+            sourceTabID: sourceTabID, docName: docName, context: context) {
+            return refusal
         }
         await context.insertIntoDocument(text)
         return "[OK] 内容已插入（\(text.count) 字符）"

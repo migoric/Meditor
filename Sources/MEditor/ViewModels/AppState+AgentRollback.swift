@@ -53,8 +53,12 @@ extension AppState {
                         succeeded[index] = false
                     }
                 case .deleteCreated(let url):
-                    try? fileService.removeItem(at: url)
-                    succeeded[index] = true
+                    do {
+                        try fileService.removeItem(at: url)
+                        succeeded[index] = true
+                    } catch {
+                        succeeded[index] = false
+                    }
                 case .skip:
                     succeeded[index] = true
                 }
@@ -65,11 +69,13 @@ extension AppState {
         // 3) 回到主线程应用结果 + 同步 UI。
         var restored = 0, deleted = 0
         var skipped: [String] = []
+        var hadWriteFailure = false
 
         for (index, action) in actions.enumerated() {
             switch action {
             case .restore(let url, let content):
                 guard writeSucceeded[index] == true else {
+                    hadWriteFailure = true
                     skipped.append("\(url.lastPathComponent)（\(L("ai.rollback.skipWriteFailed"))）")
                     continue
                 }
@@ -91,6 +97,11 @@ extension AppState {
                 reloadHTMLPreviewIfShowing(url)
 
             case .deleteCreated(let url):
+                guard writeSucceeded[index] == true else {
+                    hadWriteFailure = true
+                    skipped.append("\(url.lastPathComponent)（\(L("ai.rollback.skipWriteFailed"))）")
+                    continue
+                }
                 deleted += 1
                 // planRollback 已校验 tab 内容 == run 写入内容，直接关闭不丢用户编辑；
                 // 走 performCloseTab（不经 closeTab 的未保存确认弹窗）
@@ -113,7 +124,11 @@ extension AppState {
         if !skipped.isEmpty {
             summary += String(format: L("ai.rollback.summarySkipped"), skipped.joined(separator: "、"))
         }
-        checkpoint.markRolledBack(summary: summary)
+        if hadWriteFailure {
+            checkpoint.recordRollbackSummary(summary)
+        } else {
+            checkpoint.markRolledBack(summary: summary)
+        }
         showToast(summary, icon: "arrow.uturn.backward")
         return actions
     }

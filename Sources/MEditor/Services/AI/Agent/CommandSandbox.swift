@@ -202,7 +202,11 @@ public enum CommandSandbox {
         //    只会让真实 token 更可见（保守方向），路径里的合法反斜杠（如 `\ `）
         //    删除后不会凭空拼出新的命令 token。
         out = out.replacingOccurrences(of: "\\", with: "")
-        // 2) 管道符后紧跟字母/数字时补空格：`echo x |bash` 与 `| bash` 等价，
+        // 2) 去除单双引号：shell 会把 `c''url` / `c"u"rl` 拼成同一个命令名。
+        //    与反斜杠处理同理，宁可让参数中的高风险文本也进入匹配，不让命令名绕过。
+        out = out.replacingOccurrences(of: "'", with: "")
+        out = out.replacingOccurrences(of: "\"", with: "")
+        // 3) 管道符后紧跟字母/数字时补空格：`echo x |bash` 与 `| bash` 等价，
         //    无空格写法本来匹配不到规则表里的 "| bash"/"| sh"。只在 `|` 后是
         //    字母/数字时插入，避免破坏 ":(){ :|:& };:" 这类含 `|:` 的 blocked 模式。
         out = out.replacingOccurrences(of: #"\|(?=[a-z0-9])"#, with: "| ",
