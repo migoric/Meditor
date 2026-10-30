@@ -17,7 +17,8 @@
   var FENCE_INDENTED = /^\s+(`{3,}|~{3,})/;
 
   /** 无缩进的列表项行（`- ` / `* ` / `+ ` / `1. ` / `1) `）。 */
-  var LIST_ITEM_LINE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+  var ANY_LIST_ITEM_LINE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/m;
+  var FIRST_LIST_ITEM = /^\n* {0,3}(?:(\d{1,9}[.)])|([-*+]))(?:[ \t]|$)/;
 
   /**
    * 会**跨空行**的 HTML 块起始（CommonMark 类型 1–5）。
@@ -26,19 +27,7 @@
   var HTML_SPANNING_OPEN = /^ {0,3}(?:<(script|pre|style|textarea)(?=[\s>]|$)|<!--|<\?|<!\[CDATA\[|<![A-Z])/i;
 
   function hasListItemLine(block) {
-    var lines = block.split('\n');
-    for (var i = 0; i < lines.length; i++) {
-      if (LIST_ITEM_LINE.test(lines[i])) return true;
-    }
-    return false;
-  }
-
-  function startsWithListItem(block) {
-    var lines = block.split('\n');
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i] !== '') return LIST_ITEM_LINE.test(lines[i]);
-    }
-    return false;
+    return ANY_LIST_ITEM_LINE.test(block);
   }
 
   /**
@@ -63,6 +52,8 @@
    * 只可能改变 `closed`。
    */
   function spanningState(block) {
+    var first = block.charCodeAt(0);
+    if (first !== 60 && first !== 32) return null;
     var m = HTML_SPANNING_OPEN.exec(block);
     if (!m) return null;
     var name = m[1] ? m[1].toLowerCase() : null;
@@ -73,9 +64,6 @@
       closed: spanningClosed(block.slice(head.length), name, head)
     };
   }
-
-  /** 块级 HTML 起始行（`<div …`、`</div>`、`<!--`…）。 */
-  var HTML_BLOCK_START = /^ {0,3}<[a-zA-Z!/?]/;
 
   /** HTML 空元素：不会再有闭合标签。 */
   var VOID_ELEMENTS = {
@@ -95,7 +83,8 @@
    * 标签名由块**首段**决定（正则锚定 `^`），后续合并进来的段只累加计数。
    */
   function elemState(block) {
-    if (!HTML_BLOCK_START.test(block)) return null;
+    var first = block.charCodeAt(0);
+    if (first !== 60 && first !== 32) return null;
     var m = /^ {0,3}<([a-zA-Z][\w-]*)\b/.exec(block);
     if (!m) return null;
     var tag = m[1].toLowerCase();
@@ -134,23 +123,22 @@
    * vs 339ms。现在这三条判据都改成随合并增量维护摘要，同一份文档降到 72ms / 357ms。
    */
   function listItemKind(block) {
-    var lines = block.split('\n');
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i] === '') continue;
-      if (/^ {0,3}\d{1,9}[.)](?:[ \t]|$)/.test(lines[i])) return 'ol';
-      if (/^ {0,3}[-*+](?:[ \t]|$)/.test(lines[i])) return 'ul';
-      return null;
-    }
-    return null;
+    var first = block.charCodeAt(0);
+    var possible = (first >= 48 && first <= 57) || first === 45 || first === 42
+      || first === 43 || first === 32 || first === 10;
+    if (!possible) return null;
+    var match = FIRST_LIST_ITEM.exec(block);
+    if (!match) return null;
+    return match[1] ? 'ol' : 'ul';
   }
 
   function shouldJoinGroup(g, right) {
     if (/^[ \t]/.test(right)) return true;                        // 缩进续行
-    if (startsWithListItem(right) && g.hasList) {
-      var kind = listItemKind(right);
+    var kind = g.hasList ? listItemKind(right) : null;
+    if (kind !== null) {
       // 同类列表可以按稳定项边界切块；混合类型仍按原逻辑整体合并。
       if (g.listKind !== null && kind === g.listKind) {
-        if (g.listItemCount >= 50 || g.charCount + right.length > 16384) return false;
+        if (g.listItemCount >= 100 || g.charCount + right.length > 16384) return false;
       }
       return true;
     }
@@ -161,9 +149,10 @@
 
   /** 把右块并入左组：只更新摘要，不拼接字符串。 */
   function absorbIntoGroup(g, right) {
-    if (!g.hasList) g.hasList = hasListItemLine(right);
-    if (startsWithListItem(right)) {
-      if (listItemKind(right) !== g.listKind) g.listKind = null;
+    var kind = listItemKind(right);
+    if (!g.hasList) g.hasList = kind !== null || (right.indexOf('\n') !== -1 && hasListItemLine(right));
+    if (kind !== null) {
+      if (kind !== g.listKind) g.listKind = null;
       g.listItemCount++;
     }
     g.charCount += right.length;
@@ -204,11 +193,12 @@
         g.parts.push(right);
         absorbIntoGroup(g, right);
       } else {
+        var kind = listItemKind(right);
         g = {
           parts: [right],
-          hasList: hasListItemLine(right),
-          listKind: listItemKind(right),
-          listItemCount: startsWithListItem(right) ? 1 : 0,
+          hasList: kind !== null || (right.indexOf('\n') !== -1 && hasListItemLine(right)),
+          listKind: kind,
+          listItemCount: kind !== null ? 1 : 0,
           charCount: right.length,
           span: spanningState(right),
           elem: elemState(right)
@@ -320,7 +310,7 @@
     // 等于缓存对目标用户基本失效（757KB 实测全量 marked.parse 98.7ms，
     // 每一轮防抖更新都要重付一次）。
     var blocks = splitBlocks(content);
-    if (!blocks || blocks.length <= 2) {
+    if (!blocks || blocks.length < 2) {
       return { html: renderMarkdown(content), groups: null, totalLen: 0 };
     }
 

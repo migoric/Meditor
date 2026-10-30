@@ -51,6 +51,12 @@
     return true;
   }
 
+  function hashDiagram(code) {
+    var hash = 5381;
+    for (var i = 0; i < code.length; i++) hash = ((hash << 5) + hash + code.charCodeAt(i)) | 0;
+    return (hash >>> 0).toString(36);
+  }
+
   /**
    * 摘出 ```mermaid 围栏块，换成占位 div，marked 之后再交给 mermaid 渲染。
    *
@@ -107,9 +113,11 @@
         if (ch === open.char && len >= open.len && isBlankRange(src, markerEnd, lineEnd)) {
           if (open.char === '`' && open.info === 'mermaid') {
             var id = 'mermaid-' + diagrams.length;
-            diagrams.push({ id: id, code: src.slice(open.bodyStart, lineStart).trim() });
+            var code = src.slice(open.bodyStart, lineStart).trim();
+            diagrams.push({ id: id, code: code });
             pieces.push(src.slice(cursor, open.lineStart));
-            pieces.push('<div class="mermaid-placeholder" id="' + id + '"></div>');
+            pieces.push('<div class="mermaid-placeholder" id="' + id
+              + '" data-diagram-hash="' + hashDiagram(code) + '"></div>');
             // 只吃到关栏行行尾、**保留换行**：占位 div 与后面的正文必须各占一行，
             // 否则会并成同一个 HTML 块、正文被吞进 div 里。
             cursor = lineEnd;
@@ -180,6 +188,8 @@
   // 最近一次 renderInto 提取出的全部 mermaid 图（id 按文档顺序稳定），
   // 供 renderAllDiagrams 找到还没懒渲染的占位。
   var latestDiagrams = [];
+  var diagramGeneration = 0;
+  var diagramObserver = null;
 
   function configureMermaidFromTheme() {
     if (typeof mermaid === 'undefined') return;
@@ -191,27 +201,37 @@
   function renderMermaidDiagrams(diagrams) {
     if (!diagrams) return;
     latestDiagrams = diagrams;
+    diagramGeneration++;
+    var generation = diagramGeneration;
+    if (diagramObserver) {
+      diagramObserver.disconnect();
+      diagramObserver = null;
+    }
     if (diagrams.length === 0) return;
     loadMermaidIfNeeded().then(function () {
+      if (generation !== diagramGeneration) return;
       configureMermaidFromTheme();
       if (typeof window.IntersectionObserver !== 'function') {
-        diagrams.forEach(renderOneMermaid);
+        diagrams.forEach(function (d) { renderOneMermaid(d, generation); });
         return;
       }
-      var observer = new IntersectionObserver(function (entries) {
+      diagramObserver = new IntersectionObserver(function (entries) {
+        if (generation !== diagramGeneration) return;
         entries.forEach(function (entry) {
           if (!entry.isIntersecting) return;
-          observer.unobserve(entry.target);
+          diagramObserver.unobserve(entry.target);
           var d = diagrams.filter(function (x) { return x.id === entry.target.id; })[0];
-          if (d) renderOneMermaid(d);
+          if (d) renderOneMermaid(d, generation);
         });
       }, { rootMargin: '200px' });
       diagrams.forEach(function (d) {
         var el = document.getElementById(d.id);
-        if (el) observer.observe(el);
+        if (el) diagramObserver.observe(el);
       });
     }).catch(function (e) {
-      failMermaidPlaceholders(diagrams, String(e && e.message || e));
+      if (generation === diagramGeneration) {
+        failMermaidPlaceholders(diagrams, String(e && e.message || e));
+      }
     });
   }
 
@@ -233,18 +253,21 @@
 
   /** 立即渲染所有仍是占位的 mermaid 图（导出/发布前调用），全部完成后 resolve。 */
   function renderAllDiagrams() {
+    var generation = diagramGeneration;
     return loadMermaidIfNeeded().then(function () {
+      if (generation !== diagramGeneration) return [];
       configureMermaidFromTheme();
       var pending = latestDiagrams.filter(function (d) {
         var el = document.getElementById(d.id);
         return el && el.classList.contains('mermaid-placeholder');
       });
-      return Promise.all(pending.map(renderOneMermaid));
+      return Promise.all(pending.map(function (d) { return renderOneMermaid(d, generation); }));
     }).then(function () { return true; }, function () { return true; });
   }
 
-  function renderOneMermaid(d) {
+  function renderOneMermaid(d, generation) {
     return mermaid.render(d.id + '-svg', d.code).then(function (r) {
+      if (generation !== diagramGeneration) return;
       var el = document.getElementById(d.id);
       if (el && r && r.svg) {
         el.outerHTML = '<div class="mermaid-container">' + r.svg + '</div>';
@@ -253,6 +276,7 @@
         }
       }
     }).catch(function (e) {
+      if (generation !== diagramGeneration) return;
       var el = document.getElementById(d.id);
       if (el) el.outerHTML = '<div class="error-block">Mermaid: ' + String(e && e.message || e) + '</div>';
     });

@@ -17,8 +17,7 @@
   var recordGroupRanges = core.dom.recordRanges;
   var wrapTablesIn = core.dom.wrapTables;
   var clearGroupPatch = core.dom.clearGroupPatch;
-  var stampHeadingLines = core.enhancements.stampHeadingLines;
-  var stampHeadingIDs = core.enhancements.stampHeadingIDs;
+  var stampHeadings = core.enhancements.stampHeadings;
   var highlightCodeBlocks = core.enhancements.highlightCodeBlocks;
   var rewriteAbsoluteAssetPaths = core.enhancements.rewriteAbsoluteAssetPaths;
   var renderMermaidDiagrams = core.mermaid.render;
@@ -73,12 +72,11 @@
         if (updated) {
           lastRendered.html = html;
           lastRendered.groupKeys = groupKeys;
-          stampHeadingLines(targetEl, content || '');
-          stampHeadingIDs(targetEl);
-          highlightCodeBlocks(targetEl);
+          stampHeadings(targetEl, content || '');
+          highlightCodeBlocks(targetEl, content || '');
           renderMermaidDiagrams(extracted.diagrams);
           renderMath(math.items);
-          rewriteAbsoluteAssetPaths(targetEl);
+          rewriteAbsoluteAssetPaths(targetEl, content || '');
           return;
         }
         clearGroupPatch();   // 落到全量替换：范围记录作废
@@ -88,12 +86,11 @@
       if (groups && html === null) html = joinGroupHTML(groups);
       targetEl.innerHTML = html;
       if (html.indexOf('<table') !== -1) wrapTablesIn(targetEl);
-      stampHeadingLines(targetEl, content || '');
-      stampHeadingIDs(targetEl);
-      highlightCodeBlocks(targetEl);
+      stampHeadings(targetEl, content || '');
+      highlightCodeBlocks(targetEl, content || '');
       renderMermaidDiagrams(extracted.diagrams);
       renderMath(math.items);
-      rewriteAbsoluteAssetPaths(targetEl);
+      rewriteAbsoluteAssetPaths(targetEl, content || '');
       lastRendered.html = html;
       lastRendered.groupKeys = groupKeys;
       // 首帧就建立组范围记录（自校验，对不上就放弃），让第一次更新就能走块对齐

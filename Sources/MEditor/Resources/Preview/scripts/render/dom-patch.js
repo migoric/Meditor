@@ -9,8 +9,8 @@
 
   /**
    * 上一帧块对齐 patch 留下的「组 → #content 顶层子节点范围」记录：
-   * `{ target, groups: [{ key, start, count }] }`。count 以**包裹后**的 DOM
-   * 为准（table 先包 .table-wrapper 再计数），start 冗余存一份便于排查。
+   * `{ target, groups: [{ key, count }], totalCount }`。count 以**包裹后**的 DOM
+   * 为准（table 先包 .table-wrapper 再计数），totalCount 避免每帧重算。
    *
    * 凡是绕过 renderInto 直接改写 #content 的入口（bridge 的缓存命中恢复）
    * 都必须调 notifyExternalDOMReset 作废它——按过期范围替换会错位。
@@ -55,8 +55,7 @@
     if (!old) { renderStats.patchBail++; return false; }
 
     var i;
-    var oldCount = 0;
-    for (i = 0; i < old.length; i++) oldCount += old[i].count;
+    var oldCount = lastGroupPatch.totalCount;
     if (oldCount !== targetEl.children.length) { renderStats.patchBail++; return false; }
 
     // 前后缀对齐：key 是组原文，渲染对同一原文确定 ⇒ key 相等即 HTML 相等。
@@ -91,32 +90,28 @@
 
     // children 是 live 集合：逐个删 [start, end)，删完 refNode 仍指向后缀首节点
     for (i = start; i < end; i++) targetEl.removeChild(targetEl.children[start]);
+    // 整篇 HTML 在组之间留有换行文本节点；它们不在 children 计数内，也必须随变化区清理，
+    // 否则全文替换后会积累在文首，后续读取 textContent 时先看到成千上万空白字符。
+    var previousElement = start > 0 ? targetEl.children[start - 1] : null;
+    var sibling = previousElement ? previousElement.nextSibling : targetEl.firstChild;
+    while (sibling && sibling !== refNode) {
+      var nextSibling = sibling.nextSibling;
+      if (sibling.nodeType === 3) targetEl.removeChild(sibling);
+      sibling = nextSibling;
+    }
     if (refNode) targetEl.insertBefore(fragment, refNode);
     else targetEl.appendChild(fragment);
 
     renderStats.patchGroupsReplaced += midNew;
 
-    // 记录新范围：前/后缀组沿用在位节点的 count（同 key ⇒ 同顶层结构），
-    // 变化组用刚数出的 count。
+    // 未变化组直接复用范围对象，避免每帧为整篇文档重新分配。
     var recorded = new Array(groups.length);
-    var pos = 0;
-    for (i = 0; i < p; i++) {
-      recorded[i] = { key: groups[i].key, start: pos, count: old[i].count };
-      pos += old[i].count;
-    }
+    for (i = 0; i < p; i++) recorded[i] = old[i];
     for (i = 0; i < midNew; i++) {
-      recorded[p + i] = { key: groups[p + i].key, start: pos, count: midCounts[i] };
-      pos += midCounts[i];
+      recorded[p + i] = { key: groups[p + i].key, count: midCounts[i] };
     }
-    for (i = 0; i < s; i++) {
-      recorded[p + midNew + i] = {
-        key: groups[p + midNew + i].key,
-        start: pos,
-        count: old[old.length - s + i].count
-      };
-      pos += old[old.length - s + i].count;
-    }
-    lastGroupPatch = { target: targetEl, groups: recorded };
+    for (i = 0; i < s; i++) recorded[p + midNew + i] = old[old.length - s + i];
+    lastGroupPatch = { target: targetEl, groups: recorded, totalCount: targetEl.children.length };
     return true;
   }
 
@@ -134,7 +129,7 @@
       temp.innerHTML = html;
       if (html.indexOf('<table') !== -1) wrapTablesIn(temp);
       var count = temp.children.length;
-      recorded[i] = { key: groups[i].key, start: pos, count: count };
+      recorded[i] = { key: groups[i].key, count: count };
       pos += count;
     }
     if (pos !== targetEl.children.length) {
@@ -142,7 +137,7 @@
       lastGroupPatch = null;
       return false;
     }
-    lastGroupPatch = { target: targetEl, groups: recorded };
+    lastGroupPatch = { target: targetEl, groups: recorded, totalCount: pos };
     return true;
   }
 

@@ -22,16 +22,6 @@
     'console': 'plaintext', 'shellsession': 'plaintext'
   };
 
-  function stampHeadingLines(rootEl, sourceText) {
-    var lines = collectHeadingLines(sourceText);
-    if (lines.length === 0) return;
-    var headings = rootEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    var n = Math.min(headings.length, lines.length);
-    for (var i = 0; i < n; i++) {
-      headings[i].setAttribute('data-source-line', String(lines[i]));
-    }
-  }
-
   /**
    * GitHub 风格的标题锚点 id。
    *
@@ -52,13 +42,17 @@
       .replace(/\s+/g, '-');
   }
 
-  /** 给缺 id 的标题补 id（作者自己写了 id 的一律不动）。 */
-  function stampHeadingIDs(rootEl) {
+  /** 同一批标题只查询一次 DOM，同时写源码行号与 id。 */
+  function stampHeadings(rootEl, sourceText) {
+    if (sourceText.indexOf('#') === -1 && !/<h[1-6][\s>]/i.test(sourceText)) return;
+    var lines = collectHeadingLines(sourceText);
     var headings = rootEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
     if (headings.length === 0) return;
+    var lineCount = Math.min(headings.length, lines.length);
     var used = Object.create(null);
     for (var i = 0; i < headings.length; i++) {
       var el = headings[i];
+      if (i < lineCount) el.setAttribute('data-source-line', String(lines[i]));
       // 作者显式写的 id 优先：markdown 里的原始 HTML、以及老文档里手工锚点都靠它。
       // 标题文字改了怎么办？那种情况下 patchDOM 会换掉整个节点（innerHTML 不同），
       // 新节点没有 id，自然重新生成——所以「不改已有 id」不会让 id 变陈旧。
@@ -89,7 +83,10 @@
     return Promise.resolve();
   }
 
-  function highlightCodeBlocks(rootEl) {
+  function highlightCodeBlocks(rootEl, sourceText) {
+    if (typeof sourceText === 'string' && sourceText.indexOf('```') === -1
+        && sourceText.indexOf('~~~') === -1 && !/<pre[\s>]/i.test(sourceText)
+        && !/^(?: {4}|\t)/m.test(sourceText)) return;
     // 幂等：已带 hljs 的块跳过。patchDOM 保留未变节点后，每帧重高亮全是
     // 浪费；缓存命中恢复（bridge）也靠这个守卫让补高亮近零成本。
     var blocks = Array.prototype.slice.call(rootEl.querySelectorAll('pre code'))
@@ -167,7 +164,8 @@
    *  restriction. Relative references (`./pic.png`, `../assets/pic.png`)
    *  are left untouched — they resolve correctly via the `<base href>`
    *  (itself a `meditor-asset://` URL, see bridge.js `setBaseURL`). */
-  function rewriteAbsoluteAssetPaths(rootEl) {
+  function rewriteAbsoluteAssetPaths(rootEl, sourceText) {
+    if (typeof sourceText === 'string' && !/!\[|<(?:img|source)[\s>]/i.test(sourceText)) return;
     var els = rootEl.querySelectorAll('img[src], source[src]');
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
@@ -191,8 +189,7 @@
   }
 
   core.enhancements = {
-    stampHeadingLines: stampHeadingLines,
-    stampHeadingIDs: stampHeadingIDs,
+    stampHeadings: stampHeadings,
     highlightCodeBlocks: highlightCodeBlocks,
     rewriteAbsoluteAssetPaths: rewriteAbsoluteAssetPaths
   };
