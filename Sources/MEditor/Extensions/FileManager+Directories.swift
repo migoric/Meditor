@@ -20,7 +20,7 @@ extension FileManager {
             var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
             if realpath(candidate.path, &buffer) != nil {
                 let path = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-                var resolved = URL(fileURLWithPath: String(decoding: path, as: UTF8.self))
+                var resolved = URL(fileURLWithPath: String(bytes: path, encoding: .utf8) ?? "")
                 for component in suffix { resolved.appendPathComponent(component) }
                 return resolved
             }
