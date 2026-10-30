@@ -34,7 +34,7 @@ actor WorkspaceIndexService {
     /// 且全量驻留内存会放大常驻占用）。
     static let maxIndexedFileBytes = 512_000
 
-    private struct IndexedFile {
+    private struct IndexedFile: Sendable {
         var relativePath: String
         var modificationDate: Date?
         var lines: [String]         // 原文行（结果预览）
@@ -43,11 +43,26 @@ actor WorkspaceIndexService {
         // 均比逐行 contains 慢 3 倍以上（String 全文 range(of:) 常数项很大），已回退。
     }
 
-    private var root: URL?
-    /// 任何增删改都会让 didSet 把 sortedFilesCache 置 nil——缓存键序随索引自动失效。
-    private var files: [URL: IndexedFile] = [:] {
-        didSet { sortedFilesCache = nil }
+    private struct QueryCache {
+        var query: String
+        var extensions: Set<String>
+        var includeFileNames: Bool
+        var maxPerFile: Int
+        var maxTotal: Int
+        var results: [WorkspaceSearchMatch]
     }
+
+    private var root: URL?
+    /// 任何增删改都会让排序缓存与查询缓存失效。
+    private var files: [URL: IndexedFile] = [:] {
+        didSet {
+            sortedFilesCache = nil
+            queryCache = nil
+            searchGeneration &+= 1
+        }
+    }
+    private var queryCache: QueryCache?
+    private var searchGeneration = 0
     /// 按 relativePath 排序的遍历键序缓存：search 每次查询都全量排序一次千级字典
     /// 是纯浪费（结果集上限提前退出也排在排序之后），索引不变时序也不变。
     private var sortedFilesCache: [(url: URL, file: IndexedFile)]?
@@ -196,13 +211,13 @@ actor WorkspaceIndexService {
         includeFileNames: Bool = false,
         maxTotal: Int = 100,
         maxPerFile: Int = 5
-    ) -> [WorkspaceSearchMatch] {
+    ) async -> [WorkspaceSearchMatch] {
         let q = query.lowercased()
         guard !q.isEmpty else { return [] }
+        searchGeneration &+= 1
+        let generation = searchGeneration
         let exts = Set(extensions.map { $0.lowercased() })
-        var results: [WorkspaceSearchMatch] = []
         // 按相对路径排序遍历：结果顺序稳定，UI 与 Agent 输出可预期、可断言。
-        // 排序结果按索引代际缓存——didSet 保证任何增删都会失效重建。
         let ordered: [(url: URL, file: IndexedFile)]
         if let cached = sortedFilesCache {
             ordered = cached
@@ -212,24 +227,73 @@ actor WorkspaceIndexService {
             sortedFilesCache = ordered
             sortedOrderBuildCount &+= 1
         }
-        for (url, file) in ordered {
-            guard results.count < maxTotal else { break }
-            if !exts.isEmpty, !exts.contains(url.pathExtension.lowercased()) { continue }
-            var perFile = 0
-            if includeFileNames, url.lastPathComponent.lowercased().contains(q) {
-                results.append(WorkspaceSearchMatch(relativePath: file.relativePath, lineNumber: 0, line: ""))
-                perFile += 1
-            }
-            for (index, lowered) in file.loweredLines.enumerated() {
-                guard perFile < maxPerFile, results.count < maxTotal else { break }
-                if lowered.contains(q) {
-                    results.append(WorkspaceSearchMatch(
-                        relativePath: file.relativePath, lineNumber: index + 1, line: file.lines[index]))
-                    perFile += 1
-                }
+        var candidates = ordered
+        if let previous = queryCache,
+           q.hasPrefix(previous.query),
+           previous.extensions == exts,
+           previous.includeFileNames == includeFileNames,
+           previous.maxPerFile == maxPerFile,
+           previous.results.count < previous.maxTotal {
+            let paths = Set(previous.results.map(\.relativePath))
+            candidates = ordered.filter { paths.contains($0.file.relativePath) }
+        }
+
+        let workerCount = min(4, candidates.count)
+        let chunkSize = workerCount > 0 ? (candidates.count + workerCount - 1) / workerCount : 0
+        var tasks: [Task<(Int, [(url: URL, matches: [WorkspaceSearchMatch])]), Never>] = []
+        if workerCount > 0 {
+            for chunkIndex in 0..<workerCount {
+                let lower = chunkIndex * chunkSize
+                let upper = min(lower + chunkSize, candidates.count)
+                let chunk = Array(candidates[lower..<upper])
+                tasks.append(Task.detached {
+                    (chunkIndex, Self.searchChunk(chunk, query: q, extensions: exts,
+                                                 includeFileNames: includeFileNames,
+                                                 maxPerFile: maxPerFile))
+                })
             }
         }
+        var chunks: [(Int, [(url: URL, matches: [WorkspaceSearchMatch])])] = []
+        for task in tasks { chunks.append(await task.value) }
+
+        var results: [WorkspaceSearchMatch] = []
+        for (_, files) in chunks.sorted(by: { $0.0 < $1.0 }) {
+            for (_, matches) in files {
+                guard results.count < maxTotal else { break }
+                results.append(contentsOf: matches.prefix(maxTotal - results.count))
+            }
+        }
+        if generation == searchGeneration {
+            queryCache = QueryCache(query: q, extensions: exts, includeFileNames: includeFileNames,
+                                    maxPerFile: maxPerFile, maxTotal: maxTotal, results: results)
+        }
         return results
+    }
+
+    private static func searchChunk(
+        _ files: [(url: URL, file: IndexedFile)],
+        query: String,
+        extensions: Set<String>,
+        includeFileNames: Bool,
+        maxPerFile: Int
+    ) -> [(url: URL, matches: [WorkspaceSearchMatch])] {
+        var output: [(url: URL, matches: [WorkspaceSearchMatch])] = []
+        for (url, file) in files {
+            guard extensions.isEmpty || extensions.contains(url.pathExtension.lowercased()) else { continue }
+            var matches: [WorkspaceSearchMatch] = []
+            if includeFileNames, url.lastPathComponent.lowercased().contains(query) {
+                matches.append(WorkspaceSearchMatch(relativePath: file.relativePath, lineNumber: 0, line: ""))
+            }
+            for (index, lowered) in file.loweredLines.enumerated() {
+                guard matches.count < maxPerFile else { break }
+                if lowered.contains(query) {
+                    matches.append(WorkspaceSearchMatch(
+                        relativePath: file.relativePath, lineNumber: index + 1, line: file.lines[index]))
+                }
+            }
+            if !matches.isEmpty { output.append((url, matches)) }
+        }
+        return output
     }
 
     // MARK: - 内部：枚举与加载

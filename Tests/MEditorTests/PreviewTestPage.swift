@@ -45,8 +45,10 @@ enum PreviewTestPage {
         )
         try await waitUntil(webView, "document.getElementById('content') ? 'ok' : 'pending'", timeout: 20)
 
-        // mermaid / katex 不注入：语料里没有对应语法，render.js 对缺失库有 typeof 守卫。
-        var scripts = ["marked.min.js", "purify.min.js", "highlight.min.js", "scripts/render.js"]
+        // mermaid / katex 不注入：语料里没有对应语法，渲染模块对缺失库有 typeof 守卫。
+        // 模块及顺序直接取生产模板，避免测试夹具与真实加载链悄悄分叉。
+        var scripts = ["marked.min.js", "purify.min.js", "highlight.min.js"]
+        scripts.append(contentsOf: try renderScriptResources())
         if includeBridge { scripts.append("scripts/bridge.js") }
         for name in scripts {
             try await eval(previewScript(named: name) + "\n;\n1;\n", webView)
@@ -123,6 +125,16 @@ enum PreviewTestPage {
         stats.patchGroupsReplaced = json["patchGroupsReplaced"] as? Int ?? 0
         stats.patchBail = json["patchBail"] as? Int ?? 0
         return stats
+    }
+
+    private static func renderScriptResources() throws -> [String] {
+        let template = try previewScript(named: "template.html")
+        let regex = try NSRegularExpression(
+            pattern: #"<script src="(scripts/render(?:\.js|/[^"]+\.js))"></script>"#)
+        let source = template as NSString
+        return regex.matches(in: template, range: NSRange(location: 0, length: source.length)).map {
+            source.substring(with: $0.range(at: 1))
+        }
     }
 
     /// 读取仓库内的预览资源源码（marked / render.js …）。

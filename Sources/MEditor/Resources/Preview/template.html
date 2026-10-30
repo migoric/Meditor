@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!--
-  CSP（第二道防线，主防线是 render.js 的 DOMPurify 消毒）：
+  CSP（第二道防线，主防线是 render/markdown.js 的 DOMPurify 消毒）：
   - script-src 'self' file:：只跑随模板加载的本地脚本，内联脚本/事件处理
     一律禁掉（初始内容改由下面的 JSON 数据块传递，不依赖 inline script）。
     file:// 页面在 WebKit 里 'self' 语义不稳，显式补上 file:。
@@ -41,11 +41,11 @@
 <script src="highlight.min.js"></script>
 
 <!-- KaTeX：同步加载。267KB，远小于 mermaid（3.3MB），且公式要在首帧就位位，
-     懒加载会让长文档在滚动时公式陆续弹出。render.js 里 katex 缺失时静默降级
+     懒加载会让长文档在滚动时公式陆续弹出。render/math.js 里 katex 缺失时静默降级
      （数学片段原样保留为 $...$ 文本）。 -->
 <script src="katex.min.js"></script>
 
-<!-- mermaid.min.js (3.3MB) 不在这里同步加载：render.js 遇到 mermaid 图时
+<!-- mermaid.min.js (3.3MB) 不在这里同步加载：render/mermaid.js 遇到 mermaid 图时
      动态注入 <script>，Swift 侧负责届时把文件复制进缓存目录。 -->
 
 <!-- MEditor scripts -->
@@ -54,6 +54,13 @@
      文件由 PreviewAssetMirror 生成（源在 HTMLAnchorGuard.swift），必须是外链脚本，
      内联会被上面的 CSP（script-src 'self' file:）拦掉。 -->
 <script src="scripts/anchor-guard.js"></script>
+<script src="scripts/render/state.js"></script>
+<script src="scripts/render/markdown.js"></script>
+<script src="scripts/render/math.js"></script>
+<script src="scripts/render/mermaid.js"></script>
+<script src="scripts/render/blocks.js"></script>
+<script src="scripts/render/dom-patch.js"></script>
+<script src="scripts/render/enhancements.js"></script>
 <script src="scripts/render.js"></script>
 <script src="scripts/bridge.js"></script>
 <script src="scripts/boot.js"></script>

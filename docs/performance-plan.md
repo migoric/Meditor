@@ -1,5 +1,8 @@
 # MEditor 性能优化方案
 
+> 拆分后预览模块的专项调研见 `docs/preview-render-architecture-performance-research.md`；
+> 本文保留全局性能背景与历史数据。
+>
 > 2026-10-23 制定。所有结论经多轮实测（三套基准各 3 轮取中位数）或代码复核（论断带 文件:行号）。
 > 基准工具在 `chore/preview-bench` / `chore/app-bench` 分支（**不进 main**）：
 > node 侧纯 JS 基准 `bench_render.js`；XCTest 侧 `MEDITOR_BENCH=1`（Swift 路径）与

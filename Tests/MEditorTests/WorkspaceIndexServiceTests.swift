@@ -239,6 +239,52 @@ final class WorkspaceIndexServiceTests: XCTestCase {
         XCTAssertTrue(results.isEmpty)
     }
 
+    func testSearch_prefixNarrowingKeepsOnlyMatchingLines() async {
+        createFile("a.md", content: "agent runner\nagent")
+        createFile("b.md", content: "agent only")
+        createFile("c.md", content: "unrelated")
+        await build()
+        let initial = await index.search(query: "agent")
+        XCTAssertEqual(initial.count, 3)
+        let narrowed = await index.search(query: "agent runner")
+        XCTAssertEqual(narrowed.count, 1)
+        XCTAssertEqual(narrowed.first?.relativePath, "a.md")
+        let empty = await index.search(query: "agent runner missing")
+        XCTAssertTrue(empty.isEmpty)
+    }
+
+    func testSearch_prefixCacheInvalidatesOnFileUpdate() async {
+        let url = createFile("a.md", content: "agent alpha")
+        createFile("b.md", content: "agent beta")
+        await build()
+        _ = await index.search(query: "agent")
+        await index.updateFile(at: url)
+        let results = await index.search(query: "agent alpha")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.relativePath, "a.md")
+    }
+
+    func testSearch_truncatedPreviousResultDoesNotNarrowNextQuery() async {
+        for i in 0..<120 {
+            createFile(String(format: "%03d.md", i), content: i == 119 ? "agent special" : "agent")
+        }
+        await build()
+        let capped = await index.search(query: "agent", maxTotal: 100)
+        XCTAssertEqual(capped.count, 100)
+        let results = await index.search(query: "agent special", maxTotal: 100)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.relativePath, "119.md")
+    }
+
+    func testSearch_totalCapIsNotExceededWithinLastFile() async {
+        createFile("a.md", content: (1...5).map { "agent \($0)" }.joined(separator: "\n"))
+        createFile("b.md", content: (1...5).map { "agent \($0)" }.joined(separator: "\n"))
+        await build()
+        let results = await index.search(query: "agent", maxTotal: 3)
+        XCTAssertEqual(results.count, 3)
+        XCTAssertEqual(results.map(\.relativePath), ["a.md", "a.md", "a.md"])
+    }
+
     // MARK: - Agent search_workspace 索引路径
 
     func testAgentSearch_usesIndexWhenReady() async {

@@ -90,7 +90,7 @@ UI 常量走 `DS.*`（`Views/Shared/DesignTokens.swift`）。**定义了没人�
 ### 2.3 共享内核：iOS 侧是**手工清单**
 
 iOS target 在 `Mobile/MEditorMobile.xcodeproj/project.pbxproj` 的 `Shared` 组里**逐条枚举**
-`../Sources/MEditor/**` 的文件（当前 **50 条**），不是文件系统同步组。后果：
+`../Sources/MEditor/**` 的文件（当前 **57 条**），不是文件系统同步组。后果：
 
 - **新增一个共享文件，必须同时改 pbxproj**，否则 iOS 静默缺文件、编译红。
 - 共享文件里**不许有未包裹的 AppKit 依赖**（用 `#if os(macOS)`）。目前唯一合法的

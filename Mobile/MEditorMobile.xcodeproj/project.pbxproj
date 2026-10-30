@@ -57,9 +57,23 @@
 		2600000000000000000003F6 /* ../Sources/MEditor/Resources/Preview/highlight.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000004F6 /* ../Sources/MEditor/Resources/Preview/highlight.min.js */; };
 		2600000000000000000003F7 /* ../Sources/MEditor/Resources/Preview/purify.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000004F7 /* ../Sources/MEditor/Resources/Preview/purify.min.js */; };
 		2600000000000000000003F8 /* ../Sources/MEditor/Resources/Preview/scripts/boot.js in Resources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000004F8 /* ../Sources/MEditor/Resources/Preview/scripts/boot.js */; };
+		260000000000000000000700 /* ../Sources/MEditor/Resources/Preview/scripts/render/state.js in Resources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000600 /* ../Sources/MEditor/Resources/Preview/scripts/render/state.js */; };
+		260000000000000000000701 /* ../Sources/MEditor/Resources/Preview/scripts/render/markdown.js in Resources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000601 /* ../Sources/MEditor/Resources/Preview/scripts/render/markdown.js */; };
+		260000000000000000000702 /* ../Sources/MEditor/Resources/Preview/scripts/render/math.js in Resources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000602 /* ../Sources/MEditor/Resources/Preview/scripts/render/math.js */; };
+		260000000000000000000703 /* ../Sources/MEditor/Resources/Preview/scripts/render/mermaid.js in Resources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000603 /* ../Sources/MEditor/Resources/Preview/scripts/render/mermaid.js */; };
+		260000000000000000000704 /* ../Sources/MEditor/Resources/Preview/scripts/render/blocks.js in Resources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000604 /* ../Sources/MEditor/Resources/Preview/scripts/render/blocks.js */; };
+		260000000000000000000705 /* ../Sources/MEditor/Resources/Preview/scripts/render/dom-patch.js in Resources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000605 /* ../Sources/MEditor/Resources/Preview/scripts/render/dom-patch.js */; };
+		260000000000000000000706 /* ../Sources/MEditor/Resources/Preview/scripts/render/enhancements.js in Resources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000606 /* ../Sources/MEditor/Resources/Preview/scripts/render/enhancements.js */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		260000000000000000000600 /* ../Sources/MEditor/Resources/Preview/scripts/render/state.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = ../Sources/MEditor/Resources/Preview/scripts/render/state.js; sourceTree = "<group>"; };
+		260000000000000000000601 /* ../Sources/MEditor/Resources/Preview/scripts/render/markdown.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = ../Sources/MEditor/Resources/Preview/scripts/render/markdown.js; sourceTree = "<group>"; };
+		260000000000000000000602 /* ../Sources/MEditor/Resources/Preview/scripts/render/math.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = ../Sources/MEditor/Resources/Preview/scripts/render/math.js; sourceTree = "<group>"; };
+		260000000000000000000603 /* ../Sources/MEditor/Resources/Preview/scripts/render/mermaid.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = ../Sources/MEditor/Resources/Preview/scripts/render/mermaid.js; sourceTree = "<group>"; };
+		260000000000000000000604 /* ../Sources/MEditor/Resources/Preview/scripts/render/blocks.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = ../Sources/MEditor/Resources/Preview/scripts/render/blocks.js; sourceTree = "<group>"; };
+		260000000000000000000605 /* ../Sources/MEditor/Resources/Preview/scripts/render/dom-patch.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = ../Sources/MEditor/Resources/Preview/scripts/render/dom-patch.js; sourceTree = "<group>"; };
+		260000000000000000000606 /* ../Sources/MEditor/Resources/Preview/scripts/render/enhancements.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = ../Sources/MEditor/Resources/Preview/scripts/render/enhancements.js; sourceTree = "<group>"; };
 		260000000000000000000003 /* MEditorMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MEditorMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		260000000000000000000009 /* MEditorMobile/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = MEditorMobile/Info.plist; sourceTree = "<group>"; };
 		260000000000000000000101 /* ../Sources/MEditor/Services/AI/AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/AIService.swift; sourceTree = "<group>"; };
@@ -200,6 +214,13 @@
 				2600000000000000000004F6 /* ../Sources/MEditor/Resources/Preview/highlight.min.js */,
 				2600000000000000000004F7 /* ../Sources/MEditor/Resources/Preview/purify.min.js */,
 				2600000000000000000004F8 /* ../Sources/MEditor/Resources/Preview/scripts/boot.js */,
+				260000000000000000000600 /* ../Sources/MEditor/Resources/Preview/scripts/render/state.js */,
+				260000000000000000000601 /* ../Sources/MEditor/Resources/Preview/scripts/render/markdown.js */,
+				260000000000000000000602 /* ../Sources/MEditor/Resources/Preview/scripts/render/math.js */,
+				260000000000000000000603 /* ../Sources/MEditor/Resources/Preview/scripts/render/mermaid.js */,
+				260000000000000000000604 /* ../Sources/MEditor/Resources/Preview/scripts/render/blocks.js */,
+				260000000000000000000605 /* ../Sources/MEditor/Resources/Preview/scripts/render/dom-patch.js */,
+				260000000000000000000606 /* ../Sources/MEditor/Resources/Preview/scripts/render/enhancements.js */,
 				2600000000000000000001FA /* ../Sources/MEditor/Extensions/FileManager+Directories.swift */,
 				2600000000000000000001FB /* ../Sources/MEditor/Skills/AgentSkillStore.swift */,
 				2600000000000000000001FD /* ../Sources/MEditor/Services/Storage/GitHubGistService.swift */,
@@ -289,6 +310,13 @@
 				2600000000000000000003F6 /* ../Sources/MEditor/Resources/Preview/highlight.min.js in Resources */,
 				2600000000000000000003F7 /* ../Sources/MEditor/Resources/Preview/purify.min.js in Resources */,
 				2600000000000000000003F8 /* ../Sources/MEditor/Resources/Preview/scripts/boot.js in Resources */,
+				260000000000000000000700 /* ../Sources/MEditor/Resources/Preview/scripts/render/state.js in Resources */,
+				260000000000000000000701 /* ../Sources/MEditor/Resources/Preview/scripts/render/markdown.js in Resources */,
+				260000000000000000000702 /* ../Sources/MEditor/Resources/Preview/scripts/render/math.js in Resources */,
+				260000000000000000000703 /* ../Sources/MEditor/Resources/Preview/scripts/render/mermaid.js in Resources */,
+				260000000000000000000704 /* ../Sources/MEditor/Resources/Preview/scripts/render/blocks.js in Resources */,
+				260000000000000000000705 /* ../Sources/MEditor/Resources/Preview/scripts/render/dom-patch.js in Resources */,
+				260000000000000000000706 /* ../Sources/MEditor/Resources/Preview/scripts/render/enhancements.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
