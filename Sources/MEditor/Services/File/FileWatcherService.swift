@@ -3,13 +3,18 @@ import Foundation
 
 // MARK: - C callback (must be a non-capturing function pointer)
 
-private let fileWatcherCallback: FSEventStreamCallback = { _, info, _, _, _, _ in
+private let fileWatcherCallback: FSEventStreamCallback = { _, info, eventCount, eventPaths, _, _ in
     guard let info else { return }
     let watcher = Unmanaged<FileWatcherService>.fromOpaque(info).takeUnretainedValue()
     // Read the handler under the lock to avoid racing with stopWatching.
     let handler = watcher.lockedGetHandler()
     if let handler {
-        DispatchQueue.main.async { handler() }
+        let paths = eventPaths.assumingMemoryBound(to: UnsafePointer<CChar>?.self)
+        let urls = (0..<eventCount).compactMap { index -> URL? in
+            guard let path = paths[index] else { return nil }
+            return URL(fileURLWithPath: String(cString: path))
+        }
+        DispatchQueue.main.async { handler(urls) }
     }
 }
 
@@ -20,17 +25,17 @@ final class FileWatcherService: FileWatcherServiceProtocol {
     private var retainedSelf: Unmanaged<FileWatcherService>?
     private let queue = DispatchQueue(label: "com.meditor.filewatcher")
     /// Protected by `lock` — accessed from both `queue` (callback) and main thread.
-    private var _onChange: (@Sendable () -> Void)?
+    private var _onChange: (@Sendable ([URL]) -> Void)?
     private let lock = NSLock()
 
     /// Thread-safe read of the onChange handler.
-    fileprivate func lockedGetHandler() -> (@Sendable () -> Void)? {
+    fileprivate func lockedGetHandler() -> (@Sendable ([URL]) -> Void)? {
         lock.lock()
         defer { lock.unlock() }
         return _onChange
     }
 
-    func startWatching(urls: [URL], onChange: @escaping @Sendable () -> Void) {
+    func startWatching(urls: [URL], onChange: @escaping @Sendable ([URL]) -> Void) {
         stopWatching()
 
         lock.lock()

@@ -48,13 +48,11 @@ FileService/FileTreeManager 33 条测试全绿。
 
 ### 待做（结构性）
 
-4. **FSEvents 传路径、增量失效**：`FileWatcherService` 开了 `kFSEventStreamCreateFlagFileEvents`
-   却把事件路径全丢了（`Sources/MEditor/Services/File/FileWatcherService.swift:6-14` 的 handler
-   是 `() -> Void`）——一次变更 = 2~3 次整树枚举。改按路径增量失效，保留全量回退
-   （mustScanSubDirs 事件）。大工作区数量级收益，中高风险。
-5. **三方枚举合一**：打开工作区时 `loadAll` / `WorkspaceIndexService.buildIndex` /
-   Spotlight `reindex` 各枚举一遍。由组合根（AppState）分发一份产物——注意分层方向，
-   FileService 不得反向依赖 Manager。
+4. **FSEvents 传路径、增量失效（2026-10-31 已落地）**：普通文件变化只重读对应索引项；
+   目录/root/空路径保留全量回退。路径用 `realpath` 统一，删除目录连同后代索引移除。
+   内容索引与 Spotlight 不再因每次文件保存各自枚举整树。
+5. **三方枚举合一（已落地）**：打开工作区由组合根（AppState）分发一次 `scanWorkspace`
+   产物，FileTree / WorkspaceIndexService / Spotlight 不再各自枚举。
 6. QuickOpen 空查询分支复用 `indexedFiles` 的既有顺序，不再每次重排
    （`Sources/MEditor/Views/AppShell/QuickOpenSheet.swift` 每次击键 O(f log f)）。
 7. 备选项（需产品决策）：`loadAll` 加 `.skipsHiddenFiles`——`.github` 等点目录会从

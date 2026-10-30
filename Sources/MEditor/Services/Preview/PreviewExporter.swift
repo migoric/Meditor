@@ -119,11 +119,15 @@ final class PreviewExporter: PreviewExporterProtocol {
                     completion(.failure(.javaScriptFailed("empty result")))
                     return
                 }
-                do {
-                    try html.write(to: url, atomically: true, encoding: .utf8)
-                    completion(.success(url))
-                } catch {
-                    completion(.failure(.javaScriptFailed(error.localizedDescription)))
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        try html.write(to: url, atomically: true, encoding: .utf8)
+                        DispatchQueue.main.async { completion(.success(url)) }
+                    } catch {
+                        DispatchQueue.main.async {
+                            completion(.failure(.javaScriptFailed(error.localizedDescription)))
+                        }
+                    }
                 }
             }
         }
@@ -154,13 +158,17 @@ final class PreviewExporter: PreviewExporterProtocol {
                     completion(.failure(.javaScriptFailed("empty result")))
                     return
                 }
-                // 清理 + 文件末尾补换行
-                let cleaned = HTMLToMarkdownJS.cleanConvertedMarkdown(markdown) + "\n"
-                do {
-                    try cleaned.write(to: url, atomically: true, encoding: .utf8)
-                    completion(.success(url))
-                } catch {
-                    completion(.failure(.javaScriptFailed(error.localizedDescription)))
+                DispatchQueue.global(qos: .userInitiated).async {
+                    // 清理 + 文件末尾补换行
+                    let cleaned = HTMLToMarkdownJS.cleanConvertedMarkdown(markdown) + "\n"
+                    do {
+                        try cleaned.write(to: url, atomically: true, encoding: .utf8)
+                        DispatchQueue.main.async { completion(.success(url)) }
+                    } catch {
+                        DispatchQueue.main.async {
+                            completion(.failure(.javaScriptFailed(error.localizedDescription)))
+                        }
+                    }
                 }
             }
         }

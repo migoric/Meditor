@@ -151,14 +151,37 @@ actor WorkspaceIndexService {
     // MARK: - 增量更新
 
     /// FSEvents 变化入口（内部 300ms 防抖合并连续事件）。
-    /// 采用「枚举 diff」而非逐事件路径：当前 FileWatcherService 回调不带路径信息，
-    /// 且枚举 + modDate 比较对千级文件是毫秒级，简单且不会漏（移动/重命名天然覆盖）。
-    func scheduleRefresh(root: URL) async {
+    /// 普通文件变化只重读对应路径；目录变化、root 变化或空路径回退全量枚举 diff。
+    func scheduleRefresh(root: URL, changedURLs: [URL]? = nil) async {
         refreshGeneration &+= 1
         let generation = refreshGeneration
         try? await Task.sleep(nanoseconds: 300_000_000)
         guard generation == refreshGeneration, !Task.isCancelled else { return }
-        refresh(root: root)
+        if let changedURLs, !changedURLs.isEmpty,
+           !Self.requiresFullRefresh(root: root, changedURLs: changedURLs) {
+            for url in Set(changedURLs.map { FileManager.default.canonicalURL(for: $0) }) {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    updateFile(at: url)
+                } else {
+                    removeFile(at: url)
+                }
+            }
+        } else {
+            refresh(root: root)
+        }
+    }
+
+    private static func requiresFullRefresh(root: URL, changedURLs: [URL]) -> Bool {
+        for url in changedURLs {
+            if FileManager.default.canonicalURL(for: url)
+                == FileManager.default.canonicalURL(for: root) { return true }
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return true
+            }
+        }
+        return false
     }
 
     /// 与磁盘做一次 diff：新文件入库、modDate 变化的重读、已删除的移除。
@@ -193,9 +216,10 @@ actor WorkspaceIndexService {
         }
     }
 
-    /// 单文件移除（删除回调；FSEvents diff 也会兜住，此为即时路径）。
+    /// 单文件或目录移除（删除回调；FSEvents diff 也会兜住，此为即时路径）。
     func removeFile(at url: URL) {
-        files.removeValue(forKey: url)
+        let descendantPrefix = url.path + "/"
+        files = files.filter { $0.key != url && !$0.key.path.hasPrefix(descendantPrefix) }
     }
 
     // MARK: - 搜索

@@ -43,15 +43,19 @@ extension AppState {
         // Git 状态：打开工作区后立即刷新一次（非 git 目录内部静默）
         gitStatusService.refreshNow(rootURL: url)
 
-        fileWatcher.startWatching(urls: [url]) { [weak self] in
+        fileWatcher.startWatching(urls: [url]) { [weak self] changedURLs in
             // FSEvents 回调经 FileWatcherService 派发到主队列；用 assumeIsolated 声明主 actor 上下文。
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.fileTreeManager.scheduleWatchedReload(rootURL: url)
                 self.checkExternalModifications()
-                self.scheduleWorkspaceIndexRefresh(root: url)
+                self.scheduleWorkspaceIndexRefresh(root: url, changedURLs: changedURLs)
                 let spotlight = SpotlightIndexManager.shared
-                Task { await spotlight.scheduleRefresh(root: url, includeContent: AppSettings.shared.spotlightIndexContent) }
+                Task {
+                    await spotlight.scheduleRefresh(
+                        root: url, changedURLs: changedURLs,
+                        includeContent: AppSettings.shared.spotlightIndexContent)
+                }
                 self.gitStatusService.scheduleRefresh(rootURL: url)
             }
         }

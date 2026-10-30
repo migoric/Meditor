@@ -392,9 +392,9 @@ final class AppState {
     }
 
     /// FSEvents 变化后的索引增量刷新（服务内部防抖；首次构建未完成时由 buildIndex 全量兜底）。
-    func scheduleWorkspaceIndexRefresh(root: URL) {
+    func scheduleWorkspaceIndexRefresh(root: URL, changedURLs: [URL]? = nil) {
         let index = workspaceIndex
-        Task { await index.scheduleRefresh(root: root) }
+        Task { await index.scheduleRefresh(root: root, changedURLs: changedURLs) }
     }
 
     // MARK: - 散文件 & Claude 监听

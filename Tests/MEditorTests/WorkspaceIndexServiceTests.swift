@@ -173,6 +173,30 @@ final class WorkspaceIndexServiceTests: XCTestCase {
         XCTAssertTrue(removed.isEmpty, "已删除文件应被 diff 刷新移除")
     }
 
+    func testScheduleRefresh_changedFilesSkipUnrelatedFilesAndDirectoriesFallBack() async {
+        let fileA = createFile("a.md", content: "before")
+        await build()
+        try! "after".write(to: fileA, atomically: true, encoding: .utf8)
+        createFile("unrelated.md", content: "must not be scanned yet")
+
+        await index.scheduleRefresh(root: tempDir, changedURLs: [fileA])
+        let updated = await index.search(query: "after")
+        XCTAssertEqual(updated.map(\.relativePath), ["a.md"])
+        let skipped = await index.search(query: "must not be scanned yet")
+        XCTAssertTrue(skipped.isEmpty, "路径级刷新不得退化为全目录重扫")
+
+        let directory = tempDir.appendingPathComponent("sub")
+        createFile("sub/new.md", content: "directory fallback")
+        await index.scheduleRefresh(root: tempDir, changedURLs: [directory])
+        let added = await index.search(query: "directory fallback")
+        XCTAssertEqual(added.map(\.relativePath), ["sub/new.md"], "目录变化必须回退全量刷新")
+
+        try! FileManager.default.removeItem(at: directory)
+        await index.scheduleRefresh(root: tempDir, changedURLs: [directory])
+        let removed = await index.search(query: "directory fallback")
+        XCTAssertTrue(removed.isEmpty, "删除目录必须连同后代索引一起移除")
+    }
+
     // MARK: - 大文件 / 二进制跳过
 
     func testBuild_skipsOversizedFile() async {
