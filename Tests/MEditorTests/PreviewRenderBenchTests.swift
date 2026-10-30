@@ -71,7 +71,9 @@ final class PreviewRenderBenchTests: XCTestCase {
         var el = document.getElementById('content');
         el.innerHTML = '';
         MEditorRender.resetRenderStats();
+        var coldStart = performance.now();
         MEditorRender.renderInto(el, SRC);   // 冷启：建缓存、建 DOM
+        var cold = performance.now() - coldStart;
         MEditorRender.renderInto(el, SRC);   // 第二帧：让增量状态（块缓存/对齐记录）就位
 
         var SRC2 = SRC.replace('MARKER-ALPHA', 'MARKER-BETA');
@@ -88,11 +90,30 @@ final class PreviewRenderBenchTests: XCTestCase {
         }, 6) / 2;
         // 无实质变化：同一内容反复渲染
         var hotNoop = bench(function () { MEditorRender.renderInto(el, SRC); }, 8);
+        var core = MEditorRenderCore;
+        var hotBlocks = bench(function () {
+          core.blocks.render(SRC);
+          core.blocks.render(SRC2);
+        }, 6) / 2;
+        var extraction = bench(function () {
+          core.math.extract(core.mermaid.extract(SRC).processed);
+        }, 6);
+        var headings = bench(function () {
+          core.enhancements.stampHeadings(el, SRC);
+        }, 6);
+        var highlight = bench(function () { core.enhancements.highlightCodeBlocks(el, SRC); }, 6);
+        var assets = bench(function () { core.enhancements.rewriteAbsoluteAssetPaths(el, SRC); }, 6);
         return JSON.stringify({
           srcKB: Math.round(SRC.length / 1024),
           blocks: el.children.length,
+          cold: +cold.toFixed(1),
           hotEdit: +hotEdit.toFixed(1),
-          hotNoop: +hotNoop.toFixed(1)
+          hotNoop: +hotNoop.toFixed(1),
+          hotBlocks: +hotBlocks.toFixed(1),
+          extraction: +extraction.toFixed(1),
+          headings: +headings.toFixed(1),
+          highlight: +highlight.toFixed(1),
+          assets: +assets.toFixed(1)
         });
       })()
     """#

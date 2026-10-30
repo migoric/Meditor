@@ -7,9 +7,9 @@ iOS 工程（Mobile/MEditorMobile.xcodeproj）里有两类源码：
 
   1. Mobile/Sources/**  —— 用 PBXFileSystemSynchronizedRootGroup 自动同步，
      往目录里丢文件就自动进 target，不需要改工程文件。
-  2. ../Sources/MEditor/** —— 手工枚举的 50 条（40 个 .swift + 10 个预览资源；
+  2. ../Sources/MEditor/** —— 手工枚举的 57 条（40 个 .swift + 17 个预览资源；
      Shared 组 + PBXFileReference + PBXBuildFile）。macOS 桌面端新增文件后，
-     **必须手工把这 50 条清单同步**，否则 iOS target 要么编不过、要么静默少编译一个文件。
+     **必须手工把这 57 条清单同步**，否则 iOS target 要么编不过、要么静默少编译一个文件。
 
 第 2 条是历史上"iOS 编译兜底"提交的来源，也是这个脚本要守的东西。
 它不追求自动发现"某个新文件应该被共享"（那需要业务判断），而是保证
@@ -25,6 +25,7 @@ iOS 工程（Mobile/MEditorMobile.xcodeproj）里有两类源码：
   E. 共享 .swift 里的 macOS-only 符号必须包在 #if os(macOS) 里
   F. 共享 .swift 不得读 AppSettings（只允许作函数签名类型）——iOS 上
      AppSettings 是替身，读它拿到的是假值，且不报错
+  G. render/ 模块与模板加载顺序一致，并全部进入 iOS Resources 和导出舞台目录
 
 用法：
     python3 scripts/check_ios_shared_sources.py [--project Mobile/MEditorMobile.xcodeproj]
@@ -47,6 +48,15 @@ MACOS_ONLY_SYMBOLS = (
 
 SWIFT_SUFFIX = ".swift"
 RESOURCE_SUFFIXES = (".js", ".css", ".html")
+RENDER_MODULES = (
+    "state.js",
+    "markdown.js",
+    "math.js",
+    "mermaid.js",
+    "blocks.js",
+    "dom-patch.js",
+    "enhancements.js",
+)
 
 
 def read_project(path):
@@ -232,6 +242,38 @@ def main():
         elif path.endswith(RESOURCE_SUFFIXES):
             if path not in compiled_resources:
                 problems.append("[D] 共享资源不在 Resources 编译阶段：%s" % path)
+
+    # G. 渲染模块必须同时进入模板、iOS Resources 与导出舞台，且加载顺序固定。
+    preview_root = os.path.normpath(os.path.join(
+        root, "../Sources/MEditor/Resources/Preview"))
+    template_path = os.path.join(preview_root, "template.html")
+    expected_template = ["scripts/render/" + name for name in RENDER_MODULES]
+    expected_template.append("scripts/render.js")
+    with open(template_path, encoding="utf-8") as handle:
+        template = handle.read()
+    actual_template = re.findall(
+        r'<script src="(scripts/render(?:\.js|/[^"]+\.js))"></script>', template)
+    if actual_template != expected_template:
+        problems.append("[G] 模板的 render 模块或加载顺序不符：实际 %r，应为 %r"
+                        % (actual_template, expected_template))
+
+    module_dir = os.path.join(preview_root, "scripts/render")
+    disk_modules = sorted(name for name in os.listdir(module_dir) if name.endswith(".js"))
+    if disk_modules != sorted(RENDER_MODULES):
+        problems.append("[G] render/ 磁盘模块与加载清单不符：实际 %r，清单 %r"
+                        % (disk_modules, sorted(RENDER_MODULES)))
+
+    stage_path = os.path.join(root, "Sources/Services/PreviewHTMLRenderer.swift")
+    with open(stage_path, encoding="utf-8") as handle:
+        stage_source = handle.read()
+    for resource in expected_template:
+        project_path = "../Sources/MEditor/Resources/Preview/" + resource
+        if project_path not in referenced:
+            problems.append("[G] 渲染模块未进入 iOS 共享资源：%s" % project_path)
+        if project_path not in compiled_resources:
+            problems.append("[G] 渲染模块未进入 iOS Resources：%s" % project_path)
+        if '"%s"' % resource not in stage_source:
+            problems.append("[G] iOS 导出舞台未复制渲染模块：%s" % resource)
 
     # E/F. 共享文件里的 macOS-only 符号与 AppSettings 读取
     shared_swift = sorted(p for p in referenced if p.endswith(SWIFT_SUFFIX))

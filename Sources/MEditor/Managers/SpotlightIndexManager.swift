@@ -89,14 +89,37 @@ actor SpotlightIndexManager {
     // MARK: - FSEvents 增量刷新
 
     /// FSEvents 变化入口（内部 300ms 防抖合并连续事件）。
-    /// 采用「枚举 diff」而非逐事件路径：FileWatcherService 回调不带路径信息，
-    /// 枚举 + modDate 比较对千级文件是毫秒级，移动/重命名天然覆盖。
-    func scheduleRefresh(root: URL, includeContent: Bool = false) async {
+    /// 普通文件变化只重读对应路径；目录变化、root 变化或空路径回退全量枚举 diff。
+    func scheduleRefresh(root: URL, changedURLs: [URL]? = nil, includeContent: Bool = false) async {
         refreshGeneration &+= 1
         let generation = refreshGeneration
         try? await Task.sleep(nanoseconds: 300_000_000)
         guard generation == refreshGeneration, !Task.isCancelled else { return }
-        await refresh(root: root, includeContent: includeContent)
+        if let changedURLs, !changedURLs.isEmpty,
+           !Self.requiresFullRefresh(root: root, changedURLs: changedURLs) {
+            for url in Set(changedURLs.map { FileManager.default.canonicalURL(for: $0) }) {
+                if FileManager.default.fileExists(atPath: url.path) {
+                    await updateFile(at: url, includeContent: includeContent)
+                } else {
+                    await removeFile(at: url)
+                }
+            }
+        } else {
+            await refresh(root: root, includeContent: includeContent)
+        }
+    }
+
+    private static func requiresFullRefresh(root: URL, changedURLs: [URL]) -> Bool {
+        for url in changedURLs {
+            if FileManager.default.canonicalURL(for: url)
+                == FileManager.default.canonicalURL(for: root) { return true }
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+               isDirectory.boolValue {
+                return true
+            }
+        }
+        return false
     }
 
     private func refresh(root: URL, includeContent: Bool) async {

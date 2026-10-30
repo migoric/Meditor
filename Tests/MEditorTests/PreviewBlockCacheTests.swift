@@ -183,31 +183,10 @@ final class PreviewBlockCacheTests: XCTestCase {
         return String(array.dropFirst().dropLast())
     }
 
-    /// 载入 marked + DOMPurify + render.js（真渲染管线，与 template.html 同源）。
-    /// mermaid / katex 不加载：语料里没有对应语法，render.js 对缺失库有 typeof 守卫。
+    /// 复用生产模板的有序模块清单，再包裹 marked.parse 观测实际分块。
     private func makePage() async throws -> (WKWebView, NSWindow) {
-        let config = WKWebViewConfiguration()
-        let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
-        let webView = WKWebView(frame: frame, configuration: config)
-        let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.contentView = webView
+        let (webView, window) = try await PreviewTestPage.makeWebView()
         Self.windows[webView] = window
-
-        webView.loadHTMLString(
-            "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>"
-            + "<body><div id=\"content\"></div></body></html>",
-            baseURL: nil
-        )
-        // 就绪判据用页面自己的元素，不用 readyState（loadHTMLString 下它过早 complete）
-        try await waitUntil(webView, "document.getElementById('content') ? 'ok' : 'pending'", timeout: 20)
-
-        for name in ["marked.min.js", "purify.min.js", "highlight.min.js", "scripts/render.js"] {
-            // 末尾补 `1`：UMD 库的 completion value 是对象/函数，WebKit 桥不回来
-            // （WKErrorDomain 5「返回结果的类型不受支持」），而脚本顶层的 `var`
-            // 不能被函数包起来（包了就不是 window 上的全局了）。
-            try await eval(try Self.previewScript(named: name) + "\n;\n1;\n", webView)
-        }
-        try await waitUntil(webView, "typeof MEditorRender === 'object' ? 'ok' : 'pending'", timeout: 20)
 
         // 观测点：数出每轮 marked.parse 的入参源码
         try await eval("""
@@ -221,28 +200,6 @@ final class PreviewBlockCacheTests: XCTestCase {
         1
         """, webView)
         return (webView, window)
-    }
-
-    private static func previewScript(named relative: String) throws -> String {
-        let root = URL(fileURLWithPath: #filePath)          // …/Tests/MEditorTests/<this>.swift
-            .deletingLastPathComponent()                    // …/Tests/MEditorTests
-            .deletingLastPathComponent()                    // …/Tests
-            .deletingLastPathComponent()                    // repo root
-            .appendingPathComponent("Sources/MEditor/Resources/Preview")
-        let url = root.appendingPathComponent(relative)
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-            throw XCTSkip("预览资源缺失：\(url.path)")
-        }
-        return text
-    }
-
-    private func waitUntil(_ webView: WKWebView, _ js: String, timeout: TimeInterval) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if try await eval(js, webView) == "ok" { return }
-            try await Task.sleep(nanoseconds: 150_000_000)
-        }
-        XCTFail("等待超时：\(js)")
     }
 
     private func eval(_ js: String, _ webView: WKWebView) async throws -> String? {

@@ -70,6 +70,18 @@ final class PreviewCodeBlockPatchTests: XCTestCase {
         XCTAssertEqual(after, before, "已高亮的块重跑后 DOM 不应变化")
     }
 
+    func testHighlightFastPathStillCoversTildeAndIndentedCode() async throws {
+        let (webView, _) = try await PreviewTestPage.makeWebView()
+        let doc = "~~~swift\nlet a = 1\n~~~\n\n    let indented = true"
+        _ = try await PreviewTestPage.render(doc, in: webView)
+        try await PreviewTestPage.waitUntil(
+            webView, "document.querySelectorAll('#content pre code.hljs').length === 2 ? 'ok' : 'pending'",
+            timeout: 10)
+        let buttons = try await PreviewTestPage.eval(
+            "document.querySelectorAll('#content .meditor-copy-btn').length", webView)
+        XCTAssertEqual(buttons, "2", "源码快路径不得漏掉波浪围栏和缩进代码块")
+    }
+
     /// 缓存命中恢复必须补一遍高亮（幂等，快照完整时近零成本）。
     /// 用 spy 钉行为而不是赌 idle 时序：旧 bridge 的命中路径不调它，本条必红。
     func testCacheHitRestoreRunsHighlightPass() async throws {

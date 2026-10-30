@@ -7,9 +7,9 @@ final class MockFileWatcher: FileWatcherServiceProtocol {
     private(set) var watchedURLs: [URL] = []
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
-    private var onChange: (@Sendable () -> Void)?
+    private var onChange: (@Sendable ([URL]) -> Void)?
 
-    func startWatching(urls: [URL], onChange: @escaping @Sendable () -> Void) {
+    func startWatching(urls: [URL], onChange: @escaping @Sendable ([URL]) -> Void) {
         watchedURLs = urls
         startCallCount += 1
         self.onChange = onChange

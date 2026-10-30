@@ -82,8 +82,8 @@ MEditorApp → ContentView (Views/AppShell/)
 
 ## 5. 预览
 
-- 渲染：marked + highlight.js + mermaid（template.html 同步加载）；render.js 段落级缓存(LRU 300)、hljs 空闲批量高亮、mermaid IntersectionObserver 懒渲染
-- 更新：WKWebView 长驻 + JS 原地替换（不整页刷新，保留滚动）；WebViewPool 预热复用
+- 渲染：marked + highlight.js + mermaid（template.html 同步加载）；`Sources/MEditor/Resources/Preview/scripts/render.js` 只保留主流程与公开 API，`Sources/MEditor/Resources/Preview/scripts/render/` 按共享状态、Markdown 解析、分块、数学、Mermaid、DOM patch、增强后处理分模块，普通 script 固定顺序加载；段落级缓存(LRU 300)、同类松散列表稳定分块（≤100 项 / 16KB，出口并回单一列表容器）、hljs 空闲批量高亮、mermaid 单 IntersectionObserver + 代际懒渲染
+- 更新：WKWebView 长驻 + JS 块对齐原地替换（不整页刷新，保留滚动；失稳回退全树 diff）；WebViewPool 预热复用
 - 工具栏 DocumentActionBar（右上悬浮）：演示 → 美化（Markdown 走 diff 预览/HTML 走 sheet）→ 导出（富文本/HTML/PDF/图片，含预检）→ 分享（LAN/Gist/ShareLink）→ 收起手柄
 - 主题：不在工具栏——QuickOpen 命令 + 设置 General（github/nord/dracula 三主题）
 - 双向滚动同步 + TOC 大纲（220pt，点击双向跳转）
@@ -130,6 +130,8 @@ toast（底部胶囊 2.5s，可带操作按钮）/ EmptyStateView / WelcomeView�
     当前文档写入校验源 Tab，定时任务免确认与各写工具共用同一策略。
   - 工具调度：仅连续只读调用段并行，写调用与后续读取保持模型给出的因果顺序；回滚写盘失败保留重试入口。
   - 工作区索引：扫描与构建均校验最新 root，旧工作区结果不得晚到覆盖；iOS 与 macOS 均限制 Agent 读取目标。
+    搜索最多四路并行且保持路径顺序，连续输入仅复用未截断的前缀结果，索引变化同时使排序与查询缓存失效。
+    FSEvents 普通文件变化按 realpath 规范化后增量刷新，目录/root/空路径回退全量 diff，删除目录连同后代索引移除。
 - Git 状态标记（侧栏）· 本地历史快照（⌃⌘H）· 导出预检 · 全局搜索浮层 · LAN 分享 + Gist + ShareLink · 演示模式（放映 + 导出 HTML/.pptx）· Quick Look 扩展 · 模板系统
 
 ---

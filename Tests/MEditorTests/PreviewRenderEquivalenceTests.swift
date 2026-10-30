@@ -96,6 +96,54 @@ final class PreviewRenderEquivalenceTests: XCTestCase {
         XCTAssertEqual(pCount, "3", "松散列表的 <li><p> 丢了")
     }
 
+    func testLargeLooseListChunksWithoutChangingStructure() async throws {
+        let (webView, _) = try await PreviewTestPage.makeWebView()
+        let source = (1...120).map { "\($0). 项目 \($0)" }.joined(separator: "\n\n")
+        _ = try await PreviewTestPage.render(source, in: webView)
+        try await PreviewTestPage.resetStats(webView)
+        _ = try await PreviewTestPage.eval("""
+        (function () {
+          var originalParse = marked.parse;
+          window.__maxBlockParseLength = 0;
+          marked.parse = function (source, options) {
+            window.__maxBlockParseLength = Math.max(window.__maxBlockParseLength, source.length);
+            return originalParse(source, options);
+          };
+        })()
+        """, webView)
+        let edited = source.replacingOccurrences(of: "60. 项目 60", with: "60. 已修改")
+        let literal = try PreviewTestPage.jsStringLiteral(edited)
+        let cachedStructure = try await PreviewTestPage.eval("""
+        (function () {
+          var d = document.createElement('div');
+          d.innerHTML = MEditorRender.renderMarkdownCached(\(literal));
+          return d.querySelectorAll('ol').length + '/' + d.querySelectorAll('ol > li').length;
+        })()
+        """, webView)
+        XCTAssertEqual(cachedStructure, "1/120", "拼接后的 HTML 结构已不一致")
+        _ = try await PreviewTestPage.render(edited, in: webView)
+        let stats = try await PreviewTestPage.stats(webView)
+
+        XCTAssertLessThanOrEqual(stats.blockParse, 2, "大列表编辑不得整段重算：\(stats)")
+        let maxParseLength = try await PreviewTestPage.eval("String(window.__maxBlockParseLength)", webView)
+        XCTAssertLessThan(Int(maxParseLength ?? "") ?? .max, edited.count, "不得退化为整列表重算")
+        let listCount = try await PreviewTestPage.eval("document.querySelectorAll('#content ol').length", webView)
+        XCTAssertEqual(listCount, "1", "分块后不得生成多个有序列表")
+        let itemCount = try await PreviewTestPage.eval("document.querySelectorAll('#content ol > li').length", webView)
+        XCTAssertEqual(itemCount, "120", "分块后列表项数量或编号丢失")
+        let modified = try await PreviewTestPage.eval(
+            "String(document.getElementById('content').textContent.includes('已修改'))", webView)
+        XCTAssertEqual(modified, "true")
+    }
+
+    func testLargeMixedListKeepsConservativeGrouping() async throws {
+        let (webView, _) = try await PreviewTestPage.makeWebView()
+        let source = (1...120).map { $0.isMultiple(of: 2) ? "\($0). 项目 \($0)" : "- 项目 \($0)" }
+            .joined(separator: "\n\n")
+        let same = try await compare(source, in: webView)
+        XCTAssertTrue(same)
+    }
+
     /// 冒号后无空格的引用定义也要认出来（判据不能要求 `\s`）。
     func testReferenceDefinitionWithoutSpaceKeepsLink() async throws {
         let (webView, _) = try await PreviewTestPage.makeWebView()

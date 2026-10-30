@@ -222,8 +222,7 @@ final class FileTreeManager {
         indexStale = false
         Task.detached(priority: .utility) { [weak self] in
             // 一次枚举同时拿到两份列表：分两次调用会把整棵目录树扫两遍。
-            // ⚠️ 收益只到「少一次枚举」为止：loadAll 内部仍要排两次序（两份列表各一次），
-            // 而 4,500 项的排序（≈92ms/次）比枚举贵得多，见 FileService.sortItems。
+            // 排序在 loadAll 内部收口为一次，files 从排好的 items 派生，见 FileService.sortItems。
             let index = service.loadAll(under: rootURL)
             await self?.applyIndexedFiles(index.files, items: index.items, generation: generation, rootURL: rootURL)
             await MainActor.run {

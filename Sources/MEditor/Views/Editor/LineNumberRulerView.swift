@@ -47,7 +47,7 @@ final class LineNumberRulerView: NSRulerView {
         let visibleGlyphs = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
         let visibleChars = layoutManager.characterRange(forGlyphRange: visibleGlyphs, actualGlyphRange: nil)
 
-        let text = textView.string as NSString
+        let text = textView.textStorage?.mutableString ?? ""
         let inset = textView.textContainerInset.height
 
         let attrs: [NSAttributedString.Key: Any] = [

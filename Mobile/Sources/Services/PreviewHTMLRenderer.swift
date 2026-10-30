@@ -2,7 +2,7 @@ import UIKit
 import WebKit
 
 /// 一次性离线 HTML 渲染器：复用 macOS 预览管线（template.html + marked +
-/// themes.css + render.js/bridge.js + mermaid.min.js），把 Markdown 渲染成
+/// themes.css + render.js + render/ 模块 + bridge.js + mermaid.min.js），把 Markdown 渲染成
 /// 与 macOS 发布页一致的自包含 HTML（内联 CSS + 主题 class + Mermaid SVG）。
 ///
 /// 资源在 bundle 里是平铺的，这里在临时目录重建 css/scripts 结构后加载；
@@ -47,11 +47,18 @@ final class PreviewHTMLRenderer: NSObject {
         let stage = fm.temporaryDirectory.appendingPathComponent("meditor-share-preview", isDirectory: true)
         try? fm.removeItem(at: stage)
         try fm.createDirectory(at: stage.appendingPathComponent("css"), withIntermediateDirectories: true)
-        try fm.createDirectory(at: stage.appendingPathComponent("scripts"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: stage.appendingPathComponent("scripts/render"), withIntermediateDirectories: true)
 
         let copies: [(URL, String)] = [
             (try resource("themes", "css"), "css/themes.css"),
             (try resource("base", "css"), "css/base.css"),
+            (try resource("state", "js"), "scripts/render/state.js"),
+            (try resource("markdown", "js"), "scripts/render/markdown.js"),
+            (try resource("math", "js"), "scripts/render/math.js"),
+            (try resource("mermaid", "js"), "scripts/render/mermaid.js"),
+            (try resource("blocks", "js"), "scripts/render/blocks.js"),
+            (try resource("dom-patch", "js"), "scripts/render/dom-patch.js"),
+            (try resource("enhancements", "js"), "scripts/render/enhancements.js"),
             (try resource("render", "js"), "scripts/render.js"),
             (try resource("bridge", "js"), "scripts/bridge.js"),
             (try resource("boot", "js"), "scripts/boot.js"),
