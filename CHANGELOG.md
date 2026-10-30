@@ -10,7 +10,7 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
-## [Unreleased]
+## [0.13.13] - 2026-10-31
 
 ### Refactored
 
