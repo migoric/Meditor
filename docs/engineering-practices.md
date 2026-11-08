@@ -101,7 +101,7 @@
 
 | 脚本 | 守什么 | CI job |
 |---|---|---|
-| `check_ios_shared_sources.py` | iOS `Shared` 组的引用完整（配置在 pbxproj 里的手工清单，当前 50 条） | `iOS Shared Source Guard` |
+| `check_ios_shared_sources.py` | iOS `Shared` 组的引用完整（配置在 pbxproj 里的手工清单，当前 60 条：43 个 Swift 文件、17 个资源） | `iOS Shared Source Guard` |
 | `check_service_layer_deps.py` | Service 层不得命名 ViewModel 类型（`AppState`） | `Layer Guard` |
 | `check_dead_tokens.py` | `DS.*` 设计 token 必须有人引用 | `UI Guard` |
 

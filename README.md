@@ -256,7 +256,8 @@ MEditor/
     │   │   │   │   └── ClaudeCLIBackend.swift # claude CLI subprocess
     │   │   │   └── Tools/                     # Document, editor, workspace, shell tools
     │   │   ├── InlineEditAction.swift         # Selection-scoped edits with diff review (UI: Views/Editor/InlineEditBar, Views/Preview/PreviewInlineEditBar)
-    │   │   ├── AIService.swift                # Chat completions & provider presets
+    │   │   ├── AIConfiguration.swift          # Providers, presets, messages & scenes
+    │   │   ├── AIService.swift                # Chat completions & streaming client
     │   │   └── BeautifyAgent.swift            # Single-shot document polish
     │   ├── MCP/           # MCP server (stdio) and client (stdio / streamable HTTP)
     │   ├── Core/          # AppSettings, Localization, MarkdownFormatter

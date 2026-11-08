@@ -40,13 +40,13 @@ struct TemplatePickerSheet: View {
                 .font(.system(size: 13, weight: .medium))
             TextField(L("template.search"), text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(DS.Font.label())
                 .focused($searchFocused)
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.tertiary)
-                        .font(.system(size: 13))
+                        .font(DS.Font.label())
                 }
                 .buttonStyle(.plain)
                 .transition(.scale.combined(with: .opacity))

@@ -345,7 +345,7 @@ struct CalendarMainView: View {
                 .font(.system(size: 44, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(L("calendar.accessHint"))
-                .font(.system(size: 13))
+                .font(DS.Font.label())
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button(L("calendar.requestAccess")) {

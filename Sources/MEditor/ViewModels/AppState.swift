@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import OSLog
 import SwiftUI
-import UniformTypeIdentifiers
 
 enum EditorLanguage: String {
     case markdown
@@ -26,6 +25,7 @@ enum PreviewMode: Equatable {
 ///   AppState+Preview.swift     → Preview forwarding
 ///   AppState+Session.swift     → Session persistence
 ///   AppState+ExternalMod.swift → External file-change detection + auto-save
+///   AppState+Presentation.swift → Presentation mode and export
 @MainActor
 @Observable
 final class AppState {
@@ -41,6 +41,7 @@ final class AppState {
     let templateManager: TemplateManager
     let pluginManager: PluginManager
     let presentationManager: PresentationManager
+    @ObservationIgnored var isObservingPresentationTheme = false
 
     /// 工作区 Git 状态（侧边栏文件树 M/A/? 标记）；非 git 工作区静默为空。
     let gitStatusService = GitStatusService()
@@ -731,116 +732,4 @@ final class AppState {
         }
     }
 
-    // MARK: - Presentation Mode
-
-    /// 是否正在演讲模式放映中。
-    var isPresenting: Bool { presentationManager.isPresenting }
-
-    /// 放映期间的主题跟踪是否已注册（withObservationTracking 单次触发，防止重复挂链）。
-    @ObservationIgnored private var isObservingPresentationTheme = false
-
-    /// 以当前选中的 Markdown 文档进入演讲模式（无选中或非 Markdown 时无操作）。
-    func startPresentation() {
-        guard let tab = selectedTab, tab.language == .markdown else { return }
-        presentationManager.start(markdown: tab.content, sourceURL: tab.url, theme: themeStore.current)
-        // 放映期间跟踪预览主题切换，实时同步到放映页
-        if presentationManager.isPresenting {
-            observePresentationThemeChanges()
-        }
-    }
-
-    /// 把当前 Markdown 文档导出为演讲稿（无选中或非 Markdown 时无操作）。
-    /// 保存面板带格式弹窗：自包含 HTML（浏览器放映）或 .pptx（PowerPoint/Keynote/WPS）。
-    /// 两种格式共用 `SlideSplitter` 的同一份分页结果。
-    func exportPresentation() {
-        guard let tab = selectedTab, tab.language == .markdown else { return }
-        let slides = SlideSplitter.split(tab.content)
-        let baseName = tab.url.deletingPathExtension().lastPathComponent + "-slides"
-        let pptxType = UTType(filenameExtension: "pptx", conformingTo: .compositeContent) ?? .data
-
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-        savePanel.title = L("export.presentation.title")
-        savePanel.nameFieldStringValue = baseName + ".html"
-        savePanel.allowedContentTypes = [.html]
-
-        let popup = FormatPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 24), pullsDown: false)
-        popup.addItems(withTitles: [L("export.presentation.formatHTML"), L("export.presentation.formatPPTX")])
-        popup.onChange = { [weak savePanel] index in
-            guard let savePanel else { return }
-            let isPPTX = index == 1
-            savePanel.allowedContentTypes = isPPTX ? [pptxType] : [.html]
-            let base = (savePanel.nameFieldStringValue as NSString).deletingPathExtension
-            savePanel.nameFieldStringValue = base + (isPPTX ? ".pptx" : ".html")
-        }
-
-        let label = NSTextField(labelWithString: L("export.presentation.format"))
-        let accessory = NSStackView(views: [label, popup])
-        accessory.orientation = .horizontal
-        accessory.spacing = 8
-        accessory.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 12, right: 12)
-        savePanel.accessoryView = accessory
-
-        savePanel.begin { response in
-            guard response == .OK, let url = savePanel.url else { return }
-            do {
-                if popup.indexOfSelectedItem == 1 {
-                    let data = PPTXExporter.makePPTX(
-                        slides: slides,
-                        title: tab.url.deletingPathExtension().lastPathComponent
-                    )
-                    try data.write(to: url)
-                } else {
-                    // file:// 形式的 <base href>，使导出的 HTML 在浏览器中能加载相对路径图片
-                    let baseHref = tab.url.deletingLastPathComponent().absoluteString
-                    guard let html = PresentationExporter.makeHTML(
-                        slides: slides, theme: self.themeStore.current, baseHref: baseHref
-                    ) else {
-                        self.showToast(L("toast.presentationResourcesMissing"), icon: "exclamationmark.triangle")
-                        return
-                    }
-                    try html.write(to: url, atomically: true, encoding: .utf8)
-                }
-            } catch {
-                let format = popup.indexOfSelectedItem == 1 ? "PPTX" : "HTML"
-                self.report(.exportFailed(format: format, underlying: error), logger: AppLog.exporter)
-            }
-        }
-    }
-
-    /// 放映期间用 withObservationTracking 跟踪预览主题并转发给放映窗口。
-    /// 该跟踪单次触发，因此每次变化后需要续订，直到放映结束。
-    private func observePresentationThemeChanges() {
-        guard !isObservingPresentationTheme else { return }
-        isObservingPresentationTheme = true
-        withObservationTracking {
-            _ = themeStore.current
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.isObservingPresentationTheme = false
-                guard self.presentationManager.isPresenting else { return }
-                self.presentationManager.applyTheme(self.themeStore.current)
-                self.observePresentationThemeChanges()
-            }
-        }
-    }
-}
-
-/// 保存面板格式弹窗：自承载 target/action，把选中变化转成闭包回调。
-/// （NSControl.target 是弱引用，独立 target 对象还得找地方 retain；自 target 最省事。）
-private final class FormatPopUpButton: NSPopUpButton {
-    var onChange: ((Int) -> Void)?
-
-    override init(frame frameRect: NSRect, pullsDown flag: Bool) {
-        super.init(frame: frameRect, pullsDown: flag)
-        target = self
-        action = #selector(selectionDidChange)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    @objc private func selectionDidChange() {
-        onChange?(indexOfSelectedItem)
-    }
 }
