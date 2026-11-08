@@ -16,6 +16,9 @@
 		260000000000000000000207 /* ../Sources/MEditor/Services/AI/Agent/BuiltinAgentTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000107 /* ../Sources/MEditor/Services/AI/Agent/BuiltinAgentTools.swift */; };
 		260000000000000000000208 /* ../Sources/MEditor/Services/AI/Agent/Backends/AgentBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000108 /* ../Sources/MEditor/Services/AI/Agent/Backends/AgentBackend.swift */; };
 		260000000000000000000209 /* ../Sources/MEditor/Services/AI/Agent/Backends/RestAgentBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260000000000000000000109 /* ../Sources/MEditor/Services/AI/Agent/Backends/RestAgentBackend.swift */; };
+		2600000000000000000006F0 /* ../Sources/MEditor/Services/AI/ClaudeStreamJSONParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000006F1 /* ../Sources/MEditor/Services/AI/ClaudeStreamJSONParser.swift */; };
+		2600000000000000000006F2 /* ../Sources/MEditor/Services/AI/Agent/AgentStallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000006F3 /* ../Sources/MEditor/Services/AI/Agent/AgentStallDetector.swift */; };
+		2600000000000000000006F4 /* ../Sources/MEditor/Services/AI/AIConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600000000000000000006F5 /* ../Sources/MEditor/Services/AI/AIConfiguration.swift */; };
 		26000000000000000000020A /* ../Sources/MEditor/Services/AI/Agent/Backends/URLSessionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26000000000000000000010A /* ../Sources/MEditor/Services/AI/Agent/Backends/URLSessionProtocol.swift */; };
 		26000000000000000000020B /* ../Sources/MEditor/Services/AI/Agent/Tools/DocumentTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26000000000000000000010B /* ../Sources/MEditor/Services/AI/Agent/Tools/DocumentTools.swift */; };
 		26000000000000000000020C /* ../Sources/MEditor/Services/AI/Agent/Tools/EditorTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26000000000000000000010C /* ../Sources/MEditor/Services/AI/Agent/Tools/EditorTools.swift */; };
@@ -77,6 +80,9 @@
 		260000000000000000000003 /* MEditorMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MEditorMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		260000000000000000000009 /* MEditorMobile/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = MEditorMobile/Info.plist; sourceTree = "<group>"; };
 		260000000000000000000101 /* ../Sources/MEditor/Services/AI/AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/AIService.swift; sourceTree = "<group>"; };
+		2600000000000000000006F1 /* ../Sources/MEditor/Services/AI/ClaudeStreamJSONParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/ClaudeStreamJSONParser.swift; sourceTree = "<group>"; };
+		2600000000000000000006F3 /* ../Sources/MEditor/Services/AI/Agent/AgentStallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/Agent/AgentStallDetector.swift; sourceTree = "<group>"; };
+		2600000000000000000006F5 /* ../Sources/MEditor/Services/AI/AIConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/AIConfiguration.swift; sourceTree = "<group>"; };
 		260000000000000000000102 /* ../Sources/MEditor/Services/AI/Agent/AgentContextProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/Agent/AgentContextProtocol.swift; sourceTree = "<group>"; };
 		260000000000000000000103 /* ../Sources/MEditor/Services/AI/Agent/AgentFileRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/Agent/AgentFileRepository.swift; sourceTree = "<group>"; };
 		260000000000000000000104 /* ../Sources/MEditor/Services/AI/Agent/AgentPatchEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../Sources/MEditor/Services/AI/Agent/AgentPatchEngine.swift; sourceTree = "<group>"; };
@@ -169,6 +175,9 @@
 			isa = PBXGroup;
 			children = (
 				260000000000000000000101 /* ../Sources/MEditor/Services/AI/AIService.swift */,
+				2600000000000000000006F5 /* ../Sources/MEditor/Services/AI/AIConfiguration.swift */,
+				2600000000000000000006F1 /* ../Sources/MEditor/Services/AI/ClaudeStreamJSONParser.swift */,
+				2600000000000000000006F3 /* ../Sources/MEditor/Services/AI/Agent/AgentStallDetector.swift */,
 				260000000000000000000102 /* ../Sources/MEditor/Services/AI/Agent/AgentContextProtocol.swift */,
 				260000000000000000000103 /* ../Sources/MEditor/Services/AI/Agent/AgentFileRepository.swift */,
 				260000000000000000000116 /* ../Sources/MEditor/Services/AI/Agent/AgentHistoryBudget.swift */,
@@ -328,6 +337,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				260000000000000000000201 /* ../Sources/MEditor/Services/AI/AIService.swift in Sources */,
+				2600000000000000000006F4 /* ../Sources/MEditor/Services/AI/AIConfiguration.swift in Sources */,
+				2600000000000000000006F0 /* ../Sources/MEditor/Services/AI/ClaudeStreamJSONParser.swift in Sources */,
+				2600000000000000000006F2 /* ../Sources/MEditor/Services/AI/Agent/AgentStallDetector.swift in Sources */,
 				260000000000000000000202 /* ../Sources/MEditor/Services/AI/Agent/AgentContextProtocol.swift in Sources */,
 				260000000000000000000203 /* ../Sources/MEditor/Services/AI/Agent/AgentFileRepository.swift in Sources */,
 				260000000000000000000216 /* ../Sources/MEditor/Services/AI/Agent/AgentHistoryBudget.swift in Sources */,

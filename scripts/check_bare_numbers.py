@@ -40,14 +40,14 @@ SOURCES = ROOT / "Sources/MEditor"
 # 当前实测值。只许改小（见文件头「怎么降基线」）。
 BASELINE = {
     "distinct_font_sizes": 20,
-    "bare_system_font": 516,
+    "bare_system_font": 507,
     "distinct_radii": 14,
     # `try?` 棘轮：全仓 253 处 `try?` vs 105 处 `} catch`，但逐个数没有意义
     # （很多 `try?` 是在合法地忽略「删不存在的文件」这类无意义失败）。只钉住两条
     # 最容易吞掉真错误的路径：落盘与预览资源。
     # 典型受害者：TemplateStore 写模板元数据时 `try? encode` + `try? write`，
     # 写失败完全无声。
-    "silent_try_optional": 60,
+    "silent_try_optional": 58,
 }
 
 FONT = re.compile(r"\.system\(size:\s*([0-9]+(?:\.[0-9]+)?)")

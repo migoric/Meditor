@@ -381,6 +381,26 @@ final class AgentRunnerStabilityTests: XCTestCase {
 
     // MARK: - B16 停滞检测（规则 2）：换参反复失败 4 步 → 中断
 
+    func test_stallDetector_recordsEveryResultInAMultiCallStep() {
+        var detector = AgentStallDetector()
+        let calls = [
+            AgentToolCall(id: "tc1", name: "read_file", arguments: ["path": .string("a.md")]),
+            AgentToolCall(id: "tc2", name: "read_file", arguments: ["path": .string("b.md")]),
+        ]
+        let results = [
+            AgentToolResult(toolCallID: "tc1", toolName: "read_file", content: "A"),
+            AgentToolResult(toolCallID: "tc2", toolName: "read_file", content: "B"),
+        ]
+
+        XCTAssertNil(detector.evaluateStep(calls: calls, results: results))
+        for _ in 1...3 {
+            XCTAssertNil(detector.evaluateStep(calls: [calls[1]], results: [results[1]]))
+        }
+        let detection = detector.evaluateStep(calls: [calls[1]], results: [results[1]])
+        XCTAssertEqual(detection?.diagnostic.repeatCount, 4)
+        XCTAssertTrue(detection?.message.contains("有效进展") == true)
+    }
+
     func test_stallDetection_allFailedStepsWithDifferentArgs_abortsRun() async {
         // 规则 1 只认「相同 (工具, 参数) 连续失败」，模型每次微调一点参数就完全绕过。
         // 规则 2 改判「本步所有工具调用都失败」连续达阈值。

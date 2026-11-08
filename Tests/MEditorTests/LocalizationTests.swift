@@ -20,10 +20,10 @@ final class LocalizationTests: XCTestCase {
     // MARK: - 表结构
 
     func testTable_hasSubstantialCoverage() {
-        // 防「某个 tableN 从 merge 里漏掉」的回归：当前 6 张分表合计 800+ key，
+        // 防「某个 tableN 从 merge 里漏掉」的回归：当前 7 张分表合计 800+ key，
         // 阈值取保守下限，新增 key 不需要改这里。
         XCTAssertGreaterThanOrEqual(LocalizationManager.table.count, 600,
-                                    "翻译表 key 数量异常收缩，检查 table0...table5 是否都在 merge 链上")
+                                    "翻译表 key 数量异常收缩，检查 table0...table6 是否都在 merge 链上")
     }
 
     func testAllEntries_bothLanguagesNonEmpty() {

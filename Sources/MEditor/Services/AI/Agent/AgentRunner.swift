@@ -63,20 +63,6 @@ final class AgentRunner {
     /// 且取消后用户在 diff 视图点「全部接受」时写入仍会落盘。
     private var activeContext: (any AgentContextProtocol)? = nil
 
-    /// 停滞检测阈值（规则 1）：相同 (工具名, 参数) 的调用连续失败达到该次数即中断 run。
-    /// 3 = 给模型两次换参数/换思路的机会，第三次原样失败基本可判定卡住。
-    private static let stallThreshold = 3
-
-    /// 停滞检测阈值（规则 2）：连续该步数内「本步所有工具调用都失败」即中断。
-    /// 规则 1 只认**相同参数**的重复失败，模型每次微调一点参数就完全绕过；
-    /// 连续 4 步无一成功是更强的卡死信号。
-    private static let allFailedStepThreshold = 4
-
-    /// 停滞检测阈值（规则 3）：连续该步数内「没有任何新结果」即中断。
-    /// 覆盖规则 1 管不到的另一种盲区——调用**成功但无进展**：反复读到相同内容、
-    /// 反复把同一段写回去。这类行为不报错，却能烧满 maxSteps。
-    private static let noProgressStepThreshold = 4
-
     /// 可并行执行的只读工具：纯查询、无副作用（不写文档/文件、不动编辑器 UI、
     /// 不弹确认框）。新增工具默认走串行（安全缺省），确认无副作用后才加入此清单。
     /// run_command 永不加入：确认弹框并行会乱。
@@ -230,7 +216,7 @@ final class AgentRunner {
                    self.runGeneration == generation {
                     // 报错带上步数预算：只写「超时」时用户无法判断是任务太重还是
                     // 步数预算没给足（两者上限联动，见 init）
-                    self.error     = "操作超时（\(Int(self.timeoutSeconds))s，步数预算 \(maxSteps) 步），请重试或简化任务"
+                    self.error     = "操作超时（\(Int(self.timeoutSeconds))s，步数预算 \(self.maxSteps) 步），请重试或简化任务"
                     self.state.termination = .failed   // 超时可断点续传
                     self.isRunning = false
                     self.runTask   = nil
@@ -287,18 +273,8 @@ final class AgentRunner {
 
         var stepCount = 0
 
-        // 停滞检测状态：跟踪最近一次失败的 (工具名, 参数) 指纹及连续失败次数。
-        // 模型反复用相同参数调同一个失败工具时会烧满 maxSteps 才报"超过最大步数"，
-        // 这里在「相同调用连续失败达阈值」时提前中断，错误文案指出具体工具。
-        // 只读工具同样适用（如反复 read 不存在的文件）。
-        var lastFailureFingerprint: String? = nil
-        var consecutiveFailures = 0
+        var stallDetector = AgentStallDetector()
         var stalled = false
-        /// 步级停滞检测状态（规则 2 / 3，见 evaluateStepStall）
-        var allFailedStreak = 0
-        var noProgressStreak = 0
-        /// 本 run 内已出现过的工具结果签名，用于规则 3 判定「有无新进展」
-        var seenOutcomes: Set<String> = []
         /// 每次 run 只向 UI 报告一次预算淘汰（后续 step 再淘汰不再重复提示）
         var evictionNotified = false
 
@@ -458,9 +434,9 @@ final class AgentRunner {
                             }
                             for i in batch.indices {
                                 guard let result = results[i] else { continue }
-                                if recordStallIfNeeded(call: calls[i], result: result,
-                                                       lastFailureFingerprint: &lastFailureFingerprint,
-                                                       consecutiveFailures: &consecutiveFailures) {
+                                if let detection = stallDetector.record(call: calls[i], result: result) {
+                                    state.stall = detection.diagnostic
+                                    error = detection.message
                                     stalled = true
                                     break
                                 }
@@ -521,9 +497,9 @@ final class AgentRunner {
                                 durations[i] = duration
                                 markToolCallDone(id: call.id, result: result, durationSeconds: duration)
 
-                                if recordStallIfNeeded(call: call, result: result,
-                                                       lastFailureFingerprint: &lastFailureFingerprint,
-                                                       consecutiveFailures: &consecutiveFailures) {
+                                if let detection = stallDetector.record(call: call, result: result) {
+                                    state.stall = detection.diagnostic
+                                    error = detection.message
                                     stalled = true
                                     break
                                 }
@@ -550,10 +526,12 @@ final class AgentRunner {
                     // 成功但无进展）。只在整步结果齐全时评估——取消/规则 1 中断截断的
                     // 半成品步不做判断，避免把「没跑完」误判成「没进展」。
                     if !calls.isEmpty, results.allSatisfy({ $0 != nil }),
-                       evaluateStepStall(calls: calls, results: results.compactMap { $0 },
-                                         allFailedStreak: &allFailedStreak,
-                                         noProgressStreak: &noProgressStreak,
-                                         seenOutcomes: &seenOutcomes) {
+                       let detection = stallDetector.evaluateStep(
+                        calls: calls,
+                        results: results.compactMap { $0 }
+                       ) {
+                        state.stall = detection.diagnostic
+                        error = detection.message
                         stalled = true
                         break
                     }
@@ -681,123 +659,6 @@ final class AgentRunner {
         guard parallelReadOnlyTools.contains(call.name) else { return false }
         guard call.argumentsParseError == nil else { return false }
         return tools.contains { $0.spec.name == call.name }
-    }
-
-    /// 停滞记账：相同 (工具名, 参数) 指纹的失败连续出现达阈值即判定停滞、写错误并返回 true。
-    /// 成功调用重置计数（只有「连续」的相同失败才算停滞）。
-    /// 指纹序列按执行顺序（先只读批、后串行批）记账，与「先跑读再跑写」的执行取舍一致。
-    private func recordStallIfNeeded(
-        call: AgentToolCall,
-        result: AgentToolResult,
-        lastFailureFingerprint: inout String?,
-        consecutiveFailures: inout Int
-    ) -> Bool {
-        guard result.isError else {
-            lastFailureFingerprint = nil
-            consecutiveFailures = 0
-            return false
-        }
-        // 指纹用排序键的 JSON，保证参数顺序无关
-        let fingerprint = stallFingerprint(call)
-        if fingerprint == lastFailureFingerprint {
-            consecutiveFailures += 1
-        } else {
-            lastFailureFingerprint = fingerprint
-            consecutiveFailures = 1
-        }
-        guard consecutiveFailures >= Self.stallThreshold else { return false }
-        let summary = Self.firstLine(result.content, maxLength: 120)
-        state.stall = AgentStallDiagnostic(
-            toolName: call.name,
-            repeatCount: consecutiveFailures,
-            lastErrorSummary: summary
-        )
-        error = "Agent 在工具 '\(call.name)' 上停滞：相同调用已连续失败 \(consecutiveFailures) 次（最后错误：\(summary)）。已中断运行，请检查该工具的输入或换个说法重试。"
-        return true
-    }
-
-    /// 停滞检测用的调用指纹：工具名 + 排序键参数 JSON。
-    /// AnySendableValue.anyValue 产出的都是 JSON 安全类型（含 NSNull），序列化不会失败；
-    /// 失败时退化为「工具名|?」，仍能保证相同工具重复失败可被检测到。
-    private func stallFingerprint(_ call: AgentToolCall) -> String {
-        let raw = call.arguments.reduce(into: [String: Any]()) { $0[$1.key] = $1.value.anyValue }
-        guard let data = try? JSONSerialization.data(withJSONObject: raw, options: [.sortedKeys]),
-              let json = String(data: data, encoding: .utf8)
-        else { return "\(call.name)|?" }
-        return "\(call.name)|\(json)"
-    }
-
-    /// 步级停滞检测（规则 2 / 3），达阈值时写 `state.stall` + `error` 并返回 true。
-    ///
-    /// 规则 1（recordStallIfNeeded）只认「**相同** (工具名, 参数) 连续失败」，留下两个
-    /// 能烧满 maxSteps 却报「超过最大步数」的盲区：
-    ///   - 规则 2（换参反复失败）：模型每次微调一点参数，指纹每次都不同，规则 1 永不触发。
-    ///     判据改为「本步**所有**工具调用都失败」并连续达阈值。
-    ///   - 规则 3（成功但无进展）：调用都成功、结果却全是此 run 已出现过的内容
-    ///     （反复读同一文件、反复写回同一段）。判据是「本步没有任何新结果签名」。
-    ///
-    /// 只在整步结果齐全时调用，取消/中断截断的半成品步不参与，避免把「没跑完」
-    /// 误判成「没进展」。规则 3 用结果哈希而非全文比较：结果内容漂移（含时间戳等）
-    /// 会被保守地当作「有新进展」，宁漏报不误杀。
-    private func evaluateStepStall(
-        calls: [AgentToolCall],
-        results: [AgentToolResult],
-        allFailedStreak: inout Int,
-        noProgressStreak: inout Int,
-        seenOutcomes: inout Set<String>
-    ) -> Bool {
-        guard !results.isEmpty else { return false }
-
-        if results.allSatisfy({ $0.isError }) {
-            allFailedStreak += 1
-        } else {
-            allFailedStreak = 0
-        }
-
-        var sawNewOutcome = false
-        for result in results where seenOutcomes.insert(Self.outcomeSignature(result)).inserted {
-            sawNewOutcome = true
-        }
-        noProgressStreak = sawNewOutcome ? 0 : noProgressStreak + 1
-
-        // 涉及的工具名（去重排序），供诊断与文案使用
-        let tools = Set(calls.map(\.name)).sorted().joined(separator: "、")
-
-        if allFailedStreak >= Self.allFailedStepThreshold {
-            let summary = Self.firstLine(results.last?.content ?? "", maxLength: 120)
-            state.stall = AgentStallDiagnostic(
-                toolName: tools, repeatCount: allFailedStreak, lastErrorSummary: summary
-            )
-            error = "Agent 连续 \(allFailedStreak) 步的工具调用全部失败（涉及：\(tools)）。"
-                + "已中断运行——反复换参数仍失败通常意味着前提假设不成立，请检查输入或换个说法重试。"
-                + "（最后一次错误：\(summary)）"
-            return true
-        }
-
-        if noProgressStreak >= Self.noProgressStepThreshold {
-            state.stall = AgentStallDiagnostic(
-                toolName: tools, repeatCount: noProgressStreak,
-                lastErrorSummary: "连续 \(noProgressStreak) 步未产生新结果"
-            )
-            error = "Agent 连续 \(noProgressStreak) 步没有任何有效进展：工具返回的都是此前已出现过的结果"
-                + "（涉及：\(tools)），反复读写同一内容不会推进任务。已中断运行，请换个说法重试。"
-            return true
-        }
-
-        return false
-    }
-
-    /// 工具结果签名：工具名 + 是否错误 + 结果内容哈希。
-    /// 用哈希而非全文，避免把每个大 tool 结果（单条可达 64K 字符）都常驻内存；
-    /// 进程内哈希稳定，够本 run 内做「是不是老结果」的判定。
-    private static func outcomeSignature(_ result: AgentToolResult) -> String {
-        "\(result.toolName)|\(result.isError ? "E" : "O")|\(result.content.hashValue)"
-    }
-
-    /// 取首行并按长度截断，供错误摘要使用（停滞诊断 / 文案）。
-    private static func firstLine(_ s: String, maxLength: Int) -> String {
-        let line = s.components(separatedBy: "\n").first ?? s
-        return line.count > maxLength ? String(line.prefix(maxLength)) + "…" : line
     }
 
     /// 为没有对应 tool result 的 tool call 追加合成的中断结果（紧跟其 assistant 消息之后），

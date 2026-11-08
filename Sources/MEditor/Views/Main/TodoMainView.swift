@@ -59,7 +59,7 @@ struct TodoMainView: View {
                     Task { await store.reload(rootURL: state.rootURL) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13))
+                        .font(DS.Font.label())
                         .foregroundStyle(theme.craftSecondary)
                 }
                 .buttonStyle(.plain)
@@ -135,7 +135,7 @@ struct TodoMainView: View {
                 .font(.system(size: 32, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(text)
-                .font(.system(size: 13))
+                .font(DS.Font.label())
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }

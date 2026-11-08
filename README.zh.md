@@ -243,7 +243,8 @@ MEditor/
     │   │   │   │   └── ClaudeCLIBackend.swift # claude CLI 子进程
     │   │   │   └── Tools/                     # 文档、编辑器、工作区、Shell 工具
     │   │   ├── InlineEditAction.swift         # 选区级修改 + diff 审阅（UI：Views/Editor/InlineEditBar、Views/Preview/PreviewInlineEditBar）
-    │   │   ├── AIService.swift                # 对话补全与 provider 预设
+    │   │   ├── AIConfiguration.swift          # Provider、预设、消息与场景配置
+    │   │   ├── AIService.swift                # 对话补全与流式客户端
     │   │   └── BeautifyAgent.swift            # 单发文档润色
     │   ├── MCP/           # MCP Server（stdio）与 Client（stdio / streamable HTTP）
     │   ├── Core/          # AppSettings、Localization、MarkdownFormatter

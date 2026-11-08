@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - AppSettings 替身（iOS）
 //
-// 共享代码 AIService.swift 的 `AIConfig.current(_:)` 与 AIModels.swift 的
+// 共享代码 AIConfiguration.swift 的 `AIConfig.current(_:)` 与 AIModels.swift 的
 // `AIAccentStyle.current(_:)` 以 AppSettings 为参数类型。macOS 端的
 // Services/Core/AppSettings.swift 使用 macOS-only 的 security-scoped bookmark，
 // 无法编进 iOS target；移动端设置直接走 MobileAISettings（UserDefaults），
@@ -20,7 +20,7 @@ import Foundation
 //      `AppSettings.xxx` 这类读取即失败（合并前拦住，早于运行期）。
 //
 // 当前 iOS 编译路径上的命中点（由上面的脚本机械核对，不再靠人工维护清单）：
-//   - Services/AI/AIService.swift   `AIConfig.current(_ s: AppSettings, ...)` —— 仅签名类型
+//   - Services/AI/AIConfiguration.swift   `AIConfig.current(_ s: AppSettings, ...)` —— 仅签名类型
 //   - Models/AIModels.swift         `AIAccentStyle.current(_ settings: AppSettings)` —— 仅签名类型
 //   两处函数体读的是**参数**，iOS 端没有调用方（iOS 走 MobileAISettings.makeConfig()）。
 //

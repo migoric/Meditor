@@ -22,33 +22,30 @@
 Meditor/
 ├── Package.swift                 # swift-tools-version 6.2（⇒ 必须 Xcode 26 工具链）
 ├── VERSION                       # macOS 版本单源（bundle.sh 注入 Info.plist）
-├── Sources/MEditor/              # 桌面端主体 —— 273 个 .swift / ~53.6k 行
+├── Sources/MEditor/              # 桌面端主体 —— 295 个 .swift / 58.6k 行
 │   ├── Models/  Protocols/       # 数据模型与结构接口（最底层，零上层依赖）
 │   ├── Services/                 # 能力层：AI（Agent/Backends/Tools）、MCP、Core、File…
 │   ├── Managers/                 # 状态管理：Tab / FileTree / Share / Template / Todo…
 │   ├── ViewModels/               # AppState（组合式状态层）＋ 各 @Observable UI 状态
 │   └── Views/                    # SwiftUI + AppKit 视图
-├── Tests/MEditorTests/           # 130 个 .swift / ~25.8k 行
+├── Tests/MEditorTests/           # 156 个 .swift / 30.2k 行
 ├── Mobile/                       # iOS 伴生 App（独立 Xcode 工程）
-│   └── Sources/                  # 29 个 .swift / ~6.5k 行
+│   └── Sources/                  # 29 个 .swift / 6.5k 行
 ├── worker/                       # Cloudflare Workers（在线发布后端，独立 toolchain）
 ├── website/  pages/              # 静态站与文档页
 └── scripts/                      # 打包 / 测试 / 覆盖率 / 守卫脚本
 ```
 
-**体量读数会腐烂** —— 上面的数字是 2026-10-23 的实测值，**引用前请现场复算**：
+**体量读数会腐烂** —— 上面的数字是 2026-11-07 的实测值，**引用前请现场复算**：
 
 ```bash
 find Sources/MEditor -name '*.swift' | wc -l
 find Sources/MEditor -name '*.swift' -exec cat {} + | wc -l
 ```
 
-当前最大的五个文件（也是重构优先级最高的五个）：`Services/Core/Localization.swift` 1344 行、
-`Services/AI/AIService.swift` 845 行、`Services/AI/Agent/AgentRunner.swift` 843 行、
-`ViewModels/AppState.swift` 819 行、`Views/AI/AtMention/AtMentionComposerView.swift` 812 行。
-
-（数字为 2026-10-22 实测。对比 10-17 那版：`AIService.swift` 与 `AppState.swift` 五天内各涨了
-~90/~60 行并反超进榜——这两个正是打磨期要拆的热文件，涨速本身就是证据。）
+当前最大的五个文件（也是重构优先级最高的五个）：`Services/Core/Localization.swift` 1380 行、
+`Views/AI/AtMention/AtMentionComposerView.swift` 812 行、`Views/DiffReview/DiffReviewOverlay.swift` 802 行、
+`ViewModels/AppState.swift` 735 行、`Services/AI/Agent/Backends/RestAgentBackend.swift` 702 行。
 
 ---
 
@@ -90,7 +87,7 @@ UI 常量走 `DS.*`（`Views/Shared/DesignTokens.swift`）。**定义了没人�
 ### 2.3 共享内核：iOS 侧是**手工清单**
 
 iOS target 在 `Mobile/MEditorMobile.xcodeproj/project.pbxproj` 的 `Shared` 组里**逐条枚举**
-`../Sources/MEditor/**` 的文件（当前 **57 条**），不是文件系统同步组。后果：
+`../Sources/MEditor/**` 的文件与资源（当前 **60 条：43 个 Swift 文件、17 个资源**），不是文件系统同步组。后果：
 
 - **新增一个共享文件，必须同时改 pbxproj**，否则 iOS 静默缺文件、编译红。
 - 共享文件里**不许有未包裹的 AppKit 依赖**（用 `#if os(macOS)`）。目前唯一合法的

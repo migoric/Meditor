@@ -165,7 +165,7 @@ struct BeautifySheet: View {
     private func tokenColorRow(label: String, key: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 13))
+                .font(DS.Font.label())
                 .frame(width: 60, alignment: .leading)
             ColorPicker("", selection: colorBinding(key: key, defaultVal: defaultTokenValue(key)))
                 .labelsHidden()
@@ -188,7 +188,7 @@ struct BeautifySheet: View {
     private func tokenTextRow(label: String, key: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 13))
+                .font(DS.Font.label())
                 .frame(width: 60, alignment: .leading)
             TextField(defaultTokenValue(key), text: textBinding(key: key, defaultVal: defaultTokenValue(key)))
                 .textFieldStyle(.roundedBorder)
@@ -208,7 +208,7 @@ struct BeautifySheet: View {
                 ProgressView()
                     .scaleEffect(0.9)
                 Text(L("beautify.generating"))
-                    .font(.system(size: 13))
+                    .font(DS.Font.label())
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -218,7 +218,7 @@ struct BeautifySheet: View {
                     .font(.system(size: 32))
                     .foregroundStyle(Color.appAccent.opacity(0.45))
                 Text(L("beautify.emptyHint"))
-                    .font(.system(size: 13))
+                    .font(DS.Font.label())
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
