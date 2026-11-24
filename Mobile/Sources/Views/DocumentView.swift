@@ -70,24 +70,7 @@ struct DocumentView: View {
         .toolbar {
             // 标题自绘：文档文件名 / 品牌字保留衬线（UI chrome 其余部分是无衬线）。
             // 操作动作全部沉到底部动作条，头部只留标题和 ⋯ 菜单。
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 1) {
-                    Text(store.hasDocument ? store.fileName : "MEditor")
-                        .font(.system(.headline, design: .serif, weight: .semibold))
-                        .foregroundStyle(PaperTheme.ink)
-                        .lineLimit(1)
-                    if store.hasDocument && !store.showPreview {
-                        HStack(spacing: 4) {
-                            Text(wordCount)
-                                .font(.caption2)
-                                .foregroundStyle(PaperTheme.inkSecondary)
-                            Circle()
-                                .fill(saveIndicatorColor)
-                                .frame(width: 4, height: 4)
-                        }
-                    }
-                }
-            }
+            principalItem
             if store.hasDocument {
                 ToolbarItem(placement: .topBarTrailing) {
                     documentMenu
@@ -123,6 +106,42 @@ struct DocumentView: View {
             Button("好", role: .cancel) { publishAlert = nil }
         } message: {
             Text(publishAlert?.message ?? "")
+        }
+    }
+
+    // MARK: - 导航栏标题
+
+    /// 标题 tool bar item。抽出来是因为 `.axisBehavior` 只能挂在 `ToolbarContent` 上，
+    /// 要按运行期可用性分两条路径，不能写在 `View` 内部。
+    @ToolbarContentBuilder
+    private var principalItem: some ToolbarContent {
+        if #available(iOS 27.1, *) {
+            // Duo 内屏会把标准工具栏按钮改竖排。`.principal` 里的双行标题（文件名 + 字数）
+            // 竖排时会被压成两行窄字，这里显式要求横向渲染。
+            ToolbarItem(placement: .principal) { principalTitle }
+                .axisBehavior(.horizontalOnly)
+        } else {
+            ToolbarItem(placement: .principal) { principalTitle }
+        }
+    }
+
+    /// 标题本体：文件名（衬线）+ 编辑态的字数与保存指示点。
+    private var principalTitle: some View {
+        VStack(spacing: 1) {
+            Text(store.hasDocument ? store.fileName : "MEditor")
+                .font(.system(.headline, design: .serif, weight: .semibold))
+                .foregroundStyle(PaperTheme.ink)
+                .lineLimit(1)
+            if store.hasDocument && !store.showPreview {
+                HStack(spacing: 4) {
+                    Text(wordCount)
+                        .font(.caption2)
+                        .foregroundStyle(PaperTheme.inkSecondary)
+                    Circle()
+                        .fill(saveIndicatorColor)
+                        .frame(width: 4, height: 4)
+                }
+            }
         }
     }
 
@@ -428,7 +447,8 @@ private struct DocActionBar: View {
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 4)
-        .readableColumn(AdaptiveChrome.actionBar)
+        // 半折姿态下整簇避让铰链；无铰链时与 `readableColumn` 完全等价。
+        .chromeColumn(AdaptiveChrome.actionBar)
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }

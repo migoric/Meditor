@@ -19,16 +19,35 @@
   两端（相距 ~900pt），设置表单整行铺满。现在统一封顶并居中——正文 720pt、动作栏 620pt、
   列表与表单 820pt。**只封顶不撑开**，所以 402pt 的 iPhone 上行为逐像素不变（已用无头模拟器
   截图量证：改前后内容横跨 22.7–379.3pt 一致）。新增 `Mobile/Sources/Theme/AdaptiveChrome.swift`。
-- **新增 iOS 布局走查文档** `docs/iphone-duo.md`：Duo 的设备事实、本机 SDK
-  （Xcode 26.0）与 27 / 27.1 专属 API 的可用性清单、本仓反模式审计逐条结论、以及
-  升级到 27.1 之后的五项迁移（侧栏、铰链避让、主次两栏、工具栏竖排、同心圆角）。
+- **新增 iOS 布局走查文档** `docs/iphone-duo.md`：Duo 的设备事实（实测外屏 466×678pt、
+  其中 84pt 是安全区保留，可用宽度只有 382pt；内屏 669×951pt）、Xcode 27.2 下
+  27.1 专属 API 的可用性清单、本仓反模式审计逐条结论，以及四项「不做」的量化依据。
+- **折叠屏铰链避让**：半折 / 帐篷姿态下，底部动作栏整簇落在**最宽的连续区域**，
+  不再骑在折痕上；连续滚动的正文**不位移**（位移会打断阅读）。无铰链设备上
+  与改动前逐像素等价（已用无头模拟器截图量证：底栏 22.7–354.3pt 两版一致）。
+- **iOS 端新增布局探针与几何断言**：`-debugLayoutProbe YES` 在左上角打印窗口宽度 /
+  安全区 / 尺寸类 / 缩放 / 铰链与遮挡区间；`scripts/verify_hinge_math.swift` 把几何计算
+  编成 macOS 命令行程序跑 19 条断言（已做变异验证：改坏参数立刻 4 条变红）。
+
+### Changed
+
+- **iOS 文档页标题在竖排工具栏下显式横排**：Duo 内屏 27.1 起会把工具栏按钮改竖排，
+  `.principal` 里的双行标题（文件名 + 字数）会被压成两行窄字，改用
+  `axisBehavior(.horizontalOnly)`（iOS 27.1 起，低版本走原路径）。
 
 ### Notes
 
-- **Duo 的专属 API 这次一条都没用**：`defaultTabBarPlacement`、`reservedRegion`、
-  `ArrangementView`、`axisBehavior`、`ToolbarOverflowMenu`、`presentationPlacement`
-  在本机 26.0 SDK 的 `SwiftUI.swiftinterface` / `UIKit.swiftinterface` 里全部查无此符号。
-  要做到 Apple 描述的「完整内屏体验」必须升到 Xcode 27.1，清单与代码片段见上述文档。
+- **Duo 专属 API 现已可用**：本机已升级到 Xcode 27.2 / iOS SDK 27.2，
+  `defaultTabBarPlacement`、`reservedRegions(kind:options:)`、`ArrangementView`、
+  `axisBehavior`、`ToolbarOverflowMenu`、`presentationPlacement` 全部到位。
+  上一版本记录里「26.0 SDK 一条都没有」当时成立，另有两处判断被证伪——
+  真实签名是复数 `reservedRegions(kind:options:)`（不是 `reservedRegion(.division, includeInactive:)`），
+  且 `ConcentricRectangle` 一直存在（住在 SwiftUICore，26.0 起可用）。详见上述文档 §2。
+- 内屏侧栏 / 主次两栏**否决**：内屏只有 669pt，拆栏后每栏 330–390pt，比 402pt 的普通
+  iPhone 还窄。同心圆角暂不用：本仓没有「贴边嵌在带圆角容器内」的卡片。
+- 内屏（展开 / 半折 / 帐篷）姿态本机**无法自动切换**（Xcode 27 用 DeviceHub 取代了
+  Simulator.app，`simctl` 只有屏幕电源与几何），所以铰链避让的观感未经截图验证，
+  人工验证步骤写在文档 §7。
 - 多场景（同一 App 多个 UI 实例）**没开**：`DocumentStore` / `ChatModel` 是 App 级
   `@State`，两个窗口会镜像同一篇文档，得先把状态下沉到窗口作用域。
 
