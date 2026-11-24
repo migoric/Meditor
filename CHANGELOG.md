@@ -10,6 +10,28 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
+## [Unreleased]
+
+### Added
+
+- **iOS 端适配 iPhone Duo 的宽画布**。Duo 内屏展开是 7.6 吋、尺寸类为 regular × regular，
+  而 iOS 端此前是「单列手机布局被拉宽」：正文一行能塞 90 个汉字，底栏两条胶囊被推到屏幕
+  两端（相距 ~900pt），设置表单整行铺满。现在统一封顶并居中——正文 720pt、动作栏 620pt、
+  列表与表单 820pt。**只封顶不撑开**，所以 402pt 的 iPhone 上行为逐像素不变（已用无头模拟器
+  截图量证：改前后内容横跨 22.7–379.3pt 一致）。新增 `Mobile/Sources/Theme/AdaptiveChrome.swift`。
+- **新增 iOS 布局走查文档** `docs/iphone-duo.md`：Duo 的设备事实、本机 SDK
+  （Xcode 26.0）与 27 / 27.1 专属 API 的可用性清单、本仓反模式审计逐条结论、以及
+  升级到 27.1 之后的五项迁移（侧栏、铰链避让、主次两栏、工具栏竖排、同心圆角）。
+
+### Notes
+
+- **Duo 的专属 API 这次一条都没用**：`defaultTabBarPlacement`、`reservedRegion`、
+  `ArrangementView`、`axisBehavior`、`ToolbarOverflowMenu`、`presentationPlacement`
+  在本机 26.0 SDK 的 `SwiftUI.swiftinterface` / `UIKit.swiftinterface` 里全部查无此符号。
+  要做到 Apple 描述的「完整内屏体验」必须升到 Xcode 27.1，清单与代码片段见上述文档。
+- 多场景（同一 App 多个 UI 实例）**没开**：`DocumentStore` / `ChatModel` 是 App 级
+  `@State`，两个窗口会镜像同一篇文档，得先把状态下沉到窗口作用域。
+
 ## [0.13.13] - 2026-10-31
 
 ### Refactored

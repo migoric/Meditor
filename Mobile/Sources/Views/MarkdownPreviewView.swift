@@ -39,7 +39,8 @@ struct MarkdownPreviewView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: AdaptiveChrome.readingColumn, alignment: .leading)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, PaperTheme.Spacing.page)
             .padding(.vertical, 20)
             .contextMenu {

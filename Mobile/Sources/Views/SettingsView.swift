@@ -90,9 +90,11 @@ struct SettingsView: View {
             }
             .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
             .scrollContentBackground(.hidden)
-            .background(PaperTheme.paperBackground)
             .listRowBackground(PaperTheme.card)
             .foregroundStyle(PaperTheme.ink)
+            // 同子页：先封顶再铺通栏纸底。
+            .readableColumn(AdaptiveChrome.listColumn)
+            .background(PaperTheme.paperBackground)
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
             // 两处「已配置」摘要都读 Keychain 的缓存态：进入列表时刷一次，
@@ -270,9 +272,12 @@ private struct AIServiceSettingsView: View {
         }
         .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         .scrollContentBackground(.hidden)
-        .background(PaperTheme.paper)
         .listRowBackground(PaperTheme.card)
         .foregroundStyle(PaperTheme.ink)
+        // 宽画布（Duo 内屏 / iPad）上表单封顶居中。背景必须加在 readableColumn
+        // 之后才是通栏的——否则纸底只铺到 820pt 宽的那一列。
+        .readableColumn(AdaptiveChrome.listColumn)
+        .background(PaperTheme.paper)
         .navigationTitle("AI 服务")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -429,9 +434,12 @@ private struct ShareSettingsView: View {
         }
         .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         .scrollContentBackground(.hidden)
-        .background(PaperTheme.paper)
         .listRowBackground(PaperTheme.card)
         .foregroundStyle(PaperTheme.ink)
+        // 宽画布（Duo 内屏 / iPad）上表单封顶居中。背景必须加在 readableColumn
+        // 之后才是通栏的——否则纸底只铺到 820pt 宽的那一列。
+        .readableColumn(AdaptiveChrome.listColumn)
+        .background(PaperTheme.paper)
         .navigationTitle("在线分享")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -476,9 +484,12 @@ private struct AISkillsSettingsView: View {
         }
         .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
         .scrollContentBackground(.hidden)
-        .background(PaperTheme.paper)
         .listRowBackground(PaperTheme.card)
         .foregroundStyle(PaperTheme.ink)
+        // 宽画布（Duo 内屏 / iPad）上表单封顶居中。背景必须加在 readableColumn
+        // 之后才是通栏的——否则纸底只铺到 820pt 宽的那一列。
+        .readableColumn(AdaptiveChrome.listColumn)
+        .background(PaperTheme.paper)
         .navigationTitle("AI 技能")
         .navigationBarTitleDisplayMode(.inline)
     }
