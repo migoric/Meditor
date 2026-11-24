@@ -162,6 +162,9 @@ struct DocumentHomeView: View {
         .refreshable { recents.refreshWorkspaceDocuments() }
         // 底部悬浮栏不挡卡片：滚动内容底部留白（数值推导见 PaperTheme.Spacing.bottomBarInset）
         .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+        // 宽画布上封顶：整行铺满 1000pt 时，「标题 ←→ 日期」的关联会被拉断。
+        // 外层 VStack 已有通栏 paperBackground，这里只收窄列表本身。
+        .readableColumn(AdaptiveChrome.listColumn)
     }
 
     /// 空态：原生 ContentUnavailableView（iOS 16+）承载标题/说明/动作三件套。

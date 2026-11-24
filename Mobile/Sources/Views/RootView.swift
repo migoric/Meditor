@@ -212,6 +212,9 @@ private struct BottomBarView: View {
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 4)
+        // 宽画布（Duo 内屏 / iPad）上封顶：否则两条胶囊被 Spacer 推到屏幕两端，
+        // 中间空出近千 pt，读起来不再是一组控件。compact 下无副作用。
+        .readableColumn(AdaptiveChrome.actionBar)
     }
 
     private func pageButton(_ item: RootView.Page, icon: String, label: String) -> some View {

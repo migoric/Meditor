@@ -71,6 +71,14 @@ struct MEditorMobileApp: App {
         if UserDefaults.standard.bool(forKey: "debugSeedChat") {
             _chat.wrappedValue.seedDemoConversation()
         }
+        // 布局走查：`-debugSeedDocument preview`（或 `edit`）造一篇示意文档并直接打开。
+        // 用于在 iPad / 折叠屏各种姿态下量正文栏宽度 —— 否则要先手动点开一个文件，
+        // 而 simctl 没有点击能力，宽屏布局就永远只能靠肉眼猜。
+        if let mode = UserDefaults.standard.string(forKey: "debugSeedDocument"), !mode.isEmpty {
+            store.createDocument()
+            store.applyManualEdit(Self.layoutWalkthroughText)
+            store.showPreview = (mode != "edit")
+        }
         #endif
     }
 
@@ -93,6 +101,39 @@ struct MEditorMobileApp: App {
             ),
         ]
     }
+
+    #if DEBUG
+    /// 布局走查语料：长段落（量行宽）+ 列表 + 代码块 + 表格，覆盖各块类型。
+    /// 只在 `-debugSeedDocument preview|edit` 时用到，不参与发布逻辑。
+    private static let layoutWalkthroughText = """
+    # 折叠屏布局走查
+
+    这一段用来量正文栏的实际宽度。在没有宽度上限的画布上，一行可以塞进九十个以上的汉字，眼睛在换行处会丢掉行首；有了可读宽度上限之后，每一行落在四十个汉字上下，视线只需要很短的回扫距离就能接上下一行。这段话刻意写长，是为了让截图里出现足够多的行，从而量出文字的最小与最大横坐标。
+
+    ## 列表
+
+    - 第一项：编辑区与预览区共用同一套宽度上限
+    - 第二项：底栏两条胶囊封顶后仍分列左右
+    - 第三项：设置页表单封顶居中，纸底通栏
+
+    ## 代码
+
+    ```swift
+    enum AdaptiveChrome {
+        static let readingColumn: CGFloat = 720
+        static let actionBar: CGFloat = 620
+        static let listColumn: CGFloat = 820
+    }
+    ```
+
+    | 形态 | 宽度 | 期望 |
+    | --- | --- | --- |
+    | 外屏 | 402pt | 铺满 |
+    | 内屏 | ~1000pt | 封顶居中 |
+
+    最后一段同样写长一些，让正文有足够的行数把可读宽度量准，同时确认表格与代码块不会撑破容器。
+    """
+    #endif
 
     var body: some Scene {
         WindowGroup {

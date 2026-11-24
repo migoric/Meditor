@@ -285,6 +285,7 @@ struct DocumentView: View {
                 }
                 // 纯文本预览同样贴着底部动作栏滚：不补留白时最后约 34pt 被压住。
                 .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+                .readableColumn(AdaptiveChrome.readingColumn)
             }
         } else {
             // 手动编辑经 applyManualEdit 进 store：触发防抖自动保存，进程退出不丢内容。
@@ -305,6 +306,9 @@ struct DocumentView: View {
                     }
                 }
             )
+            // 宽画布上编辑栏同样封顶：16.5pt 等宽字在 1000pt 宽的行里已经无法扫读。
+            // 编辑器底色与页面底色同为 PaperTheme.paper，收窄后左右不会出现色差。
+            .readableColumn(AdaptiveChrome.readingColumn)
         }
     }
 
@@ -424,6 +428,7 @@ private struct DocActionBar: View {
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 4)
+        .readableColumn(AdaptiveChrome.actionBar)
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
