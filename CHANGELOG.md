@@ -10,7 +10,7 @@
 > 发布时的 GitHub Release 正文由 `release.yml` 从提交标题自动生成（见 `CONTRIBUTING.md`「发版流程」）；
 > 本文件是**人写的、按变更性质归类**的那一份，两者互补。
 
-## [Unreleased]
+## [0.13.14] - 2026-11-25
 
 ### Added
 
@@ -48,6 +48,10 @@
 - 内屏（展开 / 半折 / 帐篷）姿态本机**无法自动切换**（Xcode 27 用 DeviceHub 取代了
   Simulator.app，`simctl` 只有屏幕电源与几何），所以铰链避让的观感未经截图验证，
   人工验证步骤写在文档 §7。
+- **CI 的 iOS 构建 job 改用 `xcode-27` 镜像**（Xcode 27.2 / iOS 27.2 SDK）：
+  `reservedRegions` 是 iOS 27.1 的符号，原来的 `macos-26`（Xcode 26.6 / iOS 26.5 SDK）
+  在编译期就报「no member」。macOS 两个 job 与 `release.yml` 仍留在 `macos-26`——
+  包的外观按构建时 SDK 决定（Liquid Glass），不跟着换。
 - 多场景（同一 App 多个 UI 实例）**没开**：`DocumentStore` / `ChatModel` 是 App 级
   `@State`，两个窗口会镜像同一篇文档，得先把状态下沉到窗口作用域。
 
