@@ -152,6 +152,14 @@ struct RootView: View {
             if plusHero.isZooming {
                 PlusZoomOverlay(namespace: heroNS)
             }
+
+            #if DEBUG
+            // 姿态走查探针：把窗口宽度 / 尺寸类 / 铰链切分画在左上角。
+            // `-debugLayoutProbe YES` 打开（折叠姿态只能手动开合，自动截图看不见铰链）。
+            if UserDefaults.standard.bool(forKey: "debugLayoutProbe") {
+                LayoutProbeOverlay()
+            }
+            #endif
         }
         .environment(aiHero)
         .environment(plusHero)
@@ -213,8 +221,8 @@ private struct BottomBarView: View {
         .padding(.horizontal, 28)
         .padding(.bottom, 4)
         // 宽画布（Duo 内屏 / iPad）上封顶：否则两条胶囊被 Spacer 推到屏幕两端，
-        // 中间空出近千 pt，读起来不再是一组控件。compact 下无副作用。
-        .readableColumn(AdaptiveChrome.actionBar)
+        // 中间空出近千 pt，读起来不再是一组控件。半折姿态下整簇避让铰链。compact 下无副作用。
+        .chromeColumn(AdaptiveChrome.actionBar)
     }
 
     private func pageButton(_ item: RootView.Page, icon: String, label: String) -> some View {

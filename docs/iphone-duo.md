@@ -1,17 +1,24 @@
 # iPhone Duo 适配（iOS 端）
 
-> 日期：2026-11-24。范围：`Mobile/Sources/**`（iOS 壳）。
-> 结论：**本机 SDK 装不下任何 Duo 专属 API**，所以这次只做与 SDK 无关的布局适配 +
-> 把 27 / 27.1 的迁移清单写死在这里。想拿到官方描述的「完整内屏体验」（竖排工具栏、
-> 侧栏、铰链避让）必须升级到 **Xcode 27.1**。
+> 日期：2026-11-25。范围：`Mobile/Sources/**`（iOS 壳）。
+> 环境：**Xcode 27.2 (27B52) / iOS SDK 27.2**，部署目标 iOS 26.0。
+> 结论：Duo 专属 API 在 27.1 起全部到位，**铰链避让与工具栏轴向已落地**；内屏侧栏 / 主次两栏
+> 经实测量宽后**否决**（内屏只有 669pt，拆栏得不偿失）。内屏姿态下的视觉效果本机无法自动验证，
+> 见 §7。
 
-## 1. 设备事实（Apple 2026-09 发布）
+## 1. 设备事实（本机实测，不是抄文档）
 
-| 形态 | 尺寸 | 尺寸类 | 备注 |
-|---|---|---|---|
-| 外屏（合起） | 5.4" | 竖 compact × regular / 横 compact × compact | 与普通 iPhone 一致，界面零改动 |
-| 内屏（展开） | 7.6" | **regular × regular** | 面积比 18 Pro Max 大 50% |
-| 半折（书本 / 帐篷） | — | — | 铰链把内屏分成多个可用区域 |
+`xcrun simctl io <dev> enumerate` + `simctl io <dev> screenshot` + 探针（§4.4）读数：
+
+| 形态 | 帧缓冲 | 逻辑尺寸 | 尺寸类 | 备注 |
+|---|---|---|---|---|
+| 外屏（合起） | 1398×2034 @3x | 466×678pt | **cmp × reg** | 可用宽度**只有 382pt** |
+| 内屏（展开） | 2007×2853 @3x | 669×951pt | reg × reg（Apple 文档） | 本机无法切到该姿态 |
+
+⚠️ **外屏右侧有 84pt 安全区保留**。这是实测出来的，不是猜的：
+`UIWindowScene.keyWindow.bounds = 466×678`，而视图拿到的布局宽度是 **382pt**、
+`safeAreaInsets.trailing = 84`。也就是说「外屏 = 普通 5.4" 手机，界面零改动」这句话
+**只对比例成立、对可用宽度不成立**——任何按 466pt 算出来的居中都会偏 42pt。
 
 两条硬约束（来自 Apple《Prepare your app for iPhone Duo》）：
 
@@ -20,150 +27,185 @@
 2. **双屏设备上不要引用 `UIScreen.main`**（iOS 26 起已废弃，双屏语义有歧义）。要取屏幕
    从 `window?.windowScene?.screen` 拿，缩放用 `traitCollection.displayScale`。
 
-## 2. API 可用性（本机实测，不是查文档推的）
+## 2. API 可用性（Xcode 27.2 实测）
 
-本机是 **Xcode 26.0 / iPhoneSimulator 26.0 SDK**。直接 grep SDK 的
-`SwiftUI.swiftinterface` 与 `UIKit.swiftinterface`：
+直接 grep `iPhoneSimulator27.2.sdk` 里的 `SwiftUI.swiftinterface` / `SwiftUICore.swiftinterface`
+/ `UIKit.swiftinterface`：
 
-| 符号 | 所属 | SDK 26.0 有吗 | 用途 |
+| 符号 | 所属 | 可用性 | 用途 |
 |---|---|---|---|
-| `onGeometryChange` | SwiftUI | 有（4 处） | 尺寸变化的现代获取方式 |
-| `containerRelativeFrame` | SwiftUI | 有（3 处） | 相对容器取宽 |
-| `sidebarAdaptable` | SwiftUI | 有（1 处） | TabView 侧栏形态 |
-| `UICornerConfiguration` | UIKit | 有（13 处） | 同心圆角 |
-| `defaultTabBarPlacement(.sidebar)` | SwiftUI | **无** | 内屏侧栏 |
-| `GeometryProxy.reservedRegion` / `UIView.reservedRegion` | 两者 | **无** | 铰链 / 摄像头避让（27.1） |
-| `ArrangementView` / `UIArrangementViewController` | 两者 | **无** | 主次两栏排布（27.1） |
-| `axisBehavior(.verticalPreferred)` / `.horizontalOnly` | SwiftUI | **无** | 工具栏竖排（27.1） |
-| `ToolbarOverflowMenu` / `UINavigationItem.additionalOverflowItems` | 两者 | **无** | 溢出菜单（27.1） |
-| `presentationPlacement(_:)` / `UISheetPresentationController.preferredPlacement` | 两者 | **无** | sheet 靠边（27.1） |
+| `ConcentricRectangle` | **SwiftUICore** | iOS **26.0** | 同心圆角（可作 `Shape` 用） |
+| `UICornerConfiguration` | UIKit | iOS 26.0 | 同心圆角（UIKit 侧） |
+| `defaultTabBarPlacement(_:)` / `AdaptableTabBarPlacement.sidebar` | SwiftUI | iOS 27.x | TabView 侧栏形态 |
+| `GeometryProxy.reservedRegions(kind:options:layoutDirectionBehavior:)` | SwiftUICore | iOS **27.1** | 铰链 / 遮挡区域 |
+| `UIView.reservedRegions(kind:options:)` | UIKit | iOS 27.1 | 同上（UIKit 侧） |
+| `ToolbarContent.axisBehavior(_:)` / `ToolbarItemAxisBehavior.horizontalOnly` | SwiftUI | iOS 27.1 | 工具栏竖排控制 |
+| `ArrangementView` / `UIArrangementViewController` | 两者 | iOS 27.1 | 主次两栏排布 |
+| `ToolbarOverflowMenu` | SwiftUI | iOS 27.1 | 溢出菜单 |
+| `presentationPlacement(_:)` | SwiftUI | iOS 27.1 | sheet 靠边 |
 
-⚠️ 网上不少资料把 Concentricity 写成 iOS 26 可用，但 26.0 SDK 里 `ConcentricRectangle`
-同样查无此符号。**以本机 SDK 为准，不以上述博客为准**。
+### 被证伪的旧断言（保留，别重犯）
+
+上一版本文档（2026-11-24，Xcode 26.0 环境）写了三条，现在两条已被推翻：
+
+| 旧断言 | 现状 | 为什么错 |
+|---|---|---|
+| 「`reservedRegion(.division, includeInactive: true)`」 | ❌ 名字不对 | 真实 API 是**复数** `reservedRegions(kind:options:)`，返回 `[ReservedRegion]`；`includeInactive` 是 `QueryOptions` 的选项位，不是参数名。`ReservedRegion` 有 `frame` / `margins` / `isActive` / `kind` / `id` |
+| 「SwiftUI 侧没有 `ConcentricRectangle`」 | ❌ 有，且 iOS 26.0 起 | 它定义在 **SwiftUICore**，上一版只 grep 了 `SwiftUI.swiftinterface` 所以漏了。教训：**SwiftUI 的符号有一大半住在 SwiftUICore** |
+| 「本机 SDK 装不下任何 Duo 专属 API」 | ✅ 当时成立 | 26.0 SDK 确实没有 27.1 的符号；本机升级到 27.2 后全部到位 |
 
 ## 3. 本仓审计结果（Duo 反模式逐条查过）
 
 | Apple 点名的反模式 | 本仓 | 证据 |
 |---|---|---|
 | 引用 `UIScreen.main` | ✅ 无 | `grep -rn "UIScreen" Mobile/Sources` 零命中 |
-| 按方向布局（`UIDevice.orientation` / `interfaceOrientation` / `statusBarOrientation`） | ✅ 无 | 同上，零命中 |
-| 按 `userInterfaceIdiom` 分支 | ✅ 无 | 零命中 |
-| 按已知机型尺寸硬编码（`bounds.height == 844` 之类） | ✅ 无 | `.frame(width:)` 命中 15 处，全是图标/印章/圆钮/分隔线的固有尺寸（0.5–88pt） |
-| 假设左右安全区相等（`width - insets.left * 2`） | ✅ 无 | 悬浮栏走 `.padding(.horizontal, 28)` 叠在系统安全区之内，两侧各自累加 |
-| `UIRequiresFullScreen` 锁死 | ✅ 未声明 | `Mobile/MEditorMobile/Info.plist` 无此键（Duo 上仍会随开合改变尺寸，锁它没意义） |
-| 居中导致拉伸的固定宽度 | ✅ 已修 | 见 §4 |
+| 按方向布局（`UIDevice.orientation` / `interfaceOrientation`） | ✅ 无 | 同上 |
+| 按 `userInterfaceIdiom` 分支 | ✅ 无 | 同上 |
+| 按已知机型尺寸硬编码 | ✅ 无 | `.frame(width:)` 命中项全是图标 / 印章 / 圆钮的固有尺寸 |
+| 假设左右安全区相等 | ✅ 无 | 悬浮栏走 `.padding(.horizontal, 28)` 叠在安全区之内，两侧各自累加 |
+| `UIRequiresFullScreen` 锁死 | ✅ 未声明 | `Mobile/MEditorMobile/Info.plist` 无此键 |
 
-## 4. 本次改动（SDK 26 能做的部分）
+## 4. 已完成的适配
 
-新增 `Mobile/Sources/Theme/AdaptiveChrome.swift`：三个上限 + 一个 `readableColumn(_:)`
-修饰符。**只封顶、不撑开** ⇒ `maxWidth` 在 402pt 的 iPhone 上取原值，
-compact 形态零副作用；因此不需要尺寸类分支，也就不存在「尺寸类判断错」这类隐性 bug。
+### 4.1 宽度封顶（`AdaptiveChrome`，上一版就有的部分）
 
-| 上限 | 值 | 理由 |
-|---|---|---|
-| `readingColumn` | 720pt | 17pt 正文 ≈ 每行 40 汉字 / 75 西文字符 |
-| `actionBar` | 620pt | 两条胶囊原本靠 `Spacer` 贴到屏幕两端，1032pt 画布上会拉开 ~900pt |
-| `listColumn` | 820pt | 再宽下去「标题 ←→ 日期」的关联就断了 |
+三个上限 + `readableColumn(_:)`：正文 720pt、动作栏 620pt、列表/表单 820pt。
+**只封顶、不撑开** ⇒ 402pt 的 iPhone 上取原值，compact 形态零副作用，不需要尺寸类分支。
 
-落点（6 处）：`RootView` 底部通栏、`DocumentView` 文档动作条 / 纯文本预览 / 编辑器、
-`MarkdownPreviewView` 正文、`DocumentHomeView` 列表、`SettingsView` 五个表单。
+⚠️ 顺序陷阱：需要通栏背景时 `.background(...)` 必须加在 `readableColumn` **之后**
+（该修饰符末尾已经 `frame(maxWidth: .infinity)`）。
 
-⚠️ 顺序陷阱：需要通栏背景时 `.background(...)` 必须加在 `readableColumn` **之后**——
-该修饰符末尾已经 `frame(maxWidth: .infinity)`，之前加的背景只会铺到封顶宽度那一列。
-`SettingsView` 的五个 `Form` 就是照这个顺序重排的。
+### 4.2 铰链避让（本次新增）
 
-### 实测（无头模拟器 + 像素量宽，不是目测）
+半折 / 帐篷姿态下铰链会把内屏切成几块。原则（Apple 的比喻是「跨书脊的照片不再是完整照片」）：
 
-`xcrun simctl` 可以无图形会话截图，再用 PIL 量「墨迹」的横坐标范围：
+- **连续滚动的正文不位移**——位移会打断阅读，跨折痕只是看着别扭。
+- **成簇的 chrome 必须避让**——底栏两条胶囊跨过折痕就成了两组控件。
 
-| 设备（逻辑宽） | 场景 | 内容横跨 | 中心 | 判定 |
-|---|---|---|---|---|
-| iPad Pro 13"（1032pt，代理内屏尺寸类） | 预览 | 156–876pt（720 宽） | 516 = 1032/2 | 封顶且精确居中 ✅ |
-| 同上 | 底部动作栏 | 224–808pt（584 宽） | 516 | 封顶居中 ✅ |
-| iPad Pro 13"（非种子，恢复文档） | 预览 | 153–879pt | 516 | 与种子路径一致 ✅ |
-| iPhone 17 Pro（402pt） | 预览 | 22.7–379.3pt | — | 仍是 22pt 页边距，**与改前一致** ✅ |
-| iPhone 17 Pro（402pt） | 编辑 | 19.3–378pt | — | 14pt `textContainerInset`，**与改前一致** ✅ |
+实现：
 
-复现命令：
+- `AdaptiveChrome.freeSpans(width:dividers:)`：把铰链占用的横坐标区间切成若干连续区间，
+  相交 / 相邻的 division 先合并（否则会切出宽度 0 的碎片）。
+- `HingeLayout`：窗口宽度 + 铰链区间 + 安全区内缩，`chromeSpan(cap:)` 给出
+  「封顶宽度 + 横移量」；无铰链时恒为 `(cap, 0)`，与改动前**逐像素等价**。
+- `.chromeColumn(_:)`：只给 chrome 用的修饰符，居中到**最宽的连续区域**。
+- 运行期判断：`reservedRegions` 是 iOS 27.1 起才有的，部署目标 26.0，低版本上取不到铰链、
+  退化成「整幅窗口」，不崩不改版式。
+
+⚠️ **就地测量，别在根部量**。踩过的坑：在 `RootView` 的 ZStack 上 `onGeometryChange`
+拿到的是 **382pt**（安全区宽度），而底栏自己的容器也是 382pt——但两者一旦分处不同层级
+（比如将来把底栏移到 `.safeAreaInset`），`spanCenter - W/2` 就会差 42pt。
+现在 `ChromeColumn` 在**自己的背景里**量，宽度与铰链坐标必然同源。
+
+### 4.3 工具栏竖排
+
+27.1 起标准工具栏按钮在内屏会走竖排。`DocumentView` 的 `.principal` 里是**双行标题**
+（文件名 + 字数），竖排会被压成两行窄字，所以用 `.axisBehavior(.horizontalOnly)` 显式要求横向。
+`ToolbarItem` 是 `ToolbarContent`，`.axisBehavior` 只能挂在它上面——因此标题被抽成
+`principalItem` / `principalTitle` 两个成员，按 `#available(iOS 27.1, *)` 分两条路径。
+
+### 4.4 探针与断言（让下次改动可验证）
+
+**布局探针**（DEBUG-only）：`-debugLayoutProbe YES` 打开，左上角显示
+窗口宽度 / 安全区 / 尺寸类 / 缩放 / division 区间 / occlusion 区间 / 连续区间。
+没有它，铰链相关的改动在自动截图里永远看不见。
+
+**几何断言**：`scripts/verify_hinge_math.swift` 把 `AdaptiveChrome.swift` 编进一个 macOS
+命令行程序，直接跑 19 条断言（切分、合并、封顶、横移、退化）：
 
 ```bash
+swiftc -parse-as-library Mobile/Sources/Theme/AdaptiveChrome.swift scripts/verify_hinge_math.swift \
+  -o /tmp/verify_hinge_math && /tmp/verify_hinge_math
+```
+
+**反向验证**（仓规 §6 要求）：把 `hingeClearance` 从 12 改成 20，4 条断言立刻变红；
+改回 12 恢复全绿。不是空断言。
+
+## 5. 实测数据（无头模拟器截图 + 像素量宽）
+
+`xcrun simctl io <dev> screenshot` 之后用 `PIL` 量「墨迹」的横坐标范围（脚本见 §8）。
+
+| 设备 | 逻辑宽 | 场景 | 墨迹横跨 | 判定 |
+|---|---|---|---|---|
+| Duo 外屏 | 466（安全区 382） | 预览正文 | 22.7–442.3pt | 22.7pt 页边距，与改动前一致 ✅ |
+| Duo 外屏 | 同上 | 底部动作栏 | 22.7–354.3pt | **改动前后逐像素一致** ✅ |
+| iPhone 18 Pro | 402 | 预览正文 | 22.7–374.7pt | 22pt 页边距，无回归 ✅ |
+| iPhone 18 Pro | 402 | 底部动作栏 | 27.3–374.3pt | 无回归 ✅ |
+| iPad Pro 13" | 1032 | 预览正文 | 156.5–846pt（列 156–876） | 720pt 封顶 + 精确居中 ✅ |
+| iPad Pro 13" | 1032 | 底部动作栏 | 238.5–795.5pt（557 宽） | 中心 517 ≈ 1032/2 ✅ |
+
+## 6. 决策：四件「不做」的事，各有数字依据
+
+| 事项 | 决定 | 依据 |
+|---|---|---|
+| 内屏侧栏（`defaultTabBarPlacement(.sidebar)`） | ❌ 不做 | 内屏只有 **669pt**。侧栏按 Apple 常见 280–320pt 算，留给正文 350–390pt —— 比 402pt 的普通 iPhone 还窄。本仓的 tab 栏是 `.toolbar(.hidden)` + 自绘底栏，改侧栏等于重做一级导航，收益为负 |
+| 主次两栏（`ArrangementView`，文档 + AI） | ❌ 不做 | 同一笔账：669pt 对半分 ≈ 330pt/栏，Markdown 正文一栏 330pt 会让代码块与表格大面积折行 |
+| 同心圆角（`ConcentricRectangle`） | ❌ 暂不用 | API 26.0 起就有（见 §2），但本仓没有「嵌在带圆角容器里、且贴着容器边」的卡片——卡片都浮在纸底上，硬套同心圆角只会算出 0 或负半径。等真出现贴边嵌套（如 sheet 内贴边工具栏）再上 |
+| 多场景 / `NavigationSplitView` | ❌ 不做 | `DocumentStore` / `ChatModel` 是 App 级 `@State`，两个窗口会镜像同一篇文档；split view 需要把导航从 `showDocument` 布尔改成 selection 驱动。两者都是独立重构 |
+
+## 7. 未验证的部分（如实说明）
+
+**本机切不到「展开 / 半折 / 帐篷」姿态**，因此：
+
+- 内屏（669pt，reg × reg）的版式**没有截图证据**，只有几何推导。
+- 铰链避让的**视觉效果没被验证过**——所有可测设备上 `reservedRegions(.division)` 都返回空数组
+  （探针读数 `div 0`），走的是「无铰链」分支。该分支与改动前逐像素一致（§5 第 2 行），
+  所以**不会坏，但也还没被证明对**。合并的是数学（19 条断言）与集成（编译 + 零回归），
+  不是观感。
+
+为什么不能自动切姿态：Xcode 27 已用 **DeviceHub** 取代 `Simulator.app`（本机
+`/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app` 不存在，
+`Contents/Applications/DeviceHub.app` 里也没有 fold / posture 菜单），
+`simctl` 只有 `io screenConfig power|geometry`，没有姿态开关；Duo 模拟器的内屏
+（display class 0，2007×2853）在合起状态下是休眠的，关掉外屏、重启 App 都不会迁过去。
+
+**人工验证步骤**（有真机或能开合的模拟器窗口时）：
+
+1. 装 Debug 包，`-debugLayoutProbe YES` 启动。
+2. 依次摆成 合起 / 展开 / 半折 / 帐篷 / 横竖，每摆一次截图，看探针三行读数：
+   `div` 是否出现、区间位置、`span` 是否切成了两块。
+3. 半折时确认底栏**整簇落在较大的一块**里，没有骑在折痕上；正文**不动**是预期行为。
+4. 展开时确认底栏仍在 620pt 封顶内居中、标题没被压成两行窄字。
+
+## 8. 复现命令
+
+```bash
+# 构建（模拟器）
 xcodebuild -project Mobile/MEditorMobile.xcodeproj -scheme MEditorMobile \
-  -configuration Debug -destination 'id=<sim-id>' -derivedDataPath /tmp/dd build \
+  -configuration Debug -destination 'id=<sim-id>' -derivedDataPath /tmp/dd-mobile build \
   CODE_SIGNING_ALLOWED=NO OTHER_SWIFT_FLAGS='-disable-sandbox'
-xcrun simctl install <sim-id> /tmp/dd/Build/Products/Debug-iphonesimulator/MEditorMobile.app
-xcrun simctl launch <sim-id> com.meditor.mobile -debugSeedDocument preview
-xcrun simctl io <sim-id> screenshot /tmp/shot.png
+
+# 安装 + 带探针启动（-debugSeedDocument preview|edit 是 DEBUG-only 钩子）
+xcrun simctl install <sim-id> /tmp/dd-mobile/Build/Products/Debug-iphonesimulator/MEditorMobile.app
+xcrun simctl launch <sim-id> com.meditor.mobile -debugSeedDocument preview -debugLayoutProbe YES
+
+# 截图：Duo 有两块屏，必须指定 --display
+xcrun simctl io <sim-id> enumerate          # 列出屏与 UUID
+xcrun simctl io <sim-id> screenshot --display=primary /tmp/shot.png
+
+# 造一台宽画布设备来验证 regular 布局（内屏姿态切不过去时的替代）
+xcrun simctl create "iPad-verify" com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB \
+  com.apple.CoreSimulator.SimRuntime.iOS-27-2
+
+# 量「墨迹」横坐标（判封顶与居中）
+python3 - <<'PY'
+from PIL import Image
+from collections import Counter
+im = Image.open('/tmp/shot.png').convert('RGB'); px = im.load(); w, h = im.size
+y0, y1 = int(h*0.28), int(h*0.62)                     # 避开导航栏与底栏
+c = Counter(px[x, y] for y in range(y0, y1, 3) for x in range(0, w, 3))
+bg = c.most_common(1)[0][0]
+cols = [x for x in range(w)
+        if sum(1 for y in range(y0, y1, 2)
+               if sum(abs(a-b) for a, b in zip(px[x, y], bg)) > 24) >= 2]
+print(min(cols)/3, max(cols)/3)                        # 缩放按设备取（Duo/iPad 见 §1）
+PY
 ```
 
-`-debugSeedDocument preview|edit` 是 **DEBUG-only** 钩子（`MEditorMobileApp.init`，
-与既有 `-debugSeedChat` 同款）：建一篇示意文档并直接打开。加它的唯一原因是
-`simctl` 没有点击能力——没有它，宽屏布局只能靠肉眼猜。
+## 9. 已知短板
 
-## 5. 待办：升级到 Xcode 27.1 之后的迁移清单
-
-按收益排序。每条都要先跑 `Build (iOS Simulator)`，再在 DeviceHub 里逐个姿态
-（合起 / 展开 / 半折 / 帐篷 / 横竖）截图核对。
-
-### 5.1 内屏侧栏（收益最大）
-
-```swift
-// SwiftUI
-TabView(selection: $page) { … }
-    .defaultTabBarPlacement(.sidebar)      // iOS 27
-```
-
-⚠️ 本仓的 tab 栏是 **`.toolbar(.hidden, for: .tabBar)` + 自绘底栏**，所以这条不能直接套。
-要么在内屏改用系统侧栏 + 自绘底栏只在 compact 出现，要么保持自绘但改成贴左的竖条。
-**先做产品决策，再动代码。**
-
-### 5.2 铰链避让（半折姿态）
-
-```swift
-// SwiftUI
-GeometryReader { proxy in
-    let fold = proxy.reservedRegion(.division, includeInactive: true)
-    content.frame(width: proxy.size.width - fold.frame.width)
-}
-// UIKit
-let fold = view.reservedRegion(for: .division, includeInactive: true)
-```
-
-内容跨越铰链是 Duo 特有的可读性问题（Apple 的比喻：跨书脊的照片不再是一张完整照片）。
-连续滚动的正文**不该位移**，需要位移的是按钮 / 告警 / 分栏。
-
-### 5.3 主次两栏（文档 + AI）
-
-`ArrangementView` / `UIArrangementViewController` 可以按「尺寸类 + 宽高比 + 活动 division
-区域」自动在主次两栏之间切换。对本仓最自然的用法：内屏把 AI 面板从 sheet 改成右侧次栏。
-
-### 5.4 工具栏竖排
-
-27.1 起标准导航/工具栏按钮在内屏会走竖排。本仓 `DocumentView` 的 `.principal` 标题 +
-`.topBarTrailing` 菜单都是**容器拥有的** bar item，会自动跟随；但 `.principal` 里的
-双行标题（文件名 + 字数）在竖排下会被压扁，需要改成 `.horizontalOnly` 或拆成两个 item。
-
-### 5.5 同心圆角
-
-`UICornerConfiguration` 已经在 26.0 可用，但 SwiftUI 侧没有 `ConcentricRectangle`。
-卡片目前用固定 `RoundedRectangle(cornerRadius: 14)`，在 Duo 的大圆角屏上会显得不贴边。
-等 27 的 `ConcentricRectangle` 再统一改，别现在改成半套。
-
-## 6. 明确不做的事
-
-**不开多场景**（`UIApplicationSupportsMultipleScenes` 保持 `false`）。
-Duo 是首款支持「同一 App 多个 UI 实例」的 iPhone，但本仓的 `DocumentStore` / `ChatModel`
-是 **App 级 `@State`**（`MEditorMobileApp`），两个窗口会共享同一份 store、同一篇文档，
-开关后用户看到的是两个窗口镜像同一篇文档 —— 既不坏也不好。要做就得先把状态下沉到
-`WindowGroup` 作用域（`@State` 移进 `RootView`），那是独立的一次重构。
-
-**暂不上 `NavigationSplitView`**（文档列表 + 文档两栏）。它确实是 Apple 推荐的内屏形态，
-但本仓导航是 `showDocument` 布尔 + `navigationDestination(isPresented:)`，换成
-split view 需要把 `List` 改成 selection 驱动，compact 下的 push 时机也会变。
-iOS 没有任何自动化测试，改完只能靠肉眼 —— 等有真机再动。
-
-## 7. 已知短板（这次量出来的）
-
-- `SettingsView` 的五个表单只做了宽度封顶，没有做「内屏两列」。设置项只有十几行，
-  两列收益低。
-- 底部两条胶囊在 1032pt 上仍在两端（间距 ~290pt），只是不再拉满整屏。要真正「收成一簇」
-  需要改信息架构（把「文档 / 设置」切换换成侧栏），属于 5.1 的范围。
+- `SettingsView` 的五个表单只做了宽度封顶，没做内屏两列（设置项只有十几行，收益低）。
+- 底部两条胶囊在宽画布上仍分列左右（557pt/620pt 封顶后靠 `Spacer` 撑开），没有「收成一簇」。
+  真要收，得先把一级导航换成侧栏——见 §6。
+- DEBUG 钩子 `-debugSeedDocument` 在**首次**冷启动时偶尔不自动进入文档页（第二次正常），
+  原因未查（怀疑 `store.hasDocument` 与 `onAppear` 的时序），只影响走查、不影响产品路径。
