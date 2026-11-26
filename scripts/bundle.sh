@@ -7,6 +7,11 @@
 # 双架构说明：swift build 默认只编 host 架构，打出来的包在另一种
 # 架构的 Mac 上只能靠 Rosetta。这里显式编译 arm64 + x86_64 两份，
 # 用 lipo 合成 Universal binary；资源包两份一致，取 x86_64 侧的即可。
+#
+# ⚠️ shebang 是 /bin/bash，也就是 macOS 自带的 bash 3.2。它有个解析坑：
+#    `$VAR` 后面紧跟中文（任何多字节字符）时，会把中文的字节并进变量名，
+#    `set -u` 下报 `VAR?: unbound variable`（本仓 0.13.15 发版就这么炸过一次）。
+#    变量紧邻中文一律写成 `${VAR}`。
 
 set -euo pipefail
 
@@ -23,18 +28,12 @@ ARCHES=(arm64 x86_64)
 BIN_DIR="$(swift build -c "$CONFIG" --package-path "$PROJECT_DIR" --show-bin-path)"
 
 # 但**输出位置**必须钉在 `.build/<config>/MEditor.app`：它是发布链路的下游契约
-# （release.yml 的 ditto / codesign 两条直接按这个路径取包），别处也只认这个位置。
-# 两种布局里 `.build/<config>` 都是指向真实产物目录的符号链接，所以这条路径本身跨布局成立；
-# 若它不存在（既没链接也没目录），说明还没构建过，直接失败而不是自己造一个同名目录
-# ——造出来的真目录会顶掉 SwiftPM 的符号链接。
-# 注意：脚本跑在 macOS 自带的 bash 3.2 下，`$VAR` 后面紧跟中文（任何多字节字符）时，
-# bash 3.2 会把整段多字节字节序列当成变量名的一部分，报 “BUILD_DIR?: unbound variable”。
-# 变量紧邻中文一律写成 `${VAR}`——这条已经踩过一次，CI 才炸、本机因为没走到该分支看不出来。
+# （release.yml 的 ditto / codesign 两条直接按这个路径取包）。
+# 别指望 SwiftPM 会提供 `.build/<config>`——带 `--arch` 的构建里 CI 实测没有这个符号链接，
+# 老脚本一直是靠下面的 `mkdir -p` 自己建目录、把包放进去的，这里保持同样语义：
+# 新布局里它是指向 `.build/out/Products/<Config>` 的符号链接，包就落在真实产物目录里；
+# 旧布局里它是个真目录，只装这个 .app，不影响 SwiftPM 自己的 triple 目录。
 BUILD_DIR="$PROJECT_DIR/.build/$CONFIG"
-if [ ! -d "$BUILD_DIR" ]; then
-  echo "error: 未找到 ${BUILD_DIR}（构建产物目录），请先 swift build -c ${CONFIG}" >&2
-  exit 1
-fi
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 
 echo "🔨 Building $APP_NAME ($CONFIG) for: ${ARCHES[*]}..."
