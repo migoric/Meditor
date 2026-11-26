@@ -15,13 +15,24 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="MEditor"
 ARCHES=(arm64 x86_64)
 
-# 产物目录一律问 SwiftPM，不自己拼路径。
+# 输入产物的位置一律问 SwiftPM，不自己拼路径。
 # 硬编码 `.build/<arch>-apple-macosx/<config>` 在 SwiftPM 换布局后就不存在了
 # （Xcode 27 / Swift 6.4 起走 SwiftBuild：产物在 `.build/out/Products/<Config>`，
 # per-arch 目录只有 `.build/out/Intermediates.noindex` 里的对象文件）。
 # `swift build --show-bin-path` 是唯一两种布局都答得准的口径。
 BIN_DIR="$(swift build -c "$CONFIG" --package-path "$PROJECT_DIR" --show-bin-path)"
-APP_BUNDLE="$BIN_DIR/$APP_NAME.app"
+
+# 但**输出位置**必须钉在 `.build/<config>/MEditor.app`：它是发布链路的下游契约
+# （release.yml 的 ditto / codesign 两条直接按这个路径取包），别处也只认这个位置。
+# 两种布局里 `.build/<config>` 都是指向真实产物目录的符号链接，所以这条路径本身跨布局成立；
+# 若它不存在（既没链接也没目录），说明还没构建过，直接失败而不是自己造一个同名目录
+# ——造出来的真目录会顶掉 SwiftPM 的符号链接。
+BUILD_DIR="$PROJECT_DIR/.build/$CONFIG"
+if [ ! -d "$BUILD_DIR" ]; then
+  echo "error: 未找到 $BUILD_DIR（构建产物目录），请先 swift build -c $CONFIG" >&2
+  exit 1
+fi
+APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 
 echo "🔨 Building $APP_NAME ($CONFIG) for: ${ARCHES[*]}..."
 
