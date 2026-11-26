@@ -5,24 +5,25 @@ struct ContentView: View {
     @Environment(AppState.self) private var state
     @State private var workspaceUI = WorkspaceUIState()
     @State private var settings = AppSettings.shared
-    /// 窗口内容区实测宽度（GeometryReader 回传），用于动态计算 tab 条宽度。
-    @State private var windowContentWidth: CGFloat = 1280
 
-    /// toolbar 里 tab 条的宽度。NavigationSplitView 的 toolbar 按列分段：
-    /// tab 条只能占 detail 列那段。可用宽度 = 窗口宽 - 侧栏（可见时） - 边距。
+    /// 窗口内容区实测宽度（根层 GeometryReader 回传）。
     ///
-    /// ⚠️ 估宽 item 会被整体塞进 ">>" 溢出菜单（整条 tab 栏直接消失）。
-    /// 两个要点：
-    /// 1. 侧栏宽必须用**实测**值（`measuredSidebarWidth`，由 FileSidebar 的
-    ///    GeometryReader 回传），不能用 `clampedSidebarWidth` 那个理想宽 260 ——
-    ///    用户把侧栏拖到 320 时按 260 算，tab 条就超出 detail 列了。
-    /// 2. 宁可**多留**空白也不溢出：多留的尾部空白与 toolbar 同色、看不出来；
-    ///    溢出则整个 tab 条消失。所以余量给足（48pt 覆盖系统按钮与分隔线）。
+    /// 初值必须是 0 = 「尚未测量」，**不能**给乐观大值（曾经是 1280，窗口比它
+    /// 窄时首帧就算出过宽的 tab 条，把 item 直接送进溢出菜单）。
+    ///
+    /// ⚠️ 测量点只能挂在这一层：实测把同一个 GeometryReader 挂到 `AppShell`
+    /// 的 detail 内部时 `onAppear` 从不触发（源码里 ESC 监视器那条注释记录过
+    /// 同样的「隐式尺寸解析」问题），拿到的永远是 nil。
+    @State private var windowContentWidth: CGFloat = 0
+
+    /// toolbar 里 tab 条的宽度。
+    ///
+    /// ⚠️ 估宽 item 会被整体塞进「»」溢出菜单（整条 tab 栏直接消失）。
+    /// 预算与下限在 `WorkspaceUIState.tabsStripWidth(windowWidth:)` 里——
+    /// 那里按侧栏**列宽上限**扣，任何侧栏拖拽宽度都不会低估，纯函数且有单测
+    /// 钉住「不越界」（`TabStripWidthTests`）。
     private var tabsStripWidth: CGFloat {
-        let chrome: CGFloat = workspaceUI.showsSidebarInLayout
-            ? workspaceUI.effectiveSidebarWidthForLayout() + 48
-            : 180                                     // 红绿灯 + 系统开关 + 边距
-        return max(240, windowContentWidth - chrome)
+        workspaceUI.tabsStripWidth(windowWidth: windowContentWidth)
     }
 
     var body: some View {
@@ -60,6 +61,8 @@ struct ContentView: View {
                 .hideSharedGlassBackgroundIfAvailable()
             }
         }
+        // 窗口宽实测（全窗内容区，含侧栏）。tab 条的宽度预算按它算，
+        // 侧栏部分一律按列宽上限扣——见 `tabsStripWidth`。
         .background(
             GeometryReader { proxy in
                 Color.clear
