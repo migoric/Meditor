@@ -12,6 +12,8 @@
 
 ## [Unreleased]
 
+## [0.13.15] - 2026-11-26
+
 ### Fixed
 
 - **左侧面板展开后文件 tab 栏整条消失（#35 复发）**：tab 条是 NSToolbar 里的一个 item，
@@ -23,6 +25,15 @@
   代价是侧栏较窄时 tab 条右侧多一段与 toolbar 同色的空白（最宽 100pt），看不出来。
 - 随之移除 FileSidebar 回传的侧栏实测宽（`measuredSidebarWidth`）：它唯一的用途就是上面
   这条估算，而回传滞后一帧正是「拖宽侧栏后 tab 消失」的诱因。
+
+### Notes
+
+- **打包脚本适配 SwiftPM 新构建布局**（只影响打包，不改 App 行为）：Xcode 27 / Swift 6.4
+  起 SwiftPM 换成 SwiftBuild，产物在 `.build/out/Products/<Config>`，per-arch 目录只剩对象文件，
+  而且两个架构**共用同一个 bin 路径**——旧 `scripts/bundle.sh` 在新工具链下直接失败；即便
+  只把路径修对，`lipo -create` 也会拿到被后一次构建覆盖的同一份文件、不报错地产出「自称
+  universal、实际单架构」的包。现在逐架构暂存产物并核对 `lipo -archs`，资源 bundle 改为按
+  内容探测（兼容新旧两种目录层级）。发布链路仍走 `macos-26`（旧布局），行为不变。
 
 ## [0.13.14] - 2026-11-25
 
