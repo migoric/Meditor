@@ -12,10 +12,16 @@ set -euo pipefail
 
 CONFIG="${1:-debug}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$PROJECT_DIR/.build/$CONFIG"
 APP_NAME="MEditor"
-APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 ARCHES=(arm64 x86_64)
+
+# 产物目录一律问 SwiftPM，不自己拼路径。
+# 硬编码 `.build/<arch>-apple-macosx/<config>` 在 SwiftPM 换布局后就不存在了
+# （Xcode 27 / Swift 6.4 起走 SwiftBuild：产物在 `.build/out/Products/<Config>`，
+# per-arch 目录只有 `.build/out/Intermediates.noindex` 里的对象文件）。
+# `swift build --show-bin-path` 是唯一两种布局都答得准的口径。
+BIN_DIR="$(swift build -c "$CONFIG" --package-path "$PROJECT_DIR" --show-bin-path)"
+APP_BUNDLE="$BIN_DIR/$APP_NAME.app"
 
 echo "🔨 Building $APP_NAME ($CONFIG) for: ${ARCHES[*]}..."
 
@@ -34,12 +40,35 @@ if [ ! -s "$APPINTENTS_PROTOCOLS" ]; then
   exit 1
 fi
 # driver 级输出路径（WMO 下是聚合文件本身；batch 下仅作开关，不真正写入）
-APPINTENTS_CONST_OUT="$BUILD_DIR/MEditor.swiftconstvalues"
+APPINTENTS_CONST_OUT="$BIN_DIR/MEditor.swiftconstvalues"
 CONST_GATHER_FLAGS=(
   -Xswiftc -emit-const-values-path -Xswiftc "$APPINTENTS_CONST_OUT"
   -Xswiftc -Xfrontend -Xswiftc -const-gather-protocols-file
   -Xswiftc -Xfrontend -Xswiftc "$APPINTENTS_PROTOCOLS"
 )
+
+# 每编完一个架构就立刻把二进制拷到暂存目录，**不能等到循环结束再 lipo**：
+# 旧布局（Xcode 26 及以前）两个架构各有 `<triple>/<config>` 目录，产物能并存；
+# 新布局（SwiftBuild）两个架构共用同一个 bin 路径，后一次 `--arch` 构建会把
+# 前一次的产物直接覆盖 —— 拿同一份文件 lipo 两次，`lipo -create` 不报错，
+# 产出的是一个「自称 universal、实际单架构」的包，装到另一种 Mac 上直接跑不起来。
+STAGE_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGE_DIR"' EXIT
+
+# SwiftPM 资源 bundle 的「内容根目录」也随布局变，判目录名不可靠、判里面有没有真文件才可靠：
+#   旧布局（Xcode 26 及以前）：<包名>_<目标名>.bundle/Resources/
+#   新布局（SwiftBuild）：     <包名>_<目标名>.bundle/Contents/Resources/Resources/
+# （两级 Resources 不是笔误：外层是 bundle 约定，内层是 Package.swift 里 .copy 的目录名。）
+resource_root() {
+  local bundle="$1" marker="$2" cand
+  for cand in "$bundle/Resources" "$bundle/Contents/Resources/Resources" "$bundle/Contents/Resources"; do
+    if [ -e "$cand/$marker" ]; then
+      printf '%s\n' "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
 
 BINARIES=()
 QL_BINARIES=()
@@ -47,30 +76,60 @@ RESOURCE_DIR=""
 QL_RESOURCES_DIR=""
 for ARCH in "${ARCHES[@]}"; do
   swift build -c "$CONFIG" --arch "$ARCH" --package-path "$PROJECT_DIR" "${CONST_GATHER_FLAGS[@]}"
-  TRIPLE_DIR="$PROJECT_DIR/.build/${ARCH}-apple-macosx/$CONFIG"
-  BINARIES+=("$TRIPLE_DIR/$APP_NAME")
-  QL_BINARIES+=("$TRIPLE_DIR/MEditorQuickLook")
+  # 编完再问一次 bin 路径：新布局下它与预取时相同，旧布局下是 `<triple>/<config>`
+  ARCH_BIN_DIR="$(swift build -c "$CONFIG" --arch "$ARCH" --package-path "$PROJECT_DIR" --show-bin-path)"
+  for pair in "$APP_NAME" "MEditorQuickLook"; do
+    src="$ARCH_BIN_DIR/$pair"
+    dst="$STAGE_DIR/$pair-$ARCH"
+    if [ ! -f "$src" ]; then
+      echo "error: 未找到 $ARCH 构建产物: $src" >&2
+      exit 1
+    fi
+    cp "$src" "$dst"
+  done
+  # 显式核对实际架构：`--arch` 被工具链忽略时（新布局早期版本有过）这里必须炸，
+  # 否则会静默产出单架构包——与 Sparkle 缺框架同类，属于「看着正常」的出货事故。
+  ACTUAL_ARCH="$(lipo -archs "$STAGE_DIR/$APP_NAME-$ARCH" 2>/dev/null || true)"
+  if [ "$ACTUAL_ARCH" != "$ARCH" ]; then
+    echo "error: $ARCH 构建产物架构不符（实际: ${ACTUAL_ARCH:-无法读取}）" >&2
+    exit 1
+  fi
+  BINARIES+=("$STAGE_DIR/$APP_NAME-$ARCH")
+  QL_BINARIES+=("$STAGE_DIR/MEditorQuickLook-$ARCH")
   # 资源 bundle 各架构内容一致，记录第一份即可
-  if [ -z "$RESOURCE_DIR" ] && [ -d "$TRIPLE_DIR/${APP_NAME}_${APP_NAME}.bundle/Resources" ]; then
-    RESOURCE_DIR="$TRIPLE_DIR/${APP_NAME}_${APP_NAME}.bundle/Resources"
+  if [ -z "$RESOURCE_DIR" ]; then
+    RESOURCE_DIR="$(resource_root "$ARCH_BIN_DIR/${APP_NAME}_${APP_NAME}.bundle" "Preview/marked.min.js" || true)"
   fi
   # Quick Look 扩展的 SwiftPM 资源 bundle（包名_目标名）：ql-render.js、pele.global.js。
   # 两份都必须在才算命中：增量构建会留下「有驱动、没渲染器」的半旧目录
   # （只加了 pele 之后没重编过的那个架构），只按 ql-render.js 判定会取到它，
   # 打出来的 appex 图表静默退化成代码块——看着正常，只是图全没了。
-  if [ -z "$QL_RESOURCES_DIR" ] \
-     && [ -f "$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/ql-render.js" ] \
-     && [ -f "$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources/pele.global.js" ]; then
-    QL_RESOURCES_DIR="$TRIPLE_DIR/${APP_NAME}_MEditorQuickLook.bundle/Resources"
+  if [ -z "$QL_RESOURCES_DIR" ]; then
+    QL_CAND="$(resource_root "$ARCH_BIN_DIR/${APP_NAME}_MEditorQuickLook.bundle" "ql-render.js" || true)"
+    if [ -n "$QL_CAND" ] && [ -f "$QL_CAND/pele.global.js" ]; then
+      QL_RESOURCES_DIR="$QL_CAND"
+    fi
   fi
 done
+
+# 资源目录找不到就立刻失败：以前这里是 `if [ -n "$RESOURCE_DIR" ]` 静默跳过，
+# 结果是几十行之后在 `cp .../Preview/marked.min.js` 处报一句「No such file」，
+# 看不出根因是资源 bundle 没命中。
+if [ -z "$RESOURCE_DIR" ]; then
+  echo "error: 未找到主 app 的 SwiftPM 资源 bundle（缺 Preview/marked.min.js）" >&2
+  exit 1
+fi
 
 # const-values 自愈：SwiftPM 对「先无 flag 构建、后带 flag 构建」的增量序列
 # 可能跳过 const values 生成（CI release 流水线预编译污染的实测场景）。
 # 缺失时 touch Intents 源文件，强制重编第一个架构（metadata 与架构无关，只需一份）。
-HEAL_TRIPLE_DIR="$PROJECT_DIR/.build/${ARCHES[0]}-apple-macosx/$CONFIG"
+# 查找同样不拼 triple 路径：`.build` 下任何 `<目标名>.build/` 里都算，
+# 新旧布局各自落在 Objects-normal/<arch>/ 与 <triple>/<config>/ 下。
+find_const_values() {
+  find "$PROJECT_DIR/.build" -path "*/$APP_NAME.build/*" -name "*.swiftconstvalues" "$@"
+}
 if [ ! -f "$APPINTENTS_CONST_OUT" ] && \
-   ! find "$HEAL_TRIPLE_DIR/$APP_NAME.build" -name "*.swiftconstvalues" -print -quit 2>/dev/null | grep -q .; then
+   [ -z "$(find_const_values -print -quit 2>/dev/null)" ]; then
   echo "♻️  const values 缺失，强制重编 ${ARCHES[0]} 以重新提取..."
   touch "$PROJECT_DIR/Sources/$APP_NAME/Intents/"*.swift
   swift build -c "$CONFIG" --arch "${ARCHES[0]}" --package-path "$PROJECT_DIR" "${CONST_GATHER_FLAGS[@]}"
@@ -154,19 +213,15 @@ if [ -n "$RESOURCE_DIR" ]; then
 fi
 
 # Embed Sparkle.framework（自动更新）：SPM 只负责链接，不嵌包。
-# 首选构建产物目录（.build/<triple>/<config>/Sparkle.framework）——Vendor 和
-# 远程 binaryTarget 两种模式 SPM 都会把框架拷到可执行文件旁边，路径最稳定；
-# Vendor/ 与 .build/artifacts 只作兜底（artifacts 的解包层级随 SPM 版本变，
+# 首选构建产物目录（可执行文件旁边的 Sparkle.framework）——Vendor 和
+# 远程 binaryTarget 两种模式 SPM 都会把框架拷到可执行文件旁边，
+# 路径最稳定；Vendor/ 与 .build/artifacts 只作兜底（artifacts 的解包层级随 SPM 版本变，
 # v0.6.6/0.6.7 的 CI 包就是因为 artifacts 路径没匹配上、只告警不报错，
 # 打出缺框架的包，启动即崩）。
 SPARKLE_FW=""
-for ARCH in "${ARCHES[@]}"; do
-  CAND="$PROJECT_DIR/.build/${ARCH}-apple-macosx/$CONFIG/Sparkle.framework"
-  if [ -d "$CAND" ]; then
-    SPARKLE_FW="$CAND"
-    break
-  fi
-done
+if [ -d "$BIN_DIR/Sparkle.framework" ]; then
+  SPARKLE_FW="$BIN_DIR/Sparkle.framework"
+fi
 if [ -z "$SPARKLE_FW" ] && [ -d "$PROJECT_DIR/Vendor/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" ]; then
   SPARKLE_FW="$PROJECT_DIR/Vendor/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 fi
@@ -249,11 +304,13 @@ fi
 METADATA_SDK="$(xcrun --sdk macosx --show-sdk-path)"
 METADATA_XCODE_BUILD="$(xcodebuild -version | tail -1 | awk '{print $3}')"
 # const values 与架构无关，取第一个架构的构建产物即可
-METADATA_TRIPLE_DIR="$PROJECT_DIR/.build/${ARCHES[0]}-apple-macosx/$CONFIG"
 APPINTENTS_SRC_LIST="$(mktemp)"
 APPINTENTS_CONST_LIST="$(mktemp)"
 find "$PROJECT_DIR/Sources/$APP_NAME" -name "*.swift" | sort > "$APPINTENTS_SRC_LIST"
-find "$METADATA_TRIPLE_DIR/$APP_NAME.build" -name "*.swiftconstvalues" | sort > "$APPINTENTS_CONST_LIST"
+# 两个架构的 const values 内容相同、只有所在 arch 目录不同：
+# 按路径排序后按文件名去重，保留排在前面的那份（arm64 优先），
+# 避免把同一批 primary 喂两遍给 metadata processor。
+find_const_values | sort | awk -F/ '!seen[$NF]++' > "$APPINTENTS_CONST_LIST"
 # WMO（release）下 const values 是 driver 级聚合文件而非 per-primary 产物
 if [ -f "$APPINTENTS_CONST_OUT" ]; then
   echo "$APPINTENTS_CONST_OUT" >> "$APPINTENTS_CONST_LIST"
