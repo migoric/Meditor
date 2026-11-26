@@ -27,9 +27,12 @@ BIN_DIR="$(swift build -c "$CONFIG" --package-path "$PROJECT_DIR" --show-bin-pat
 # 两种布局里 `.build/<config>` 都是指向真实产物目录的符号链接，所以这条路径本身跨布局成立；
 # 若它不存在（既没链接也没目录），说明还没构建过，直接失败而不是自己造一个同名目录
 # ——造出来的真目录会顶掉 SwiftPM 的符号链接。
+# 注意：脚本跑在 macOS 自带的 bash 3.2 下，`$VAR` 后面紧跟中文（任何多字节字符）时，
+# bash 3.2 会把整段多字节字节序列当成变量名的一部分，报 “BUILD_DIR?: unbound variable”。
+# 变量紧邻中文一律写成 `${VAR}`——这条已经踩过一次，CI 才炸、本机因为没走到该分支看不出来。
 BUILD_DIR="$PROJECT_DIR/.build/$CONFIG"
 if [ ! -d "$BUILD_DIR" ]; then
-  echo "error: 未找到 $BUILD_DIR（构建产物目录），请先 swift build -c $CONFIG" >&2
+  echo "error: 未找到 ${BUILD_DIR}（构建产物目录），请先 swift build -c ${CONFIG}" >&2
   exit 1
 fi
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
