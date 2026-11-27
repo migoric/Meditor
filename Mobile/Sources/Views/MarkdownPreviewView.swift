@@ -13,6 +13,7 @@ struct MarkdownPreviewView: View {
 
     @Environment(\.displayScale) private var displayScale
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.verticalChrome) private var verticalChrome
     @Environment(ReaderSettings.self) private var reader
     @Environment(ChatModel.self) private var model
     @Environment(AIHeroState.self) private var aiHero
@@ -79,8 +80,8 @@ struct MarkdownPreviewView: View {
             }
         }
         .coordinateSpace(name: Self.scrollSpace)
-        // 底部悬浮栏不挡内容：滚动内容底部留白（数值推导见 PaperTheme.Spacing.bottomBarInset）
-        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+        // 底部悬浮栏不挡内容：滚动内容底部留白（竖排 bar 形态下没有悬浮栏，归零）
+        .bottomBarContentInset(verticalChrome: verticalChrome)
         // 预热 Mermaid + 解析 blocks：推迟 ~50ms 让导航过渡先完成
         .task(priority: .userInitiated) {
             preloadMermaidIfNeeded()

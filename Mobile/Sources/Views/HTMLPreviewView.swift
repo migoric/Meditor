@@ -13,10 +13,16 @@ struct HTMLPreviewView: View {
     let baseURL: URL?
 
     @State private var isRendered = false
+    /// 系统把 bar 竖排时没有底部动作栏，WebView 不需要补底部 inset。
+    @Environment(\.verticalChrome) private var verticalChrome
 
     var body: some View {
         ZStack {
-            HTMLPreviewWebView(html: html, baseURL: baseURL) {
+            HTMLPreviewWebView(
+                html: html,
+                baseURL: baseURL,
+                bottomInset: verticalChrome ? 0 : PaperTheme.Spacing.bottomBarInset
+            ) {
                 withAnimation(PaperTheme.Motion.quick) { isRendered = true }
             }
             if !isRendered {
@@ -37,6 +43,8 @@ struct HTMLPreviewView: View {
 private struct HTMLPreviewWebView: UIViewRepresentable {
     let html: String
     let baseURL: URL?
+    /// 底部悬浮动作栏的高度（pt）。竖排 bar 形态传 0。
+    let bottomInset: CGFloat
     /// 首帧导航结束（成功或失败）回调，只触发一次。
     let onFirstRender: () -> Void
 
@@ -96,7 +104,7 @@ private struct HTMLPreviewWebView: UIViewRepresentable {
     /// 用 `contentInset` 而不是缩 frame：阅读场景下不该改变 HTML 的视口大小，
     /// `position: fixed` 的页脚也不该被推上去。
     private func applyBottomInset(to webView: WKWebView) {
-        let inset = PaperTheme.Spacing.bottomBarInset
+        let inset = bottomInset
         guard webView.scrollView.contentInset.bottom != inset else { return }
         webView.scrollView.contentInset.bottom = inset
         webView.scrollView.verticalScrollIndicatorInsets.bottom = inset
