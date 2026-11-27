@@ -6,6 +6,10 @@ import UniformTypeIdentifiers
 struct DocumentHomeView: View {
     @Environment(DocumentStore.self) private var store
     @Environment(RecentHistory.self) private var recents
+    @Environment(AIHeroState.self) private var aiHero
+    /// 系统是否把 bar 竖排（Duo 外屏 / 内屏横排）。此时自绘底栏已让位给系统 tab 栏，
+    /// 「打开 / AI / 新建」搬到导航栏 toolbar —— 系统 bar 会跟着纵向排、装不下自动进溢出菜单。
+    @Environment(\.verticalChrome) private var verticalChrome
 
     /// 打开文档成功后的回调（RootView 推进文档页）。
     let onOpenDocument: () -> Void
@@ -47,6 +51,29 @@ struct DocumentHomeView: View {
                 Text("文档")
                     .font(.system(.headline, design: .serif, weight: .semibold))
                     .foregroundStyle(PaperTheme.ink)
+            }
+            // 竖排 bar 的形态下底栏不存在，这三个动作挪进导航栏。
+            // 一律用 `Label`（图标 + 标题）：Apple 的纵向 bar 只认图标或 Label，
+            // 「只有标题」或「自定义视图」的条目**不会被纵向展示**。
+            if verticalChrome {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingFilePicker = true } label: {
+                        Label("打开文件", systemImage: "folder")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { aiHero.isOpen = true } label: {
+                        Label("AI 助手", systemImage: "sparkles")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        store.createDocument()
+                        onOpenDocument()
+                    } label: {
+                        Label("新建文档", systemImage: "plus")
+                    }
+                }
             }
         }
         // 原生搜索框：取消按钮、键盘处理、滚动折叠、无结果态全部由系统负责，
@@ -160,8 +187,8 @@ struct DocumentHomeView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .refreshable { recents.refreshWorkspaceDocuments() }
-        // 底部悬浮栏不挡卡片：滚动内容底部留白（数值推导见 PaperTheme.Spacing.bottomBarInset）
-        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+        // 底部悬浮栏不挡卡片：滚动内容底部留白（竖排 bar 形态下没有悬浮栏，归零）
+        .bottomBarContentInset(verticalChrome: verticalChrome)
         // 宽画布上封顶：整行铺满 1000pt 时，「标题 ←→ 日期」的关联会被拉断。
         // 外层 VStack 已有通栏 paperBackground，这里只收窄列表本身。
         .readableColumn(AdaptiveChrome.listColumn)

@@ -64,6 +64,7 @@
 | 按已知机型尺寸硬编码 | ✅ 无 | `.frame(width:)` 命中项全是图标 / 印章 / 圆钮的固有尺寸 |
 | 假设左右安全区相等 | ✅ 无 | 悬浮栏走 `.padding(.horizontal, 28)` 叠在安全区之内，两侧各自累加 |
 | `UIRequiresFullScreen` 锁死 | ✅ 未声明 | `Mobile/MEditorMobile/Info.plist` 无此键 |
+| 自建 bar（基于 `UITabBar` / `UINavigationBar` / `UIToolbar`） | ⚠️ **曾中招，已修** | 底栏与文档动作条都是自绘，系统不会替它们竖排 ⇒ 外屏上一直挂在底部。纵向形态改用系统 tab 栏 + 导航栏 toolbar，见 §4.5 |
 
 ## 4. 已完成的适配
 
@@ -120,6 +121,55 @@ swiftc -parse-as-library Mobile/Sources/Theme/AdaptiveChrome.swift scripts/verif
 
 **反向验证**（仓规 §6 要求）：把 `hingeClearance` 从 12 改成 20，4 条断言立刻变红；
 改回 12 恢复全绿。不是空断言。
+
+### 4.5 侧边纵向控件（本次新增，2026-11-27）
+
+**结论先行**：底栏原来那一整条自绘 chrome 在外屏上是**错的**。HIG《Designing for iPhone Duo》：
+
+> On iPhone Duo, you should position your **toolbars, tab bars and controls along the side**
+> of the device so they're easier to reach. Controls share this vertical space with dynamic
+> elements like live activities and the status bar.
+
+《Preparing your app for iPhone Duo》把「为什么它没自动生效」也写清楚了——系统只会搬**它自己的**
+bar，自建 bar 不在此列：
+
+> If the system doesn't present your bars vertically, check that you're using the bar support
+> that navigation containers provide… instead of creating a custom bar for your view based on
+> `UIToolbar`, `UINavigationBar`, or `UITabBar`.
+
+本仓恰恰是后者：`RootView` 用 `.toolbar(.hidden, for: .tabBar)` 藏了系统 tab 栏，`BottomBarView`
+与 `DocActionBar` 全是自绘。所以外屏上它一直老实待在底部，右侧那条纵向空间只留给系统状态栏。
+
+**判据**：Apple 给自定义视图的官方环境值（iOS 27.1+，部署目标 26.0 ⇒ 低版本恒 false）：
+
+| 能力 | SwiftUI | UIKit |
+|---|---|---|
+| 系统是否把 bar 竖排 | `toolbarVerticalEdge: HorizontalEdge?` | `verticalBarEdge` trait |
+
+封装成 `VerticalChromeProbe`（`AdaptiveChrome.swift`）：读到非 nil 就写 `\.verticalChrome = true`
+进环境，子视图据此切换形态。**不用尺寸类、不用机型**——竖排与否只有这一个事实来源。
+
+**两种形态**：
+
+| 形态 | 系统 tab 栏 | 一级导航 | 文档动作 | 内容底部留白 |
+|---|---|---|---|---|
+| 横向（普通 iPhone / iPad / 内屏竖排） | 隐藏 | 自绘玻璃胶囊（底部左右两簇） | 自绘 `DocActionBar` | 84pt |
+| 纵向（Duo 外屏 / 内屏横排） | **显示**（系统排在右下竖列） | 同上：系统 tab 栏 | 导航栏 `topBarTrailing`（图标+Label） | 0（`bottomBarContentInset`） |
+
+为什么纵向时用系统 tab 栏而不是把胶囊转 90°：溢出、压缩、折叠避让、安全区、RTL 全是系统免费的，
+自己转一遍等于把这些坑重写一遍，而且离 HIG「不要自建 bar」更远。
+
+⚠️ **纵向 bar 只认图标或 `Label`**：条目若是「只有标题」或「自定义视图」（`BarAIButton` /
+`BarPlusButton` 这种带 `frame` + `matchedGeometryEffect` 的自定义 label），系统**不会**把它放进
+纵向栏，会静默消失。所以纵向形态下的动作钮一律用 `Button { } label: { Label(...) }`，
+hero 的 matchedGeometry 动画在这一形态下不参与（可接受：那套动画是底部胶囊的语言）。
+
+**验证**（Duo 外屏，`xcrun simctl io <dev> screenshot --display=primary`）：
+
+- 文档页：右侧竖列自上而下＝返回 / 编辑预览切换 / AI / 新建 / ⋯，底部胶囊消失；探针读数
+  `w 382 safe 0/84 · cmpxreg`，正文仍止于 382pt，未被竖列遮挡。
+- 首页：右侧竖列＝文件夹 / AI / 加号，右下＝系统 tab 栏（文档 + 设置两枚），底部胶囊消失。
+- iPhone 18 Pro（402pt，横向 bar）：底部两簇玻璃胶囊原样保留，导航栏**没有**多出动作钮 ⇒ 零回归。
 
 ## 5. 实测数据（无头模拟器截图 + 像素量宽）
 

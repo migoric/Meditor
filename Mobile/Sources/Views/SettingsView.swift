@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(MobileAISettings.self) private var settings
     @Environment(AppAppearance.self) private var appearance
+    @Environment(\.verticalChrome) private var verticalChrome
 
     var body: some View {
         @Bindable var appearance = appearance
@@ -88,7 +89,7 @@ struct SettingsView: View {
                         .foregroundStyle(PaperTheme.inkSecondary)
                 }
             }
-            .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+            .bottomBarContentInset(verticalChrome: verticalChrome)
             .scrollContentBackground(.hidden)
             .listRowBackground(PaperTheme.card)
             .foregroundStyle(PaperTheme.ink)
@@ -146,6 +147,7 @@ struct SettingsView: View {
 /// 本地 AI 配置页：provider 预设 / baseURL / apiKey / model，存 UserDefaults。
 private struct AIServiceSettingsView: View {
     @Environment(MobileAISettings.self) private var settings
+    @Environment(\.verticalChrome) private var verticalChrome
     @State private var connectionTesting = false
     @State private var connectionTestResult: String? = nil
     @State private var connectionTestOK = false
@@ -270,7 +272,7 @@ private struct AIServiceSettingsView: View {
                     .foregroundStyle(PaperTheme.inkSecondary)
             }
         }
-        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+        .bottomBarContentInset(verticalChrome: verticalChrome)
         .scrollContentBackground(.hidden)
         .listRowBackground(PaperTheme.card)
         .foregroundStyle(PaperTheme.ink)
@@ -336,6 +338,7 @@ private struct AIServiceSettingsView: View {
 
 /// 分享配置页：服务地址 + Token（需与 Worker 的 SHARE_TOKEN 一致）。
 private struct ShareSettingsView: View {
+    @Environment(\.verticalChrome) private var verticalChrome
     @State private var tokenInput = ""
     @State private var publisher = ShareLinkPublisher.shared
     @State private var gistTokenInput = ""
@@ -432,7 +435,7 @@ private struct ShareSettingsView: View {
                     .foregroundStyle(PaperTheme.inkSecondary)
             }
         }
-        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+        .bottomBarContentInset(verticalChrome: verticalChrome)
         .scrollContentBackground(.hidden)
         .listRowBackground(PaperTheme.card)
         .foregroundStyle(PaperTheme.ink)
@@ -463,6 +466,7 @@ private struct ShareSettingsView: View {
 
 /// 技能开关页：启用的技能注入 AI 对话，并在输入栏上方提供快捷指令。
 private struct AISkillsSettingsView: View {
+    @Environment(\.verticalChrome) private var verticalChrome
     var body: some View {
         Form {
             Section {
@@ -482,7 +486,7 @@ private struct AISkillsSettingsView: View {
                     .foregroundStyle(PaperTheme.inkSecondary)
             }
         }
-        .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+        .bottomBarContentInset(verticalChrome: verticalChrome)
         .scrollContentBackground(.hidden)
         .listRowBackground(PaperTheme.card)
         .foregroundStyle(PaperTheme.ink)

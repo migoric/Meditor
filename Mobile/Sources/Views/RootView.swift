@@ -30,6 +30,20 @@ struct RootView: View {
     ].compactMap { $0 }
 
     var body: some View {
+        VerticalChromeProbe { verticalChrome in
+            layout(verticalChrome: verticalChrome)
+        }
+    }
+
+    /// `verticalChrome == true`：系统把 bar 竖排（Duo 外屏 / 内屏横排）。
+    ///
+    /// 此时**把系统 tab 栏放出来**、自绘底栏收起来：按 HIG，工具列与标签列应该竖排在
+    /// 设备侧边、与状态栏共享那条纵向空间，而这条行为只对系统 bar 生效——自绘 bar
+    /// 系统不会替你搬（Apple《Preparing your app for iPhone Duo》：不要基于 UITabBar /
+    /// UINavigationBar 自建 bar）。底栏里那三个动作钮则挂到导航栏 toolbar 上，同样是系统
+    /// bar，会跟着纵向排、空间不够自动进溢出菜单。
+    @ViewBuilder
+    private func layout(verticalChrome: Bool) -> some View {
         ZStack {
             TabView(selection: $page) {
                 Tab("文档", systemImage: "doc.text", value: .home) {
@@ -39,12 +53,12 @@ struct RootView: View {
                                 DocumentView()
                             }
                     }
-                    .toolbar(.hidden, for: .tabBar)
+                    .toolbar(verticalChrome ? .visible : .hidden, for: .tabBar)
                 }
 
                 Tab("设置", systemImage: "gearshape", value: .settings) {
                     SettingsView()
-                        .toolbar(.hidden, for: .tabBar)
+                        .toolbar(verticalChrome ? .visible : .hidden, for: .tabBar)
                 }
             }
             // 外部来源（微信传入 / Agent 打开）成功打开自动推进文档页并回到列表 tab；
@@ -132,10 +146,11 @@ struct RootView: View {
             }
 
             // 底部通栏：与 TabView 平级，浮在内容之上；键盘弹出时上推内容但不动底栏。
-            // 文档页打开时整条隐藏（该页有自己的底部动作条）。
+            // 文档页打开时整条隐藏（该页有自己的底部动作条）；系统竖排 bar 时整条让位给
+            // 系统 tab 栏（它就站在右侧那条纵向空间里，动作钮已挂到导航栏 toolbar 上）。
             VStack(spacing: 0) {
                 Spacer()
-                if !showDocument {
+                if !showDocument && !verticalChrome {
                     BottomBarView(
                         page: $page,
                         pageIndicator: pageIndicator,
@@ -164,6 +179,7 @@ struct RootView: View {
         .environment(aiHero)
         .environment(plusHero)
         .environment(\.heroNamespace, heroNS)
+        .environment(\.verticalChrome, verticalChrome)
     }
 
     /// AI sheet 的呈现绑定：直接读 AIHeroState，避免再造一份平行状态。

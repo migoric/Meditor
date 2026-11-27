@@ -56,6 +56,63 @@ enum AdaptiveChrome {
     }
 }
 
+// MARK: - 系统 bar 竖排形态（iPhone Duo 外屏 / 内屏横排）
+
+extension EnvironmentValues {
+    /// 当前上下文里系统是否把 bar 竖排（Duo 外屏、内屏横排；内屏竖排仍是横向）。
+    ///
+    /// 由 `RootView` 的探针写入，供子视图决定「自绘 chrome 要不要让位给系统 tab 栏」。
+    /// 判据不是尺寸类、也不是机型——按 HIG，只有「系统是不是竖排」这一个事实，
+    /// 来源就是 `toolbarVerticalEdge`（见下）。
+    @Entry var verticalChrome: Bool = false
+}
+
+/// 读出 `toolbarVerticalEdge` 再渲染内容。
+///
+/// 为什么用这个环境值：Apple《Preparing your app for iPhone Duo》对**自绘视图**明确写了
+/// “In a custom view, you may need to know if the system presents bars vertically…
+/// use the `toolbarVerticalEdge` environment value”。本仓的底栏是自绘的（`.toolbar(.hidden)`
+/// 藏了系统 tab 栏），系统不会替我们搬——所以只能自己问到这个事实，再把 bar 换成系统的那条。
+///
+/// iOS 27.1 之前没有这个值，一律按「横向」处理，行为与改动前逐像素一致。
+struct VerticalChromeProbe<Content: View>: View {
+    @ViewBuilder let content: (_ vertical: Bool) -> Content
+
+    var body: some View {
+        if #available(iOS 27.1, *) {
+            _VerticalChromeProbe(content: content)
+        } else {
+            content(false)
+        }
+    }
+}
+
+@available(iOS 27.1, *)
+private struct _VerticalChromeProbe<Content: View>: View {
+    @Environment(\.toolbarVerticalEdge) private var edge
+    let content: (_ vertical: Bool) -> Content
+
+    var body: some View {
+        content(edge != nil)
+    }
+}
+
+// MARK: - 底部悬浮栏留白
+
+extension View {
+    /// 给可滚动内容补「底部悬浮栏」留白。
+    ///
+    /// 竖排 bar 形态（Duo 外屏 / 内屏横排）下没有自绘悬浮栏——那块空间交给系统 tab 栏，
+    /// 安全区由系统处理——所以留白归零，否则列表/正文末尾会多出一截空白。
+    func bottomBarContentInset(verticalChrome: Bool) -> some View {
+        contentMargins(
+            .bottom,
+            verticalChrome ? 0 : PaperTheme.Spacing.bottomBarInset,
+            for: .scrollContent
+        )
+    }
+}
+
 // MARK: - 铰链几何
 
 extension ClosedRange where Bound == CGFloat {

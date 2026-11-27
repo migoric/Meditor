@@ -7,6 +7,9 @@ struct DocumentView: View {
     @Environment(ReaderSettings.self) private var reader
     @Environment(ChatModel.self) private var chatModel
     @Environment(AIHeroState.self) private var aiHero
+    @Environment(PlusHeroState.self) private var plusHero
+    /// 系统是否把 bar 竖排（Duo 外屏 / 内屏横排）：底栏隐藏、动作搬进导航栏 toolbar。
+    @Environment(\.verticalChrome) private var verticalChrome
 
     @State private var showingFilePicker = false
     @State private var showingOpenError = false
@@ -57,7 +60,9 @@ struct DocumentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(PaperTheme.Motion.standard, value: store.showPreview)
         // 底栏悬浮在内容之上（safearea 透底），不占布局高度
-        .overlay(alignment: .bottom) { DocActionBar() }
+        .overlay(alignment: .bottom) {
+            if !verticalChrome { DocActionBar() }
+        }
         .background(PaperTheme.paperBackground)
         .navigationTitle(store.hasDocument ? store.fileName : "MEditor")
         .navigationBarTitleDisplayMode(.inline)
@@ -72,6 +77,31 @@ struct DocumentView: View {
             // 操作动作全部沉到底部动作条，头部只留标题和 ⋯ 菜单。
             principalItem
             if store.hasDocument {
+                // 竖排 bar 形态下没有底部动作条，三个高频动作挪到导航栏。
+                // 用 `Label`（图标 + 标题）：纵向 bar 只认图标或 Label，自定义视图不会被纵向展示。
+                if verticalChrome {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { store.showPreview.toggle() } label: {
+                            Label(
+                                store.showPreview ? "编辑" : "预览",
+                                systemImage: store.showPreview ? "pencil" : "doc.richtext"
+                            )
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { aiHero.isOpen = true } label: {
+                            Label("AI 助手", systemImage: "sparkles")
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            plusHero.zoomID = "plus-doc"
+                            withAnimation(PaperTheme.Motion.standard) { plusHero.isZooming = true }
+                        } label: {
+                            Label("新建文档", systemImage: "plus")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     documentMenu
                 }
@@ -303,7 +333,8 @@ struct DocumentView: View {
                         .padding(.vertical, 18)
                 }
                 // 纯文本预览同样贴着底部动作栏滚：不补留白时最后约 34pt 被压住。
-                .contentMargins(.bottom, PaperTheme.Spacing.bottomBarInset, for: .scrollContent)
+                // 竖排 bar 形态没有底部动作栏，留白归零（见 bottomBarContentInset）。
+                .bottomBarContentInset(verticalChrome: verticalChrome)
                 .readableColumn(AdaptiveChrome.readingColumn)
             }
         } else {
